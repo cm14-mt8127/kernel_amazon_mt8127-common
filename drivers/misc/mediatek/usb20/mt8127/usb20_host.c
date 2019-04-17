@@ -148,7 +148,7 @@ static bool musb_is_host(void)
 	u8 devctl = 0;
 	int iddig_state = 1;
 	bool usb_is_host = 0;
-#if CONFIG_abc123_PROJECT
+#if CONFIG_AUSTIN_PROJECT
 	int i = 0;
 #endif
 
@@ -167,7 +167,7 @@ static bool musb_is_host(void)
 	/* iddig_state = mt_get_gpio_in(GPIO38); */
 	iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
 	DBG(0,"iddig_state = %d\n", iddig_state);
-#if CONFIG_abc123_PROJECT
+#if CONFIG_AUSTIN_PROJECT
 	for (i=0; i<3; i++) {
 		if (likely(iddig_state)) {
 			break;
@@ -283,7 +283,7 @@ static void musb_id_pin_work(struct work_struct *data)
 		DBG(0, "do nothing due to in_ipo_off\n");
 		goto out;
 	}
-	#if CONFIG_abc123_PROJECT
+	#if CONFIG_AUSTIN_PROJECT
 	wake_lock(&mtk_musb->usb_lock);
     #endif
 	mtk_musb ->is_host = musb_is_host();
@@ -296,7 +296,7 @@ static void musb_id_pin_work(struct work_struct *data)
         #endif
 		//setup fifo for host mode
 		ep_config_from_table_for_host(mtk_musb);
-		#if CONFIG_abc123_PROJECT
+		#if CONFIG_AUSTIN_PROJECT
 		if (!wake_lock_active(&mtk_musb->usb_lock))
 			wake_lock(&mtk_musb->usb_lock);
 		#else

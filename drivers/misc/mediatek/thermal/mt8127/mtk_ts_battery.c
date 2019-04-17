@@ -184,7 +184,7 @@ static int mtktsbattery_set_trip_temp(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static int mtktsbattery_thermal_notify(struct thermal_zone_device *thermal,
 				int trip, enum thermal_trip_type type)
 {
@@ -204,7 +204,7 @@ static struct thermal_zone_device_ops mtktsbattery_dev_ops = {
 	.get_trip_temp = mtktsbattery_get_trip_temp,
 	.get_crit_temp = mtktsbattery_get_crit_temp,
 	.set_trip_temp = mtktsbattery_set_trip_temp,
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	.notify = mtktsbattery_thermal_notify,
 #endif
 };
@@ -235,7 +235,7 @@ static struct thermal_dev_ops mtktsbattery_fops = {
 	.get_temp = mtktsbattery_read_temp,
 };
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 struct thermal_dev_params mtktsbattery_tdp = {
 	.offset = -13000,
 	.alpha = 7,

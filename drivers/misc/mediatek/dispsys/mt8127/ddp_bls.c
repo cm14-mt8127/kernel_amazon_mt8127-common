@@ -15,7 +15,7 @@
 #include <cust_leds.h>
 #include <cust_leds_def.h>
 
-#ifndef CONFIG_abc123_PROJECT
+#ifndef CONFIG_AUSTIN_PROJECT
 #define DDP_GAMMA_SUPPORT
 #endif
 
@@ -37,7 +37,7 @@ static int gBLSMutexID = 3;
 static int gBLSPowerOn = 0;
 #endif
 static int gMaxLevel = 1023;
-#ifndef CONFIG_abc123_PROJECT
+#ifndef CONFIG_AUSTIN_PROJECT
 static int gMinLevel = 100;
 #else
 static int gMinLevel = 20;

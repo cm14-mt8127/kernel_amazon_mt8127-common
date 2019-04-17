@@ -4,8 +4,8 @@ include $(srctree)/drivers/misc/mediatek/Makefile.custom
 ifneq ($(CONFIG_ARCH_MTK_PROJECT),)
 ARCH_MTK_PROJECT := $(shell echo $(CONFIG_ARCH_MTK_PROJECT))
 obj-y   += core/
-ifeq ($(CONFIG_abc123_PROJECT),y)
-	obj-y   += dct/dct_abc123/
+ifeq ($(CONFIG_AUSTIN_PROJECT),y)
+	obj-y   += dct/dct_austin/
 else
 	obj-y   += dct/dct/
 endif

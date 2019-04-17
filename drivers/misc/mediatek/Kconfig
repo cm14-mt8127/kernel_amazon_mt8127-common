@@ -11,7 +11,7 @@ config MTK_PLATFORM
 config ARCH_MTK_PROJECT
 	string "MTK project name"
 
-config abc123_PROJECT
+config AUSTIN_PROJECT
         bool "amazon project name"
 
 config MTK_INTERNAL

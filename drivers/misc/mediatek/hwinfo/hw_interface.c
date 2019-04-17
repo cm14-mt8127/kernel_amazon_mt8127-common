@@ -133,7 +133,7 @@ static int init_board_id(void)
 		board_id.voltage = (voltage * 1500) / 4096;
 		/* MTK's suggestion we convert to a valid voltage */
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 		if (board_id.voltage < 150) {	/* HVT 0V */
 			board_id.built_name = "HVT";
 			board_id.id = "0037001010000017";

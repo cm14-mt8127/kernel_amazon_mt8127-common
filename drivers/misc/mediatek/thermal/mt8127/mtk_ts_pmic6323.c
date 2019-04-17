@@ -271,7 +271,7 @@ static int mtktspmic_get_crit_temp(struct thermal_zone_device *thermal, unsigned
 	return -EINVAL;
 }
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static int mtktspmic_thermal_notify(struct thermal_zone_device *thermal,
 				int trip, enum thermal_trip_type type)
 {
@@ -291,7 +291,7 @@ static struct thermal_zone_device_ops mtktspmic_dev_ops = {
 	.get_trip_temp = mtktspmic_get_trip_temp,
 	.set_trip_temp = mtktspmic_set_trip_temp,
 	.get_crit_temp = mtktspmic_get_crit_temp,
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	.notify = mtktspmic_thermal_notify,
 #endif
 };
@@ -321,7 +321,7 @@ static struct thermal_dev_ops mtktspmic_fops = {
 	.get_temp = mtktspmic_read_temp,
 };
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 struct thermal_dev_params mtktspmic_tdp = {
 	.offset = 14500,
 	.alpha = 4,

@@ -310,7 +310,7 @@ void mt_usb_disconnect(void)
 
 bool usb_cable_connected(void)
 {
-#if CONFIG_abc123_PROJECT
+#if CONFIG_AUSTIN_PROJECT
 	int i = 0;
 #endif
 #ifdef FPGA_PLATFORM
@@ -323,7 +323,7 @@ bool usb_cable_connected(void)
 
 	iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
 	DBG(0, "iddig_state = %d\n", iddig_state);
-#if CONFIG_abc123_PROJECT
+#if CONFIG_AUSTIN_PROJECT
 	for (i=0; i<3; i++) {
 		if (likely(iddig_state)) {
 			break;

@@ -22,7 +22,7 @@
  ****************************************************************************/
 /* #define MAX_CHARGING_TIME             1*60*60         // 1hr */
 /* #define MAX_CHARGING_TIME                   8*60*60   // 8hr */
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define MAX_CHARGING_TIME                   12*60*60  /* 12hr */
 #else
 #define MAX_CHARGING_TIME                   24*60*60	/* 24hr */
@@ -112,7 +112,7 @@ typedef enum {
 #define TEMP_POS_45_THRESHOLD  45
 #define TEMP_POS_45_THRES_MINUS_X_DEGREE 45
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define TEMP_POS_10_THRESHOLD  15
 #define TEMP_POS_10_THRES_PLUS_X_DEGREE 15
 #else
@@ -195,7 +195,7 @@ extern kal_bool g_call_state;
 extern kal_bool g_charging_full_reset_bat_meter;
 extern signed int g_custom_charging_current;
 extern signed int g_custom_charging_cv;
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 extern unsigned int g_custom_charging_mode;
 #endif
 

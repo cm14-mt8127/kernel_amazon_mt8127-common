@@ -38,7 +38,7 @@ struct mtk_thermal_platform_data {
 	struct trip_t trips[THERMAL_MAX_TRIPS];
 };
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 void last_kmsg_thermal_shutdown(void);
 #endif
 #endif /* _MTK_THERMAL_H_ */

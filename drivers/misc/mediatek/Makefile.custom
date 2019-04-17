@@ -19,15 +19,15 @@ MTK_PLATFORM_PATH_ROOT := $(srctree)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)
 MTK_PROJECT_PATH_ROOT := $(srctree)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)
 endif
 
-ifeq ($(CONFIG_abc123_PROJECT),y)
+ifeq ($(CONFIG_AUSTIN_PROJECT),y)
 ccflags-y += -I$(MTK_PLATFORM_PATH_ROOT)/include \
              -I$(MTK_PLATFORM_PATH_ROOT)/include/mach \
              -I$(MTK_PROJECT_PATH_ROOT)/accdet \
              -I$(MTK_PROJECT_PATH_ROOT)/core \
              -I$(MTK_PROJECT_PATH_ROOT)/camera/camera \
              -I$(MTK_PROJECT_PATH_ROOT)/common \
-             -I$(MTK_PROJECT_PATH_ROOT)/dct/dct_abc123 \
-             -I$(srctree)/arch/arm//mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_abc123 \
+             -I$(MTK_PROJECT_PATH_ROOT)/dct/dct_austin \
+             -I$(srctree)/arch/arm//mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_austin \
              -I$(MTK_PROJECT_PATH_ROOT)/hdmi \
              -I$(MTK_PROJECT_PATH_ROOT)/imgsensor/inc \
              -I$(MTK_PROJECT_PATH_ROOT)/keypad \

@@ -402,7 +402,7 @@ static void accdet_eint_work_callback(struct work_struct *work)
 		eint_accdet_sync_flag = 1;
 		mutex_unlock(&accdet_eint_irq_sync_mutex);
 		#ifdef ACCDET_LOW_POWER
-		#ifdef CONFIG_abc123_PROJECT
+		#ifdef CONFIG_AUSTIN_PROJECT
 		mod_timer(&micbias_timer, jiffies + MICBIAS_DISABLE_TIMER);
 		#endif
 		wake_lock_timeout(&accdet_timer_lock, 7*HZ);
@@ -447,7 +447,7 @@ static void accdet_eint_work_callback(struct work_struct *work)
 			accdet_auxadc_switch(0);
 			accdet_adc = (arr[4] + arr[5] + arr[6] + arr[7])/4;
 			ACCDET_DEBUG("accdet_voltage = %d mv, board_voltage = %d mv\n", accdet_adc, board_voltage);
-			#if defined(CONFIG_abc123_PROJECT)
+			#if defined(CONFIG_AUSTIN_PROJECT)
 				if (accdet_adc > 550) {
 					ACCDET_DEBUG("[Accdet] ctia headset!!!\n");
 					mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
@@ -566,7 +566,7 @@ static void accdet_eint_func(void)
 	
 #ifdef ACCDET_LOW_POWER
 		//INIT the timer to disable micbias.
-#ifndef CONFIG_abc123_PROJECT
+#ifndef CONFIG_AUSTIN_PROJECT
 		init_timer(&micbias_timer);
 		micbias_timer.expires = jiffies + MICBIAS_DISABLE_TIMER;
 		micbias_timer.function = &disable_micbias;
@@ -658,7 +658,7 @@ static DEFINE_MUTEX(accdet_multikey_mutex);
 #define UP_KEY_THR_1       (100) /*100mv*/
 #define MD_KEY_THR_1		 (0)
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 static int key_check(int b)
 {
 	/*ACCDET_DEBUG("adc_data: %d v\n",b);*/
@@ -1830,7 +1830,7 @@ int mt_accdet_probe(void)
 		queue_work(accdet_workqueue, &accdet_work); //schedule a work for the first detection					
 #endif
 		#ifdef ACCDET_EINT
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 		setup_timer(&micbias_timer, disable_micbias, (unsigned long) 0);
 #endif
           accdet_eint_workqueue = create_singlethread_workqueue("accdet_eint");

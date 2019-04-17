@@ -388,7 +388,7 @@ static int mtkts_bts_get_crit_temp(struct thermal_zone_device *thermal, unsigned
 	return -EINVAL;
 }
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static int mtkts_bts_thermal_notify(struct thermal_zone_device *thermal,
 				int trip, enum thermal_trip_type type)
 {
@@ -409,14 +409,14 @@ static struct thermal_zone_device_ops mtkts_bts_dev_ops = {
 	.get_trip_temp = mtkts_bts_get_trip_temp,
 	.set_trip_temp = mtkts_bts_set_trip_temp,
 	.get_crit_temp = mtkts_bts_get_crit_temp,
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	.notify = mtkts_bts_thermal_notify,
 #endif
 };
 
 /* =========== bts thermal param handling ========== */
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 struct thermal_dev_params mtkts_bts_tdp = {
 	.offset = -2500,
 	.alpha = 15,

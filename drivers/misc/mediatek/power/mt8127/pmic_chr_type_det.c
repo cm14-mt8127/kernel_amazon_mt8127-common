@@ -39,7 +39,7 @@
 #include <mach/battery_common.h>
 #include <linux/time.h>
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 #ifdef CONFIG_MTK_BQ24296_SUPPORT
 #include "bq24296.h"
 #endif
@@ -247,7 +247,7 @@ CHARGER_TYPE hw_charger_type_detection(void)
 {
     CHARGER_TYPE ret = CHARGER_UNKNOWN;
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 #ifdef CONFIG_MTK_BQ24296_SUPPORT
 	bq24296_set_vindpm(0x9); /*VIN DPM check 4.6V*/
 #endif

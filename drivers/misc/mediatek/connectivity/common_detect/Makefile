@@ -3,8 +3,8 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	include $(srctree)/drivers/misc/mediatek/Makefile.custom
-	ifeq ($(CONFIG_abc123_PROJECT),y)
-		subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_abc123
+	ifeq ($(CONFIG_AUSTIN_PROJECT),y)
+		subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_austin
 	else
 		subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct
 	endif

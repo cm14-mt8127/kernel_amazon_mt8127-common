@@ -930,7 +930,7 @@ static int mtktscpu_set_trip_hyst(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static int mtktscpu_thermal_notify(struct thermal_zone_device *thermal,
 				int trip, enum thermal_trip_type type)
 {
@@ -954,7 +954,7 @@ static struct thermal_zone_device_ops mtktscpu_dev_ops = {
 	.get_crit_temp = mtktscpu_get_crit_temp,
 	.get_trip_hyst = mtktscpu_get_trip_hyst,
 	.set_trip_hyst = mtktscpu_set_trip_hyst,
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	.notify = mtktscpu_thermal_notify,
 #endif
 };

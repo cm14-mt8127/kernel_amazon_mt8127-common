@@ -284,7 +284,7 @@ static void msdc_metrics_work(struct work_struct *work)
 #define MSDC_MAX_W_TIMEOUT_TUNE (5)
 #define MSDC_MAX_W_TIMEOUT_TUNE_EMMC (64)
 #define MSDC_MAX_R_TIMEOUT_TUNE	(3)
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define	MSDC_MAX_POWER_CYCLE	(80)
 #else
 #define	MSDC_MAX_POWER_CYCLE	(3)
@@ -2206,7 +2206,7 @@ static u32 msdc_power_tuning(struct msdc_host *host)
 		}
         host->sw_timeout = sw_timeout;
 		host->error = host_err;
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 		if(!ret)
 			host->power_cycle = 0;
 		else

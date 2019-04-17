@@ -96,7 +96,7 @@ kal_bool temp_error_recovery_chr_flag = KAL_TRUE;
  /* extern variable */
  /* ============================================================ // */
 extern int g_platform_boot_mode;
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 extern int battery_idV;
 #endif
 
@@ -334,7 +334,7 @@ static BATTERY_VOLTAGE_ENUM select_jeita_cv(void)
 	if (g_custom_charging_cv != -1)
 		cv_voltage = g_custom_charging_cv;
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 	if (g_custom_charging_mode) /* For demo unit */
 		cv_voltage = BATTERY_VOLT_04_100000_V;
 #endif
@@ -504,7 +504,7 @@ void select_charging_curret_bcct(void)
 	}
 
 	g_temp_CC_value = g_bcct_value*100;
-#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT) && defined(CONFIG_AUSTIN_PROJECT)
 	if(g_temp_CC_value > CHARGE_CURRENT_300_00_MA)
 		set_jeita_charging_current();
 #endif
@@ -870,7 +870,7 @@ PMU_STATUS BAT_BatteryStatusFailAction(void)
 
 	battery_xlog_printk(BAT_LOG_CRTI, "[BATTERY] BAD Battery status... Charging Stop !!\n\r");
 
-#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_MTK_JEITA_STANDARD_SUPPORT) && defined(CONFIG_AUSTIN_PROJECT)
 	if ((g_temp_status == TEMP_ABOVE_POS_60) || (g_temp_status == TEMP_BELOW_NEG_10)
 		|| (battery_idV > 500)) {
 		temp_error_recovery_chr_flag = KAL_FALSE;

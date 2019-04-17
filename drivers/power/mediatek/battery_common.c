@@ -152,7 +152,7 @@ static char *DISO_state_s[8] = {
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 /* // Thermal related flags */
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 int g_battery_thermal_throttling_flag = 1;	/* 0:nothing, 1:enable batTT&chrTimer, 2:disable batTT&chrTimer, 3:enable batTT, disable chrTimer */
 #else
 int g_battery_thermal_throttling_flag = 3;	/* 0:nothing, 1:enable batTT&chrTimer, 2:disable batTT&chrTimer, 3:enable batTT, disable chrTimer */
@@ -196,7 +196,7 @@ extern U32 suspend_time;
 #define SYSTEM_OFF_VOLTAGE CUST_SYSTEM_OFF_VOLTAGE
 #endif
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 int battery_idV = 0;
 extern int IMM_GetOneChannelValue(int dwChannel, int data[4], int* rawdata);
 
@@ -276,7 +276,7 @@ static int cmd_discharging = -1;
 static int adjust_power = -1;
 static int suspend_discharging = -1;
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 
 struct metrics_charge {
 	struct timespec charger_time;
@@ -406,14 +406,14 @@ static enum power_supply_property battery_props[] = {
 	/* ACOS_MOD_END {metrics_log} */
 };
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define SHOW_CHARGE_IC_VENDOR
 static char *charge_ic_vendor_name = NULL;
 static char *battery_vendor_name = NULL;
 extern kal_uint32 g_fg_battery_id;
 #endif
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 void metrics_battery_save_data(void)
 {
 	unsigned long temp = get_virtualsensor_temp();
@@ -596,7 +596,7 @@ static void metrics_handle(void)
 
 	mutex_unlock(&info->lock);
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 	battery_capacity_check();
 #endif
 
@@ -2018,8 +2018,8 @@ static ssize_t store_Custom_Charging_Current(struct device *dev, struct device_a
 static DEVICE_ATTR(Custom_Charging_Current, 0664, show_Custom_Charging_Current,
 		   store_Custom_Charging_Current);
 
-#ifdef CONFIG_abc123_PROJECT
-#if defined(CONFIG_abc123_PROJECT)
+#ifdef CONFIG_AUSTIN_PROJECT
+#if defined(CONFIG_AUSTIN_PROJECT)
 static ssize_t show_Custom_Charging_Mode(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -2797,7 +2797,7 @@ void mt_battery_GetBatteryData(void)
 
 }
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 static PMU_STATUS mt_battery_CheckBatteryConnect(void)
 {
 	PMU_STATUS status = PMU_STATUS_OK;
@@ -2951,7 +2951,7 @@ static void mt_battery_CheckBatteryStatus(void)
 		return;
 	}
 
-#if defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AUSTIN_PROJECT)
 	if (mt_battery_CheckBatteryConnect() != PMU_STATUS_OK) {
 		BMT_status.bat_charging_state = CHR_ERROR;
 		return;
@@ -3206,7 +3206,7 @@ static void mt_battery_thermal_check(void)
 
 }
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 static void battery_charge_metric(void)
 {
 	unsigned long virtual_temp = get_virtualsensor_temp();
@@ -3322,7 +3322,7 @@ static void mt_battery_update_status(void)
 		usb_update(&usb_main);
 #if defined(CONFIG_AMAZON_METRICS_LOG)
 		metrics_charger_update(ac_main.AC_ONLINE, usb_main.USB_ONLINE);
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 		battery_charge_metric();
 #endif
 #endif
@@ -3622,7 +3622,7 @@ void BAT_thread(void)
 	static kal_bool battery_meter_initilized = KAL_FALSE;
 	struct timespec now_time;
 	unsigned long total_time_plug_in;
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 	char buf[256] = {0};
 	unsigned long virtual_temp = get_virtualsensor_temp();
 	static bool bat_14days_flag;
@@ -3653,7 +3653,7 @@ void BAT_thread(void)
 
 		if (total_time_plug_in > PLUGIN_THRESHOLD) {
 			g_custom_charging_cv = BATTERY_VOLT_04_100000_V;
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 			if (!bat_14days_flag) {
 				bat_14days_flag = true;
 				snprintf(buf, sizeof(buf),
@@ -3674,7 +3674,7 @@ void BAT_thread(void)
 		else
 			g_custom_charging_cv = -1;
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_abc123_PROJECT)
+#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
 		if (g_custom_charging_mode == 1 && !bat_demo_flag) {
 			bat_demo_flag = true;
 			snprintf(buf, sizeof(buf),
@@ -4327,7 +4327,7 @@ static int battery_probe(struct platform_device *dev)
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_Charger_Type);
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_Custom_PlugIn_Time);
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_Custom_Charging_Current);
-	#ifdef CONFIG_abc123_PROJECT
+	#ifdef CONFIG_AUSTIN_PROJECT
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_Custom_Charging_Mode);
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_ChargeIC_Vendor_Name);
 		ret_device_file = device_create_file(&(dev->dev), &dev_attr_Battery_Vendor_Name);

@@ -9,7 +9,7 @@ obj-y   +=  tpd_init.o
 obj-y   +=  tpd_misc.o
 obj-y   +=  tpd_setting.o
 
-ifeq ($(CONFIG_abc123_PROJECT), y)
+ifeq ($(CONFIG_AUSTIN_PROJECT), y)
 	obj-y   +=  goodix_tool.o
 	obj-y   +=  gt9xx_driver.o
 	obj-y   +=  gt9xx_update.o

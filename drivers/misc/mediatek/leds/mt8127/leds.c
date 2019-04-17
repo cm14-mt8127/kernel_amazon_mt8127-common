@@ -1428,7 +1428,7 @@ void mt_mt65xx_led_set(struct led_classdev *led_cdev, enum led_brightness level)
 			}
 			else
 			{
-				#ifndef CONFIG_abc123_PROJECT
+				#ifndef CONFIG_AUSTIN_PROJECT
 					int a, b;
 					if(lcmindex==1) {/*TXD LCM*/
 						//map 5~255 to 100 ~ 934

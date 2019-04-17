@@ -23,7 +23,7 @@
 #include <linux/of_irq.h>
 #endif
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 
@@ -318,7 +318,7 @@ static enum hrtimer_restart aee_timer_5s_func(struct hrtimer *timer)
 /************************************************************************************************************************************************/
 
 #if KPD_HAS_SLIDE_QWERTY
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static int slide_st = 0;
 #endif
 static void kpd_slide_handler(unsigned long data)
@@ -333,7 +333,7 @@ static void kpd_slide_handler(unsigned long data)
 	input_sync(kpd_input_dev);
 	kpd_print("report QWERTY = %s\n", slid ? "slid" : "closed");
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	slide_st = slid;
 #endif
 	if (old_state) {
@@ -806,7 +806,7 @@ static int kpd_open(struct input_dev *dev)
 	return 0;
 }
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 static ssize_t proc_hall_show(struct seq_file *m, char *page, size_t count, loff_t *f_ops)
 {
 	int status = slide_st;
@@ -881,7 +881,7 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 
 	kpd_ldvt_test_init();	/* API 2 for kpd LFVT test enviroment settings */
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	hall_create_proc_entry();
 #endif
 	/* initialize and register input device (/dev/input/eventX) */

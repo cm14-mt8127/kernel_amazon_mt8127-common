@@ -33,8 +33,8 @@
 #include <mach/battery_meter.h>
 #include <mach/battery_meter_hal.h>
 #include "cust_battery_meter.h"
-#ifdef CONFIG_abc123_PROJECT
-#include "cust_battery_meter_table_abc123.h"
+#ifdef CONFIG_AUSTIN_PROJECT
+#include "cust_battery_meter_table_austin.h"
 #else
 #include "cust_battery_meter_table.h"
 #endif
@@ -65,7 +65,7 @@ static kal_int32 cv_current = 4000; /* 400mA */
 static kal_int32 g_currentfactor = 100;
 #endif
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 #define MAX_BATTERY_CYCLE 500
 #define MAX_AGING_COLUMB_THRES 3300 /*3300mah*/
@@ -137,7 +137,7 @@ kal_int32 g_fg_dbg_bat_current = 0;
 kal_int32 g_fg_dbg_bat_zcv = 0;
 kal_int32 g_fg_dbg_bat_temp = 0;
 kal_int32 g_fg_dbg_bat_r = 0;
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 kal_int32 g_fg_dbg_bat_offset_r = 0;
 #endif
 kal_int32 g_fg_dbg_bat_car = 0;
@@ -230,7 +230,7 @@ static kal_int32 columb_before_sleep = 0x123456;
 #endif				/* aging mechanism */
 
 /* battery info */
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 
 kal_int32 gFG_battery_cycle = 0;
@@ -253,7 +253,7 @@ extern char* saved_command_line;
 
 #define MTK_MULTI_BAT_PROFILE_SUPPORT
 #define MTK_GET_BATTERY_ID_BY_AUXADC
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define ADC_BOARD_ID	(13)
 #define TOTAL_BATTERY_NUMBER 2
 kal_int32 g_battery_id_voltage[] = {200, 500};/*0~0.2V ATL; 0.2v~5V XWD*/
@@ -269,7 +269,7 @@ extern int IMM_GetOneChannelValue(int dwChannel, int data[4], int* rawdata);
 
 kal_uint32 g_fg_battery_id = 0;
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 kal_int32 g_Q_MAX_POS_50[] = {2963, 2929};
 kal_int32 g_Q_MAX_POS_25[] = {3000, 2918};
 kal_int32 g_Q_MAX_POS_0[] = {3047, 3032};
@@ -289,7 +289,7 @@ kal_int32 g_Q_MAX_POS_0_H_CURRENT[] = {2372, 2746};
 kal_int32 g_Q_MAX_NEG_10_H_CURRENT[] = {1946, 1614};
 #endif
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 kal_int32 g_Q_MAX_POS_50_0cycle[] = {2963, 2980};
 kal_int32 g_Q_MAX_POS_25_0cycle[] = {3000, 3022};
@@ -1309,7 +1309,7 @@ void update_qmax_by_cycle(void)
 #endif
 }
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 #if defined(BATTERY_AGING_DEBUG)
 static void dump_battery_cycle_table(void)
@@ -2152,7 +2152,7 @@ void oam_run(void)
 	oam_i_1 = (((oam_v_ocv_1 - vol_bat) * 1000) * 10) / oam_r_1;	/* 0.1mA */
 	oam_i_2 = (((oam_v_ocv_2 - vol_bat) * 1000) * 10) / oam_r_2;	/* 0.1mA */
 
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	if(oam_i_2 < 0) {
 		charging_current = get_charging_setting_current()/10;
 		if (abs(oam_i_2) > charging_current) {
@@ -2190,7 +2190,7 @@ void oam_run(void)
 
 	oam_v_ocv_2 = fgauge_read_v_by_d(oam_d_2);
 	oam_r_2 = fgauge_read_r_bat_by_v(oam_v_ocv_2);
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	oam_r_2 = oam_r_2 + g_fg_dbg_bat_offset_r;
 #endif
 #if 0
@@ -2325,7 +2325,7 @@ void oam_run(void)
 	fgauge_get_current_factor();
 #endif
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 	fgauge_aging_algorithm();
 #endif
@@ -3060,7 +3060,7 @@ kal_int32 battery_meter_get_battery_voltage(kal_bool update)
 	}
 	g_sw_vbat_temp = val;
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 	if (g_sw_vbat_temp > gFG_max_voltage) {
 		gFG_max_voltage = g_sw_vbat_temp;
@@ -3228,7 +3228,7 @@ kal_int32 battery_meter_get_car(void)
 
 kal_int32 battery_meter_get_battery_temperature(void)
 {
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 	kal_int32 batt_temp = force_get_tbat(KAL_TRUE);
 
@@ -3424,7 +3424,7 @@ void reset_parameter_car(void)
 	oam_car_2 = 0;
 	gFG_columb = 0;
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 	gFG_pre_columb_count = -1;
 #endif
@@ -3636,7 +3636,7 @@ int init_proc_log_fg(void)
 	return ret;
 }
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 
 /* ============================================================ // */
@@ -3982,7 +3982,7 @@ static ssize_t store_FG_g_fg_dbg_bat_r(struct device *dev, struct device_attribu
 }
 
 static DEVICE_ATTR(FG_g_fg_dbg_bat_r, 0664, show_FG_g_fg_dbg_bat_r, store_FG_g_fg_dbg_bat_r);
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 /* ------------------------------------------------------------------------------------------- */
 static ssize_t show_FG_g_fg_dbg_bat_offset_r(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -4148,7 +4148,7 @@ static int battery_meter_probe(struct platform_device *dev)
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_zcv);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_temp);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_r);
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_offset_r);
 #endif
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_car);
@@ -4160,7 +4160,7 @@ static int battery_meter_probe(struct platform_device *dev)
 	ret_device_file =
 	    device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_percentage_voltmode);
 
-#if defined(CONFIG_abc123_PROJECT) \
+#if defined(CONFIG_AUSTIN_PROJECT) \
 	&& defined(CONFIG_MTK_BATTERY_LIFETIME_DATA_SUPPORT)
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Battery_Cycle);
 	ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Aging_Factor);

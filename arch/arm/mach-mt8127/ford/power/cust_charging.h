@@ -37,7 +37,7 @@
 
 /* Precise Tunning */
 #define BATTERY_AVERAGE_DATA_NUMBER	3
-#ifdef CONFIG_abc123_PROJECT
+#ifdef CONFIG_AUSTIN_PROJECT
 #define BATTERY_AVERAGE_SIZE 	10
 #else
 #define BATTERY_AVERAGE_SIZE 	30
