@@ -1741,7 +1741,7 @@ DSI_STATUS DSI_handle_TE(void)
     // wait TE Trigger status
 //  do
 //  {
-        lcm_mdelay(10);
+        mdelay(10);
 
         data_array=INREG32(&DSI_REG->DSI_INTSTA);
         DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] DSI INT state : %x !! \n", data_array);
