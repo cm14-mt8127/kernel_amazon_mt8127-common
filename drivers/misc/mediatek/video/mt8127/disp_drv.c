@@ -22,11 +22,6 @@
 #include <linux/vmalloc.h>
 #include "mtkfb_info.h"
 #include <linux/dma-mapping.h>
-/* ACOS_MOD_BEGIN */
-#define CREATE_TRACE_POINTS
-#include <trace/events/amz_atrace.h>
-/* ACOS_MOD_END */
-#include <linux/trapz.h>   /* ACOS_MOD_ONELINE */
 #if defined(MTK_OVERLAY_ENGINE_SUPPORT)
 #include "disp_ovl_engine_api.h"
 #include "disp_ovl_engine_core.h"
@@ -1404,16 +1399,8 @@ static void _DISP_HWDoneCallback(void* pParam)
 
 static void _DISP_VSyncCallback(void* pParam)
 {
-    static volatile int atrace_toggle; /* ACOS_MOD_ONELINE */
     MMProfileLog(MTKFB_MMP_Events.VSync, MMProfileFlagPulse);
     vsync_wq_flag = 1;
-    /* ACOS_MOD_BEGIN */
-    TRAPZ_DESCRIBE(TRAPZ_KERN_DISP, Vsyncirq,
-        "Primary VSYNC interrupt");
-        TRAPZ_LOG(TRAPZ_LOG_DEBUG, TRAPZ_CAT_KERNEL, TRAPZ_KERN_DISP,
-        Vsyncirq, 0, 0, 0, 0);
-    ATRACE_COUNTER("Vsyncirq", atrace_toggle ^= 1);
-    /* ACOS_MOD_END */
     wake_up_interruptible(&vsync_wq);
 }
 

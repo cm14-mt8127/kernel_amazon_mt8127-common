@@ -367,13 +367,6 @@ LINUXINCLUDE    := \
 		-Iinclude \
 		$(USERINCLUDE)
 
-# ACOS_MOD_BEGIN
-ifeq ($(USE_TRAPZ), true)
-CFLAGS_KERNEL += -DENABLE_TRAPZ
-CFLAGS_MODULE += -DENABLE_TRAPZ
-endif
-# ACOS_MOD_END
-
 KBUILD_CPPFLAGS := -D__KERNEL__
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
