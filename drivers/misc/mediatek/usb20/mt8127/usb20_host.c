@@ -34,10 +34,6 @@
 
 #ifdef CONFIG_USB_MTK_OTG
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-
 extern struct musb *mtk_musb;
 
 static struct musb_fifo_cfg fifo_cfg_host[] = {
@@ -269,9 +265,6 @@ static void musb_id_pin_work(struct work_struct *data)
 {
     u8 devctl = 0;
     unsigned long flags;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	char buf[128];
-#endif
 
     spin_lock_irqsave(&mtk_musb->lock, flags);
     musb_generic_disable(mtk_musb);
@@ -333,12 +326,6 @@ static void musb_id_pin_work(struct work_struct *data)
 		musb_start(mtk_musb);
 		MUSB_HST_MODE(mtk_musb);
 		switch_int_to_device(mtk_musb);
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		snprintf(buf, sizeof(buf),
-			"%s:usb20:otg_gnd=1,state=%d;CT;1;DV;1:NR",
-			__func__, mtk_musb->xceiv->state);
-		log_to_metrics(ANDROID_LOG_INFO, "USBCableEvent", buf);
-#endif
 	} else {
 		DBG(0,"devctl is %x\n",musb_readb(mtk_musb->mregs,MUSB_DEVCTL));
 		musb_writeb(mtk_musb->mregs,MUSB_DEVCTL,0);
@@ -361,13 +348,6 @@ static void musb_id_pin_work(struct work_struct *data)
 		mtk_musb->xceiv->state =  OTG_STATE_B_IDLE;
 		MUSB_DEV_MODE(mtk_musb);
 		switch_int_to_host(mtk_musb);
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		memset(buf, 0, sizeof(buf));
-		snprintf(buf, sizeof(buf),
-			"%s:usb20:otg_off=1,state=%d;CT;1;DV;1:NR",
-			__func__, mtk_musb->xceiv->state);
-		log_to_metrics(ANDROID_LOG_INFO, "USBCableEvent", buf);
-#endif
 	}
 out:
 	DBG(0, "work end, is_host=%d\n", mtk_musb->is_host);

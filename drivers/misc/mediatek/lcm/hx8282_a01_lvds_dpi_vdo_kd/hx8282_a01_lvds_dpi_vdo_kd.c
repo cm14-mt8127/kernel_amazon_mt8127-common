@@ -16,10 +16,6 @@
 #endif
 #include "lcm_drv.h"
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-
 // ---------------------------------------------------------------------------
 //  Local Constants
 // ---------------------------------------------------------------------------
@@ -234,12 +230,6 @@ static void lcm_init_power(void)
 
 static void lcm_suspend(void)
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%s:lcd:suspend=1;CT;1:NR", __func__);
-	log_to_metrics(ANDROID_LOG_INFO, "LCDEvent", buf);
-#endif
-
 	mt_set_gpio_out(GPIO_LCD_STB_EN, GPIO_OUT_ZERO);
 	MDELAY(100);
 	mt_set_gpio_out(GPIO_LCD_RST_EN, GPIO_OUT_ZERO);
@@ -264,13 +254,7 @@ static void lcm_suspend_power(void)
 }
 
 static void lcm_resume(void)
-{
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	char buf[128];
-	snprintf(buf, sizeof(buf), "%s:lcd:resume=1;CT;1:NR", __func__);
-	log_to_metrics(ANDROID_LOG_INFO, "LCDEvent", buf);
-#endif
-}
+{}
 
 static void lcm_resume_power(void)
 {

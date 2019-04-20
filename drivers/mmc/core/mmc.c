@@ -23,12 +23,6 @@
 #include "mmc_ops.h"
 #include "sd_ops.h"
 
-#if (defined(CONFIG_AMAZON_METRICS_LOG) && defined(ENABLE_SAMSUNG_EMMC_METRICS))
-#include <linux/metricslog.h>
-#define LMK_METRIC_TAG "kernel"
-#define METRICS_samsung_data_LEN 128
-#endif /* CONFIG_AMAZON_METRICS_LOG */
-
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -931,176 +925,6 @@ err:
 	return err;
 }
 
-#if (defined(CONFIG_AMAZON_METRICS_LOG) && defined(ENABLE_SAMSUNG_EMMC_METRICS))
-static int emmcmetrics_read(struct mmc_host *host)
-{
-	int err = -1;
-	int ret = 0;
-	char logcatsamsung_data[METRICS_samsung_data_LEN];
-	u32 *samsung_report;
-	unsigned int *samsung_data;
-	struct mmc_card *card;
-	unsigned int minReservedBlocks;
-	unsigned int minReservedBlocksQuantified;
-	unsigned int maxEraseCountMLC;
-	unsigned int maxEraseCountMLCQuantified;
-	unsigned int avgEraseCountMLC;
-	unsigned int avgEraseCountMLCQuantified;
-	unsigned int maxEraseCountSLC;
-	unsigned int maxEraseCountSLCQuantified;
-	unsigned int avgEraseCountSLC;
-	unsigned int avgEraseCountSLCQuantified;
-
-	card = host->card;
-
-	pr_info("Trying to read Samsung eMMC stats\n");
-
-	samsung_report = kmalloc(512, GFP_KERNEL);
-	if (!samsung_report) {
-		pr_err("Failed to alloc memory for Smart Report\n");
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	if (card->quirks & MMC_QUIRK_SAMSUNG_SMART)
-		err = mmc_samsung_report(card, (u8 *)samsung_report);
-
-	if (!err) {
-		int i;
-
-		samsung_data = (unsigned int *)samsung_report;
-		pr_info("Samsung data [20 dwords]:");
-		for (i = 0; i < 10; ++i)
-			pr_info(" %08X", samsung_data[i]);
-		pr_info("\n");
-		for (i = 10; i < 20; ++i)
-			pr_info(" %08X", samsung_data[i]);
-		pr_info("\n");
-		for (i = 20; i < 30; ++i)
-			pr_info(" %08X", samsung_data[i]);
-		pr_info("\n");
-		for (i = 30; i < 36; ++i)
-			pr_info(" %08X", samsung_data[i]);
-		pr_info("\n");
-
-	} else {
-		pr_info("...Read Samsung eMMC stats failed...");
-		ret = -1;
-		goto fail_read;
-	}
-
-	minReservedBlocks = samsung_data[7];          /*bank0*/
-	if (minReservedBlocks > samsung_data[10] && samsung_data[10] > 0)
-		minReservedBlocks = samsung_data[10]; /*bank1*/
-	if (minReservedBlocks > samsung_data[13] && samsung_data[13] > 0)
-		minReservedBlocks = samsung_data[13]; /*bank2*/
-	if (minReservedBlocks > samsung_data[16] && samsung_data[16] > 0)
-		minReservedBlocks = samsung_data[16]; /*bank3*/
-
-	minReservedBlocksQuantified =     /*6 bands with 2^n gap*/
-	(minReservedBlocks >= 32) ? 5 :
-	(minReservedBlocks >= 16) ? 4 :
-	(minReservedBlocks >=  8) ? 3 :
-	(minReservedBlocks >=  4) ? 2 :
-	(minReservedBlocks >=  2) ? 1 : 0;
-
-	/*report minReservedBlocksQuantified as metrics*/
-	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
-		"emmc:info:minReservedBlocksQuantified_%d=1;CT;1:NR",
-		minReservedBlocksQuantified);
-	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
-
-	card->minReservedBlocks = minReservedBlocks;
-
-	maxEraseCountMLC = samsung_data[33];
-	maxEraseCountMLCQuantified =     /*6 bands in linear gap*/
-	(maxEraseCountMLC >= 3000) ? 5 :
-	(maxEraseCountMLC >= 2500) ? 4 :
-	(maxEraseCountMLC >= 2000) ? 3 :
-	(maxEraseCountMLC >= 1500) ? 2 :
-	(maxEraseCountMLC >= 100) ? 1 : 0;
-
-	/*report maxEraseCountMLCQuantified as metrics*/
-	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
-		"emmc:info:maxEraseCountMLCQuantified_%d=1;CT;1:NR",
-		maxEraseCountMLCQuantified);
-	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
-
-	card->maxEraseCountMLC = maxEraseCountMLC;
-
-	avgEraseCountMLC = samsung_data[35];
-	avgEraseCountMLCQuantified =    /*6 bands in linear gap*/
-	(avgEraseCountMLC >= 1500) ? 5 :
-	(avgEraseCountMLC >= 1250) ? 4 :
-	(avgEraseCountMLC >= 1000) ? 3 :
-	(avgEraseCountMLC >= 750) ? 2 :
-	(avgEraseCountMLC >= 50) ? 1 : 0;
-
-	/*report avgEraseCountMLCQuantified as metrics*/
-	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
-		"emmc:info:avgEraseCountMLCQuantified_%d=1;CT;1:NR",
-		avgEraseCountMLCQuantified);
-	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
-
-	card->avgEraseCountMLC = avgEraseCountMLC;
-
-	maxEraseCountSLC = samsung_data[30];
-	maxEraseCountSLCQuantified =     /*6 bands in linear gap*/
-	(maxEraseCountSLC >= 2100) ? 5 :
-	(maxEraseCountSLC >= 1750) ? 4 :
-	(maxEraseCountSLC >= 1400) ? 3 :
-	(maxEraseCountSLC >= 1050) ? 2 :
-	(maxEraseCountSLC >= 70) ? 1 : 0;
-
-	/*report maxEraseCountSLCQuantified as metrics*/
-	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
-		"emmc:info:maxEraseCountSLCQuantified_%d=1;CT;1:NR",
-		maxEraseCountSLCQuantified);
-	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
-
-	card->maxEraseCountSLC = maxEraseCountSLC;
-
-	avgEraseCountSLC = samsung_data[32];
-	avgEraseCountSLCQuantified =     /*6 bands in linear gap*/
-	(avgEraseCountSLC >= 1050) ? 5 :
-	(avgEraseCountSLC >= 875) ? 4 :
-	(avgEraseCountSLC >= 700) ? 3 :
-	(avgEraseCountSLC >= 525) ? 2 :
-	(avgEraseCountSLC >= 35) ? 1 : 0;
-
-	/*report avgEraseCountSLCQuantified as metrics*/
-	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
-		"emmc:info:avgEraseCountSLCQuantified_%d=1;CT;1:NR",
-		avgEraseCountSLCQuantified);
-	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
-
-	card->avgEraseCountSLC = avgEraseCountSLC;
-
-fail_read:
-	kfree(samsung_report);
-
-fail:
-	return ret;
-}
-
-/*
- * Internal work. Work to output metrics at some later point.
- */
-void mmc_host_metrics_work(struct work_struct *work)
-{
-	struct mmc_host *host = container_of(work, struct mmc_host,
-						metrics_delay_work.work);
-	emmcmetrics_read(host);
-}
-
-static void metrics_delaywork_queue(struct mmc_host *host)
-{
-	/* delay 5 seconds to output metrics */
-	queue_delayed_work(system_nrt_wq, &host->metrics_delay_work,
-				msecs_to_jiffies(5000));
-}
-#endif /* CONFIG_AMAZON_METRICS_LOG */
-
 /*
  * Handle the detection and initialisation of a card.
  *
@@ -1944,10 +1768,6 @@ int mmc_attach_mmc(struct mmc_host *host)
 	err = mmc_init_card(host, host->ocr, NULL);
 	if (err)
 		goto err;
-
-#if (defined(CONFIG_AMAZON_METRICS_LOG) && defined(ENABLE_SAMSUNG_EMMC_METRICS))
-	metrics_delaywork_queue(host);
-#endif /* CONFIG_AMAZON_METRICS_LOG */
 
 	mmc_release_host(host);
 	err = mmc_add_card(host->card);

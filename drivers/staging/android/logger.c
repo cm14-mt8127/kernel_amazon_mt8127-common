@@ -29,17 +29,9 @@
 #include <linux/time.h>
 #include <linux/vmalloc.h>
 #include <linux/aio.h>
-#include <linux/irq_work.h>
 #include "logger.h"
 
 #include <asm/ioctls.h>
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-
-static int metrics_init;
-#define VITAL_ENTRY_MAX_PAYLOAD 512
-#endif
 
 static int s_fake_read;
 module_param_named(fake_read, s_fake_read, int, 0660);
@@ -945,183 +937,6 @@ static const struct file_operations logger_fops = {
 	.release = logger_release,
 };
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-static void logger_kernel_write(struct logger_log *log, const struct iovec *iov, unsigned long nr_segs)
-{
-	struct logger_entry header;
-	struct timespec now;
-	unsigned long count = nr_segs;
-	size_t total_len = 0;
-
-	if (log == NULL)
-		return;
-
-	while (count-- > 0)
-		total_len += iov[count].iov_len;
-
-	now = current_kernel_time();
-
-	header.pid = current->tgid;
-	header.tid = current->pid;
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
-	header.len = min_t(size_t, total_len, LOGGER_ENTRY_MAX_PAYLOAD);
-
-	/* null writes succeed, return zero */
-	if (unlikely(!header.len))
-		return;
-
-	mutex_lock(&log->mutex);
-
-	/*
-	 * Fix up any readers, pulling them forward to the first readable
-	 * entry after (what will be) the new write offset. We do this now
-	 * because if we partially fail, we can end up with clobbered log
-	 * entries that encroach on readable buffer.
-	 */
-	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
-
-	do_write_log(log, &header, sizeof(struct logger_entry));
-
-	total_len = 0;
-
-	while (nr_segs-- > 0) {
-		size_t len;
-
-		/* figure out how much of this vector we can keep */
-		len = min_t(size_t, iov->iov_len, header.len - total_len);
-
-		/* write out this segment's payload */
-		do_write_log(log, iov->iov_base, len);
-
-		iov++;
-		total_len += len;
-	}
-
-	mutex_unlock(&log->mutex);
-
-	/* wake up any blocked readers */
-	wake_up_interruptible(&log->wq);
-}
-
-void log_to_metrics(enum android_log_priority priority,
-	const char *domain, const char *log_msg)
-{
-		static struct logger_log *log;
-
-		if (log == NULL) {
-			struct logger_log *t;
-			list_for_each_entry(t, &log_list, logs)
-			if (strncmp(t->misc.name, LOGGER_LOG_METRICS, strlen(LOGGER_LOG_METRICS)) == 0)
-				log = t;
-		}
-
-
-	if (metrics_init != 0 && log_msg != NULL) {
-		struct iovec vec[3];
-
-		if (domain == NULL)
-			domain = "kernel";
-
-		vec[0].iov_base = (unsigned char *)&priority;
-		vec[0].iov_len  = 1;
-
-		vec[1].iov_base = (void *)domain;
-		vec[1].iov_len  = strlen(domain) + 1;
-
-		vec[2].iov_base = (void *)log_msg;
-		vec[2].iov_len  = strlen(log_msg) + 1;
-
-		logger_kernel_write(log, vec, 3);
-	}
-}
-
-void log_to_vitals(enum android_log_priority priority,
-	const char *domain, const char *log_msg)
-{
-	static struct logger_log *log;
-
-	if (log == NULL) {
-		struct logger_log *t;
-		list_for_each_entry(t, &log_list, logs)
-			if (strncmp(t->misc.name, LOGGER_LOG_AMAZON_VITALS, strlen(LOGGER_LOG_AMAZON_VITALS)) == 0)
-				log = t;
-	}
-
-	if (metrics_init != 0 && log_msg != NULL) {
-		struct iovec vec[3];
-
-		if (domain == NULL)
-			domain = "kernel";
-
-		vec[0].iov_base = (unsigned char *)&priority;
-		vec[0].iov_len  = 1;
-
-		vec[1].iov_base = (void *)domain;
-		vec[1].iov_len  = strlen(domain) + 1;
-
-		vec[2].iov_base = (void *)log_msg;
-		vec[2].iov_len  = strlen(log_msg) + 1;
-
-		logger_kernel_write(log, vec, 3);
-	}
-}
-void log_counter_to_vitals(enum android_log_priority priority,
-			const char *domain, const char *program,
-			const char *source, const char *key,
-			long counter_value, const char *unit,
-			const char *metadata, vitals_type type)
-{
-	char str[VITAL_ENTRY_MAX_PAYLOAD];
-	char metadata_msg[VITAL_ENTRY_MAX_PAYLOAD];
-
-	if (metadata != NULL && strlen(metadata))
-		snprintf(metadata_msg, VITAL_ENTRY_MAX_PAYLOAD,
-				 ",metadata=%s;DV;1", metadata);
-	else
-		metadata_msg[0] = '\0';
-	/* format (program):(source):[key=(key);
-	   DV;1,]counter=(counter_value);1,unit=(unit);
-	   DV;1,metadata=(metadata);DV;1:HI */
-	if (key != NULL) {
-		snprintf(str, VITAL_ENTRY_MAX_PAYLOAD,
-			"%s:%s:type=%d;DV;1,key=%s;DV;1,counter=%ld;CT;1,unit=%s;DV;1%s:HI",
-			program, source, type,
-			key, counter_value, unit,
-			metadata_msg);
-	}	else {
-		snprintf(str, VITAL_ENTRY_MAX_PAYLOAD,
-			"%s:%s:type=%d;DV;1,counter=%ld;CT;1,unit=%s;DV;1%s:HI",
-			program, source, type,
-			counter_value, unit,
-			metadata_msg);
-	}
-	log_to_vitals(priority, domain, str);
-}
-
-void log_timer_to_vitals(enum android_log_priority priority,
-			const char *domain, const char *program,
-			const char *source, const char *key,
-			long timer_value, const char *unit, vitals_type type)
-{
-	char str[VITAL_ENTRY_MAX_PAYLOAD];
-	/* format (program):(source):[key=(key);
-	   DV;1,]timer=(timer_value);1,unit=(unit);DV;1:HI */
-	if (key != NULL) {
-		snprintf(str, VITAL_ENTRY_MAX_PAYLOAD,
-			"%s:%s:type=%d;DV;1,key=%s;DV;1,timer=%ld;TI;1,unit=%s;DV;1:HI",
-			program, source, type,
-			key, timer_value, unit);
-	}	else {
-		snprintf(str, VITAL_ENTRY_MAX_PAYLOAD,
-			"%s:%s:type=%d;DV;1,timer=%ld;TI;1,unit=%s;DV;1:HI",
-			program, source, type,
-			timer_value, unit);
-	}
-	log_to_vitals(priority, domain, str);
-}
-#endif
-
 /*
  * Log size must must be a power of two, and greater than
  * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
@@ -1184,106 +999,10 @@ out_free_buffer:
 	return ret;
 }
 
-#ifdef CONFIG_AMAZON_KLOG_CONSOLE
-#define KERNEL_DOMAIN  "Kernel"
-#define ANDROID_LOG_INFO   (4)
-
-struct kmsg_write_priv {
-	struct logger_log *log;
-	struct irq_work kmsg_write_work;
-};
-
-static void kmsg_write_work_func(struct irq_work *irq_work)
-{
-	struct kmsg_write_priv *priv = container_of(irq_work, struct kmsg_write_priv,
-							kmsg_write_work);
-	/* wake up any blocked readers */
-	wake_up_interruptible(&priv->log->wq);
-}
-
-static DEFINE_PER_CPU(struct kmsg_write_priv, priv_data) = {
-	.kmsg_write_work = {
-		.func = kmsg_write_work_func,
-		.flags = IRQ_WORK_LAZY,
-	},
-};
-
-
-
-void logger_kmsg_write(const char *log_msg, size_t len)
-{
-	static struct logger_log *log;
-	struct logger_entry header;
-	struct timespec now;
-	unsigned long count = 3;
-	size_t total_len = 0;
-	struct iovec iov[3];
-	struct iovec *piov = &iov[0];
-	unsigned char log_level = ANDROID_LOG_INFO;
-
-	/* get the main log handler */
-	if (!log) {
-		list_for_each_entry(log, &log_list, logs)
-		if (0 == strcmp(log->misc.name, LOGGER_LOG_KERNEL))
-			break;
-	}
-
-	iov[0].iov_base = (unsigned char *)&log_level;
-	iov[0].iov_len  = 1;
-
-	iov[1].iov_base = (void *)KERNEL_DOMAIN;
-	iov[1].iov_len  = strlen(KERNEL_DOMAIN) + 1;
-	iov[2].iov_base = (void *)log_msg;
-	iov[2].iov_len  = len;
-
-	while (count-- > 0) {
-		total_len += iov[count].iov_len;
-	}
-
-	now = current_kernel_time();
-	header.pid = current->tgid;
-	header.tid = current->pid;
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
-	header.len = min_t(size_t, total_len, LOGGER_ENTRY_MAX_PAYLOAD);
-
-	/* null writes succeed, return zero */
-	if (unlikely(!header.len))
-		return;			
-	
-	/*
-	 * Fix up any readers, pulling them forward to the first readable
-	 * entry after (what will be) the new write offset. We do this now
-	 * because if we partially fail, we can end up with clobbered log
-	 * entries that encroach on readable buffer.
-	 */
-	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
-
-	do_write_log(log, &header, sizeof(struct logger_entry));
-
-	total_len = 0;
-	count = 3;
-	while (count-- > 0) {
-		size_t len;
-		/* figure out how much of this vector we can keep */
-		len = min_t(size_t, piov->iov_len, header.len - total_len);
-
-		/* write out this segment's payload */
-		do_write_log(log, piov->iov_base, len);
-		piov++;
-		total_len += len;
-	}
-
-	__get_cpu_var(priv_data).log = log;
-	irq_work_queue(&(__get_cpu_var(priv_data).kmsg_write_work));
-}
-#endif
-
 static int __init logger_init(void)
 {
 	int ret;
 
-#ifndef CONFIG_AMAZON_LOGD
 	ret = create_log(LOGGER_LOG_MAIN, __MAIN_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
@@ -1299,33 +1018,6 @@ static int __init logger_init(void)
 	ret = create_log(LOGGER_LOG_SYSTEM, __SYSTEM_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
-#endif /* CONFIG_AMAZON_LOGD */
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	ret = create_log(LOGGER_LOG_METRICS, __METRICS_BUF_SIZE);
-	if (unlikely(ret))
-		goto out;
-
-	metrics_init = 1;
-#endif
-
-#ifdef CONFIG_AMAZON_LOG
-#ifndef CONFIG_AMAZON_LOGD
-	ret = create_log(LOGGER_LOG_AMAZON_MAIN, 256*1024);
-	if (unlikely(ret))
-		goto out;
-#endif /* CONFIG_AMAZON_LOGD */
-
-	ret = create_log(LOGGER_LOG_AMAZON_VITALS, __VITALS_BUF_SIZE);
-	if (unlikely(ret))
-		goto out;
-#endif
-
-#ifdef CONFIG_AMAZON_KLOG_CONSOLE
-	ret = create_log(LOGGER_LOG_KERNEL, __KERNEL_BUF_SIZE);
-	if (unlikely(ret))
-		goto out;
-#endif
 
 out:
 	return ret;

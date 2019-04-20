@@ -858,20 +858,4 @@ ssize_t mmc_samsung_smart_handle(struct mmc_card *card, char *buf)
 	kfree(buffer);
 	return len;
 }
-
-#if (defined(CONFIG_AMAZON_METRICS_LOG) && defined(ENABLE_SAMSUNG_EMMC_METRICS))
-int mmc_samsung_report(struct mmc_card *card, u8 *buf)
-{
-	int err;
-
-	mmc_claim_host(card->host);
-	err = mmc_samsung_smart_read(card, buf);
-	mmc_release_host(card->host);
-
-	if (err)
-		return err;
-
-	return 0;
-}
-#endif /* CONFIG_AMAZON_METRICS_LOG */
 #endif /* CONFIG_MMC_SAMSUNG_SMART */

@@ -338,10 +338,6 @@ struct mmc_host {
 	unsigned long           clkgate_delay;
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	struct delayed_work     metrics_delay_work; /* delayed metrics output */
-#endif /* CONFIG_AMAZON_METRICS_LOG */
-
 #ifdef CONFIG_MMC_ERR_REMOVE
 	bool			rest_remove_flags;
 #endif

@@ -20,10 +20,6 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-
 /**
  * struct user_logger_entry_compat - defines a single entry that is given to a logger
  * @len:	The length of the payload
@@ -96,29 +92,7 @@ struct logger_entry {
 #ifndef __SYSTEM_BUF_SIZE
 #define __SYSTEM_BUF_SIZE 256*1024
 #endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#ifndef __METRICS_BUF_SIZE
-#ifdef CONFIG_AMAZON_LOGD
-#define __METRICS_BUF_SIZE (32*1024)
 #else
-#define __METRICS_BUF_SIZE (128*1024)
-#endif /* CONFIG_AMAZON_LOGD */
-#endif /* __METRICS_BUF_SIZE */
-
-#ifndef __VITALS_BUF_SIZE
-#define __VITALS_BUF_SIZE (16*1024)
-#endif
-#endif
-
-#ifdef CONFIG_AMAZON_KLOG_CONSOLE
-#ifndef __KERNEL_BUF_SIZE
-#define __KERNEL_BUF_SIZE (256*1024)
-#endif
-#endif
-
-#else
-
 #ifndef __MAIN_BUF_SIZE
 #define __MAIN_BUF_SIZE 256*1024
 #endif
@@ -134,45 +108,12 @@ struct logger_entry {
 #ifndef __SYSTEM_BUF_SIZE
 #define __SYSTEM_BUF_SIZE 64*1024
 #endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#ifndef __METRICS_BUF_SIZE
-#ifdef CONFIG_AMAZON_LOGD
-#define __METRICS_BUF_SIZE (32*1024)
-#else
-#define __METRICS_BUF_SIZE (128*1024)
-#endif /* CONFIG_AMAZON_LOGD */
-#endif /* __METRICS_BUF_SIZE */
-
-#ifndef __VITALS_BUF_SIZE
-#define __VITALS_BUF_SIZE (16*1024)
-#endif
-#endif
-
-#ifdef CONFIG_AMAZON_KLOG_CONSOLE
-#ifndef __KERNEL_BUF_SIZE
-#define __KERNEL_BUF_SIZE (128*1024)
-#endif
-#endif
-
 #endif
 
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
-#ifdef CONFIG_AMAZON_LOG
-#define LOGGER_LOG_AMAZON_MAIN "log_amazon_main"       /* private buffer for amazon signed apk */
-#endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#define LOGGER_LOG_METRICS	"log_metrics"	/* metrics logs */
-#define LOGGER_LOG_AMAZON_VITALS "log_vitals"	/* vitals log */
-#endif
-
-#ifdef CONFIG_AMAZON_KLOG_CONSOLE
-#define LOGGER_LOG_KERNEL   "log_kernel"  /* kernel message */
-#endif
 
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 

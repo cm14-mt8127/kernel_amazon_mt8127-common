@@ -5,9 +5,6 @@
 #include <cust_gpio_usage.h>
 #include <mach/mt_gpio.h>
 #include <mach/eint.h>
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
 
 
 #define EARPHONE_SWITCH
@@ -266,21 +263,11 @@ static void accdet_FSA8049_disable(void)
 #endif
 static void inline headset_plug_out(void) 
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        char buf[128];
-#endif
-
         accdet_status = PLUG_OUT;
         cable_type = NO_DEVICE;
         //update the cable_type
         switch_set_state((struct switch_dev *)&accdet_data, cable_type);
         ACCDET_DEBUG( " [accdet] set state in cable_type = NO_DEVICE\n");
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        snprintf(buf, sizeof(buf),
-                "%s:jack:unplugged=1;CT;1:NR", __func__);
-        log_to_metrics(ANDROID_LOG_INFO, "AudioJackEvent", buf);
-#endif
         
 }
 
@@ -1362,10 +1349,6 @@ static inline void check_cable_type(void)
 } 
 static void accdet_work_callback(struct work_struct *work)
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        char buf[128];
-        char *string = NULL;
-#endif
 
     wake_lock(&accdet_irq_lock);
     check_cable_type();
@@ -1378,25 +1361,6 @@ static void accdet_work_callback(struct work_struct *work)
 	}
 	mutex_unlock(&accdet_eint_irq_sync_mutex);
 	ACCDET_DEBUG( " [accdet] set state in cable_type  status\n");
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        switch (cable_type) {
-        case HEADSET_MIC:
-                string = "HEADSET";
-                break;
-        case HEADSET_NO_MIC:
-                string = "HEADPHONES";
-                break;
-        default:
-                string = "NOTHING";
-                break;
-        }
-        snprintf(buf, sizeof(buf),
-                "%s:jack:plugged=1;CT;1,state_%s=1;CT;1:NR",
-                __func__, string);
-
-        log_to_metrics(ANDROID_LOG_INFO, "AudioJackEvent", buf);
-#endif
 
     wake_unlock(&accdet_irq_lock);
 }

@@ -65,16 +65,8 @@
 #include <asm/io.h>
 #include <asm/unistd.h>
 
-#ifdef CONFIG_MDUMP
-#include <linux/mdump.h>
-#endif
-
 #ifdef CONFIG_MT_PRIO_TRACER
 # include <linux/prio_tracer.h>
-#endif
-
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-#include <linux/sign_of_life.h>
 #endif
 
 #ifndef SET_UNALIGN_CTL
@@ -422,9 +414,6 @@ void kernel_restart(char *cmd)
 	else
 		printk(KERN_EMERG "Restarting system with command '%s'.\n", cmd);
 	kmsg_dump(KMSG_DUMP_RESTART);
-#ifdef CONFIG_MDUMP
-	mdump_mark_reboot_reason(MDUMP_REBOOT_NORMAL);
-#endif
 	machine_restart(cmd);
 }
 EXPORT_SYMBOL_GPL(kernel_restart);
@@ -461,9 +450,6 @@ EXPORT_SYMBOL_GPL(kernel_halt);
  */
 void kernel_power_off(void)
 {
-#ifdef CONFIG_MDUMP
-	mdump_mark_reboot_reason(MDUMP_COLD_RESET);
-#endif
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
@@ -539,17 +525,11 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		panic("cannot halt");
 
 	case LINUX_REBOOT_CMD_POWER_OFF:
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-		life_cycle_set_shutdown_reason(SHUTDOWN_BY_SW);
-#endif
 		kernel_power_off();
 		do_exit(0);
 		break;
 
 	case LINUX_REBOOT_CMD_RESTART2:
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-		life_cycle_set_boot_reason(WARMBOOT_BY_SW);
-#endif
 		if (strncpy_from_user(&buffer[0], arg, sizeof(buffer) - 1) < 0) {
 			ret = -EFAULT;
 			break;

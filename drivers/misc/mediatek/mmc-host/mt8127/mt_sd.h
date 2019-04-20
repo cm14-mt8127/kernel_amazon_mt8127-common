@@ -1349,20 +1349,7 @@ struct msdc_host
 	u32 pc_suspend;	/* suspend/resume count */
 	void	(*power_control)(struct msdc_host *host,u32 on);
 	void	(*power_switch)(struct msdc_host *host,u32 on);
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	struct delayed_work metrics_work;
-	bool metrics_enable;
-	u32 crc_count_p;	/* reported crc count */
-	u32 crc_invalid_count_p;	/* reported crc invalid count eg CMD19 */
-	u32 req_count_p; /* reported request count */
-	u32 datatimeout_count_p; /* reported data timeout count */
-	u32 cmdtimeout_count_p; /* reported cmd timeout count */
-	u32 reqtimeout_count_p; /* reported req timeout count */
-	u32 pc_count_p;	/* reported power cycle count */
-	u32 pc_suspend_p;	/* reported suspend/resume count */
-	u32 inserted_p; /* reported card detection count */
 	u32 inserted; /* total card detection cound */
-#endif
 };
 typedef enum {
    TRAN_MOD_PIO,
@@ -1382,18 +1369,6 @@ struct dma_addr{
    u8 end; 
    struct dma_addr *next;
 };
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#define MSDC_LOG_COUNTER_TO_VITALS(name, value) \
-	do { \
-		if (value != value##_p) { \
-			log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel", \
-					((host->mmc) && (host->mmc->caps & MMC_CAP_SD_HIGHSPEED)) ? "SD" : "EMMC", \
-#name, value - value##_p, "count", NULL, VITALS_NORMAL); \
-			value##_p = value; \
-		} \
-	} while (0)
-#endif
 
 static inline unsigned int uffs(unsigned int x)
 {

@@ -30,12 +30,6 @@
 #define SPM_BYPASS_SYSPWREQ     0
 #endif
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-/* forced trigger system_resume:off_mode metrics log */
-int force_gpt = 0;
-module_param(force_gpt, int, 0644);
-#endif
-
 /* Added by haitaoy@amazon.com for AUSTINPLAT-1413. */
 static struct mt_wake_event spm_wake_event = {
 	.domain = "SPM",
@@ -1195,17 +1189,6 @@ wake_reason_t spm_go_to_sleep(bool cpu_pdn, bool infra_pdn, int pwake_time)
 
     spm_set_sysclk_settle();
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-    /* forced trigger system_resume:off_mode metrics log */
-    if (force_gpt == 1) {
-        gpt_set_cmp(GPT4, 1);
-        start_gpt(GPT4);
-        /* wait HW GPT trigger */
-        udelay(200);
-        spm_sleep_wakesrc |= WAKE_SRC_GPT;
-    }
-#endif
-
     spm_crit2("sec = %u, wakesrc = 0x%x (%u)(%u)\n",
               sec, spm_sleep_wakesrc, cpu_pdn, infra_pdn);
 
@@ -1237,15 +1220,6 @@ wake_reason_t spm_go_to_sleep(bool cpu_pdn, bool infra_pdn, int pwake_time)
     spm_clean_after_wakeup(pcmwdt_en);
 
     last_wr = spm_output_wake_reason(&wakesta, false);
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-    /* forced trigger system_resume:off_mode metrics log */
-    if (force_gpt == 1) {
-        if (gpt_check_and_ack_irq(GPT4))
-            spm_crit2("GPT4 triggered for off_mode metrics test\n");
-        spm_sleep_wakesrc &= ~WAKE_SRC_GPT;
-    }
-#endif
 
 RESTORE_IRQ:
     mt_cirq_flush();

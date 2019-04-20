@@ -35,10 +35,6 @@
 #endif
 #define SERIALNO_LEN 32
 
-#ifdef CONFIG_MDUMP
-#include <linux/mdump.h>
-#endif
-
 #include <linux/platform_data/mtk_thermal.h>
 
 static char serial_number[SERIALNO_LEN];
@@ -2504,23 +2500,10 @@ void __init  mt_reserve(void)
 //    aee_dram_console_reserve_memory();
     mrdump_reserve_memory();
 
-#if defined(CONFIG_AMAZON_LL_LOG)
-    memblock_reserve(CONFIG_AMAZON_LOW_LEVEL_LOG_DRAM_ADDR, CONFIG_AMAZON_LOW_LEVEL_LOG_DRAM_SIZE);
-#endif
 #if defined(CONFIG_MTK_RAM_CONSOLE_USING_DRAM)
     memblock_reserve(CONFIG_MTK_RAM_CONSOLE_DRAM_ADDR, CONFIG_MTK_RAM_CONSOLE_DRAM_SIZE);
 #endif
-#ifdef CONFIG_MDUMP
-        /* reserve lk memory & mdump buffer */
-#ifdef BOOTLOADER_LK_ADDRESS
-        memblock_reserve(BOOTLOADER_LK_ADDRESS, BOOTLOADER_LK_SIZE);
-#endif
-#ifdef CONFIG_MDUMP_COMPRESS
-        memblock_reserve(CONFIG_MDUMP_WITH_COMPRESS_ADDRESS, CONFIG_MDUMP_WITH_COMPRESS_WORKAREA_SIZE);
-#endif
-#else
         mrdump_mini_reserve_memory();
-#endif /* CONFIG_MDUMP */
 
     /*
      * Dynamic reserved memory (by arm_memblock_steal)

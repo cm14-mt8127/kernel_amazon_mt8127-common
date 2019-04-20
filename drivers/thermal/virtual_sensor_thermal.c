@@ -37,12 +37,6 @@
 #include <linux/platform_data/mtk_thermal.h>
 #include <linux/thermal_framework.h>
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#define TMP103_METRICS_STR_LEN 128
-static unsigned long virtual_sensor_temp = 25000;
-#endif
-
 #include "thermal_core.h"
 
 #define DRIVER_NAME "virtual_sensor-thermal"
@@ -54,14 +48,6 @@ static unsigned long virtual_sensor_temp = 25000;
 
 static LIST_HEAD(thermal_sensor_list);
 static DEFINE_MUTEX(therm_lock);
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-unsigned long get_virtualsensor_temp(void)
-{
-	return virtual_sensor_temp/1000;
-}
-EXPORT_SYMBOL(get_virtualsensor_temp);
-#endif
 
 struct virtual_sensor_thermal_zone {
 	struct thermal_zone_device *tz;
@@ -154,23 +140,8 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 	int alpha, offset, weight;
 	static unsigned sec_counter = 0; /* Timer counter: 1sec */
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#define PREFIX "thermalsensor:def"
-        char buf[TMP103_METRICS_STR_LEN];
-        static unsigned int mask = 0x1FFF;
-        unsigned int count;
-        static atomic_t query_count;
-        int i;
-#endif
-
 	if (!tzone || !pdata)
 		return -EINVAL;
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        count = atomic_read(&query_count);
-        atomic_inc(&query_count);
-        i = 0;
-#endif
 
 	list_for_each_entry(tdev, &thermal_sensor_list, node) {
 		temp = tdev->dev_ops->get_temp(tdev);
@@ -178,14 +149,6 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 		offset = tdev->tdp->offset;
 		weight = tdev->tdp->weight;
 
-        #ifdef CONFIG_AMAZON_METRICS_LOG
-                if (!(count & mask)) {
-                        snprintf(buf, TMP103_METRICS_STR_LEN,
-                                "%s:pcbmonitor=%d;CT;1,%s_temp=%lu;CT;1:NA",
-                                PREFIX, i++, tdev->name, temp);
-                        log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-                }
-	#endif
 		if (0 == sec_counter)
 			pr_warning("%s %s t=%ld a=%d o=%d w=%d\n",
 			       __func__,
@@ -211,24 +174,6 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 	if (TEMPERATURE_PRINT_INTERVAL_SECONDS == sec_counter)
 		sec_counter = 0;
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-        if (!(count & mask)) {
-                snprintf(buf, TMP103_METRICS_STR_LEN,
-                        "%s:pcbmonitor=%d;CT;1,pcb_virtual_sensor_temp=%lu;CT;1:NR",
-                        PREFIX, i++, tempv);
-                log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
-        }
-        if (tempv > pdata->trips[0].temp)
-        /* Log in metrics around every 4 mins */
-                mask = 0xFF;
-        else
-        /* Log in metrics around every 2 hours */
-                mask = 0x1FFF;
-#endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	virtual_sensor_temp = (unsigned long) tempv;
-#endif
 	*t = tempv; /* back to unsigned expected by linux framework */
 	return 0;
 }

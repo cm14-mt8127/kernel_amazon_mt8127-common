@@ -69,14 +69,6 @@
 extern int Enable_BATDRV_LOG;
 
 //#include <mach/mt_clock_manager.h>
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-#include <linux/sign_of_life.h>
-#endif
-
 //----------------------------------------------------------------------test
 #define MT65XX_UPLL 3
 void pmic_enable_pll(int id, char *mod_name)
@@ -149,25 +141,6 @@ static unsigned long timer_pos = 0;
 
 static struct hrtimer long_press_pwrkey_shutdown_timer;
 #define LONG_PRESS_PWRKEY_SHUTDOWN_TIME		(6)	/* 6sec */
-
-#ifdef CONFIG_AMAZON_POWEROFF_LOG
-static void log_long_press_power_key(void)
-{
-	int rc;
-	char *argv[] = {
-		"/sbin/crashreport",
-		"long_press_power_key",
-		NULL
-	};
-
-	rc = call_usermodehelper(argv[0], argv, NULL, UMH_WAIT_EXEC);
-
-	if (rc < 0)
-		pr_err("call /sbin/crashreport failed, rc = %d\n", rc);
-
-	msleep(6000); /* 6s */
-}
-#endif /* CONFIG_AMAZON_POWEROFF_LOG */
 
 //==============================================================================
 // PMIC lock/unlock APIs
@@ -599,23 +572,19 @@ static void deferred_restart(struct work_struct *dummy)
 	mutex_lock(&pmic_mutex);
 
 	pr_notice("[deferred_restart] -- Long key press power off\n");
-#ifdef CONFIG_AMAZON_POWEROFF_LOG
-        log_long_press_power_key();
-#endif /* CONFIG_AMAZON_POWEROFF_LOG */
-	unsigned int pwrkey_deb = 0;
-        pwrkey_deb = upmu_get_pwrkey_deb();
-        if (pwrkey_deb == 1) {
-                pr_err("[deferred_restart] -- pwrkey release, do nothing\n");
-        } else {
-                sys_sync();
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-		life_cycle_set_shutdown_reason(SHUTDOWN_BY_SW_LONG_PWR_KEY_PRESS);
-#endif /* for metrics */
-		rtc_mark_enter_sw_lprst(); /* for long press power off */
-		if (upmu_get_rgs_chrdet())
-			rtc_mark_enter_kpoc();
 
-		orderly_reboot(true);
+	unsigned int pwrkey_deb = 0;
+    pwrkey_deb = upmu_get_pwrkey_deb();
+    if (pwrkey_deb == 1) {
+        pr_err("[deferred_restart] -- pwrkey release, do nothing\n");
+    }
+    else {
+        sys_sync();
+    	rtc_mark_enter_sw_lprst(); /* for long press power off */
+    	if (upmu_get_rgs_chrdet())
+    		rtc_mark_enter_kpoc();
+
+    	orderly_reboot(true);
 	}
 	mutex_unlock(&pmic_mutex);
 }
@@ -711,23 +680,9 @@ void pwrkey_int_handler(void)
 	ktime_t ktime;
     U32 pwrkey_deb = 0;
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-    char *action;
-    #define METRICS_STR_LEN 128
-    char buf[METRICS_STR_LEN];
-    #undef METRICS_STR_LEN
-#endif
-
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pwrkey_int_handler]....\n");
 
     pwrkey_deb = upmu_get_pwrkey_deb();
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-    action = (pwrkey_deb == 1) ? "release" : "press";
-    sprintf(buf, "%s:powi%c:report_action_is_%s=1;CT;1:NR", __func__,
-             action[0], action);
-    log_to_metrics(ANDROID_LOG_INFO, "PowerKeyEvent", buf);
-#endif
 
     if (pwrkey_deb == 1)
     {
@@ -744,9 +699,6 @@ void pwrkey_int_handler(void)
 				if(long_pwrkey_press)   //500ms
 				{
 					xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_thread_kthread] Power Key Pressed during kernel power off charging, reboot OS\r\n");
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-                    life_cycle_set_boot_reason(WARMBOOT_BY_SW);
-#endif
 					arch_reset(0, NULL);
 				}
 		}

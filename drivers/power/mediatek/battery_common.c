@@ -84,47 +84,6 @@
 #if defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
 #include "cust_pe.h"
 #endif
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-
-#if defined(CONFIG_EARLYSUSPEND)
-#include <linux/earlysuspend.h>
-#endif
-
-#include <linux/metricslog.h>
-
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-#include <linux/sign_of_life.h>
-#endif
-
-enum BQ_FLAGS {
-	BQ_STATUS_RESUMING = 0x2,
-};
-
-struct battery_info {
-	struct mutex lock;
-
-	int flags;
-
-	/* Time when system enters full suspend */
-	struct timespec suspend_time;
-	/* Time when system enters early suspend */
-	struct timespec early_suspend_time;
-	/* Battery capacity when system enters full suspend */
-	int suspend_capacity;
-	/* Battery capacity when system enters early suspend */
-	int early_suspend_capacity;
-#if defined(CONFIG_EARLYSUSPEND)
-	struct early_suspend early_suspend;
-#endif
-};
-
-struct battery_info BQ_info;
-
-/* set max time interval for metric to 10 years*/
-#define MAX_TIME_INTERVAL	(3600*24*365*10)
-#endif
-
 /* ////////////////////////////////////////////////////////////////////////////// */
 /* Battery Logging Entry */
 /* ////////////////////////////////////////////////////////////////////////////// */
@@ -276,39 +235,6 @@ static int cmd_discharging = -1;
 static int adjust_power = -1;
 static int suspend_discharging = -1;
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-
-struct metrics_charge {
-	struct timespec charger_time;
-
-	int battery_charge_ticks;
-	unsigned int init_charging_vol;
-
-	unsigned long battery_peak_virtual_temp;
-	unsigned long battery_peak_battery_temp;
-	unsigned long battery_average_virtual_temp;
-	unsigned long battery_average_battery_temp;
-	unsigned long usb_charger_voltage_peak;
-};
-
-static struct metrics_charge metrics_charge_info;
-
-struct metrics_capacity {
-	struct timespec above_95_time;
-	struct timespec below_15_time;
-
-	bool bat_15_flag;
-	bool bat_95_flag;
-	bool battery_below_15_fired;
-
-	int low_battery_initial_soc;
-	unsigned int low_battery_initial_voltage;
-	int battery_low_ticks;
-};
-extern unsigned long get_virtualsensor_temp(void);
-extern signed int gFG_battery_cycle;
-#endif
-
 /* ////////////////////////////////////////////////////////////////////////////// */
 /* FOR ANDROID BATTERY SERVICE */
 /* ////////////////////////////////////////////////////////////////////////////// */
@@ -412,280 +338,6 @@ static char *charge_ic_vendor_name = NULL;
 static char *battery_vendor_name = NULL;
 extern kal_uint32 g_fg_battery_id;
 #endif
-
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-void metrics_battery_save_data(void)
-{
-	unsigned long temp = get_virtualsensor_temp();
-
-	/* Save Data for Next Metric */
-	metrics_charge_info.init_charging_vol = BMT_status.bat_vol;
-
-	/* Set Peak temperatures to current temperature */
-	metrics_charge_info.battery_peak_battery_temp = BMT_status.temperature;
-	metrics_charge_info.battery_peak_virtual_temp = get_virtualsensor_temp();
-
-	/* Save Current USB Charging Voltage as Peak */
-	metrics_charge_info.usb_charger_voltage_peak = BMT_status.charger_vol;
-
-	metrics_charge_info.battery_average_virtual_temp = temp;
-	metrics_charge_info.battery_average_battery_temp = BMT_status.temperature;
-
-	/* Set Charging Ticks to 1 */
-	metrics_charge_info.battery_charge_ticks = 1;
-
-	/* Set Time start for Next Metric */
-	metrics_charge_info.charger_time = current_kernel_time();
-}
-
-static void battery_capacity_check(void)
-{
-	char buf[256];
-	long elaps_sec;
-	struct timespec diff;
-	struct timespec curr;
-	static struct metrics_capacity metrics_cap_info;
-
-	if (BMT_status.SOC > 95 && !metrics_cap_info.bat_95_flag) {
-		metrics_cap_info.bat_95_flag = true;
-		metrics_cap_info.above_95_time = current_kernel_time();
-	}
-
-	if (BMT_status.SOC < 95 && metrics_cap_info.bat_95_flag) {
-		metrics_cap_info.bat_95_flag = false;
-		curr = current_kernel_time();
-		diff = timespec_sub(curr, metrics_cap_info.above_95_time);
-		elaps_sec = diff.tv_sec + diff.tv_nsec / NSEC_PER_SEC;
-
-		if (elaps_sec > 0 && elaps_sec < MAX_TIME_INTERVAL) {
-			snprintf(buf,sizeof(buf),
-					"bq24296:def:time_soc95=1;CT;1,Elaps_Sec=%ld;CT;1:NA", elaps_sec);
-
-			log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-			memset(buf, 0, sizeof(buf));
-		}
-	}
-
-	if (BMT_status.SOC < 15 && !metrics_cap_info.bat_15_flag) {
-		metrics_cap_info.bat_15_flag = true;
-		metrics_cap_info.below_15_time = current_kernel_time();
-		metrics_cap_info.battery_low_ticks = 0;
-		metrics_cap_info.low_battery_initial_voltage = BMT_status.bat_vol;
-		metrics_cap_info.low_battery_initial_soc = BMT_status.SOC;
-	} else if (BMT_status.SOC < 15) {
-		/* Count Tickes for case when system
-		* starts up from dead battery
-		*/
-		metrics_cap_info.battery_low_ticks++;
-	}
-
-	if (BMT_status.SOC > 15 && metrics_cap_info.bat_15_flag) {
-		metrics_cap_info.bat_15_flag = false;
-		metrics_cap_info.battery_below_15_fired = false;
-		curr = current_kernel_time();
-		diff = timespec_sub(curr, metrics_cap_info.below_15_time);
-
-		elaps_sec = diff.tv_sec + diff.tv_nsec / NSEC_PER_SEC;
-
-		/* If system clock changed drastically use ticks instead.
-		* If not clock is probably more accurate
-		*/
-		if (elaps_sec > metrics_cap_info.battery_low_ticks * 20)
-			elaps_sec = metrics_cap_info.battery_low_ticks * 10;
-
-		if (elaps_sec > 0 && elaps_sec < MAX_TIME_INTERVAL) {
-			snprintf(buf,sizeof(buf),
-					"bq24296:def:time_soc15_soc20=1;CT;1,Init_Vol=%u;CT;1,Init_SOC=%d;CT;1,Elaps_Sec=%ld;CT;1:NA",
-					metrics_cap_info.low_battery_initial_voltage, metrics_cap_info.low_battery_initial_soc, elaps_sec);
-
-
-			log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-			memset(buf, 0, sizeof(buf));
-		}
-	}
-
-	/* Catch Events for devices that may power off */
-	if (BMT_status.SOC <= 2 && metrics_cap_info.battery_below_15_fired == false)
-	{
-		metrics_cap_info.battery_below_15_fired = true;
-		diff = timespec_sub(current_kernel_time(), metrics_cap_info.below_15_time);
-		elaps_sec = diff.tv_sec + diff.tv_nsec/NSEC_PER_SEC;
-		if (elaps_sec > 0 && elaps_sec < MAX_TIME_INTERVAL) {
-			snprintf(buf,sizeof(buf),
-					"bq24296:def:time_soc15_soc0=1;CT;1,Init_Vol=%u;CT;1,Init_SOC=%d;CT;1,Elaps_Sec=%ld;CT;1:NA",
-					metrics_cap_info.low_battery_initial_voltage, metrics_cap_info.low_battery_initial_soc, elaps_sec);
-
-			log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-			memset(buf, 0, sizeof(buf));
-		}
-	}
-}
-#endif
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-void metrics_charger(bool connect)
-{
-	int cap = BMT_status.UI_SOC;
-	char buf[128];
-
-	if (connect == true) {
-		snprintf(buf, sizeof(buf),
-			"bq24296:def:POWER_STATUS_CHARGING=1;CT;1,"
-			"cap=%u;CT;1:NR", cap);
-
-		log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-	} else {
-		snprintf(buf, sizeof(buf),
-			"bq24296:def:POWER_STATUS_DISCHARGING=1;CT;1,"
-			"cap=%u;CT;1:NR", cap);
-
-		log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-	}
-
-}
-
-void metrics_charger_update(int ac, int usb)
-{
-	static bool ischargeronline;
-	int onceonline = 0;
-
-	if (ac == 1)
-		onceonline = 1;
-	else if (usb == 1)
-		onceonline = 1;
-	if (ischargeronline != onceonline) {
-		ischargeronline = onceonline;
-		metrics_charger(ischargeronline);
-	}
-}
-
-static void battery_critical_voltage_check(void)
-{
-	static bool written;
-
-	if (BMT_status.charger_exist == KAL_TRUE)
-		return;
-	if (BMT_status.bat_exist != KAL_TRUE)
-		return;
-	if (BMT_status.UI_SOC != 0)
-		return;
-	if (written == false && BMT_status.bat_vol <= SYSTEM_OFF_VOLTAGE) {
-		written = true;
-
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
-		life_cycle_set_special_mode(LIFE_CYCLE_SMODE_LOW_BATTERY);
-#endif
-	}
-}
-
-static void battery_metrics_locked(struct battery_info *info);
-
-static void metrics_handle(void)
-{
-	struct battery_info *info = &BQ_info;
-
-	mutex_lock(&info->lock);
-
-	/* Check for critical battery voltage */
-	battery_critical_voltage_check();
-
-	if ((info->flags & BQ_STATUS_RESUMING)) {
-		info->flags &= ~BQ_STATUS_RESUMING;
-		battery_metrics_locked(info);
-	}
-
-	mutex_unlock(&info->lock);
-
-#if defined(CONFIG_AUSTIN_PROJECT)
-	battery_capacity_check();
-#endif
-
-	return;
-}
-
-#if defined(CONFIG_EARLYSUSPEND)
-static void bq_log_metrics(struct battery_info *info, char *msg,
-		char *metricsmsg)
-{
-	int value = BMT_status.UI_SOC;
-	struct timespec curr = current_kernel_time();
-	/* Compute elapsed time and determine screen off or on drainage */
-	struct timespec diff = timespec_sub(curr,
-			info->early_suspend_time);
-	if (diff.tv_sec > 0 && diff.tv_sec < MAX_TIME_INTERVAL) {
-		if (info->early_suspend_capacity != -1) {
-			char buf[512];
-			snprintf(buf, sizeof(buf),
-				"%s:def:value=%d;CT;1,elapsed=%ld;TI;1:NR",
-				metricsmsg,
-				info->early_suspend_capacity - value,
-				diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-			log_to_metrics(ANDROID_LOG_INFO, "drain_metrics", buf);
-		}
-	}
-	/* Cache the current capacity */
-	info->early_suspend_capacity = BMT_status.UI_SOC;
-	/* Mark the suspend or resume time */
-	info->early_suspend_time = curr;
-}
-
-static void battery_early_suspend(struct early_suspend *handler)
-{
-	struct battery_info *info = &BQ_info;
-
-	bq_log_metrics(info, "Screen on drainage", "screen_on_drain");
-}
-
-static void battery_late_resume(struct early_suspend *handler)
-{
-	struct battery_info *info = &BQ_info;
-
-	bq_log_metrics(info, "Screen off drainage", "screen_off_drain");
-}
-#endif
-
-static int metrics_init(void)
-{
-	struct battery_info *info = &BQ_info;
-
-	mutex_init(&info->lock);
-
-	info->suspend_capacity = -1;
-	info->early_suspend_capacity = -1;
-
-#if defined(CONFIG_EARLYSUSPEND)
-	info->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 1;
-	info->early_suspend.suspend = battery_early_suspend;
-	info->early_suspend.resume = battery_late_resume;
-	register_early_suspend(&info->early_suspend);
-#endif
-
-	mutex_lock(&info->lock);
-	info->flags = 0;
-	mutex_unlock(&info->lock);
-	return 0;
-}
-
-static void metrics_uninit(void)
-{
-	struct battery_info *info = &BQ_info;
-
-	unregister_early_suspend(&info->early_suspend);
-}
-
-static void metrics_suspend(void)
-{
-	struct battery_info *info = &BQ_info;
-
-	/* Cache the current capacity */
-	info->suspend_capacity = BMT_status.UI_SOC;
-	battery_critical_voltage_check();
-	/* Mark the suspend time */
-	info->suspend_time = current_kernel_time();
-}
-#endif
-
-
 
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 /* // extern function */
@@ -1101,46 +753,6 @@ static struct battery_data battery_main = {
 #endif
 };
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-/* must be called with info->lock held */
-static void battery_metrics_locked(struct battery_info *info)
-{
-	struct timespec diff;
-
-	diff = timespec_sub(current_kernel_time(), info->suspend_time);
-	if (diff.tv_sec > 0 && diff.tv_sec < MAX_TIME_INTERVAL) {
-		if (info->suspend_capacity != -1) {
-			char buf[256];
-			int drain_diff;
-
-			snprintf(buf, sizeof(buf),
-				"suspend_drain:def:value=%d;CT;1,elapsed=%ld;TI;1:NR",
-				info->suspend_capacity - BMT_status.UI_SOC,
-				diff.tv_sec * 1000 + diff.tv_nsec / NSEC_PER_MSEC);
-			log_to_metrics(ANDROID_LOG_INFO, "drain_metrics", buf);
-
-
-			snprintf(buf, sizeof(buf),
-				"batt:def:cap=%d;CT;1,mv=%d;CT;1,current_avg=%d;CT;1,"
-				"temp_g=%d;CT;1,charge=%d;CT;1,charge_design=%d;CT;1:NR",
-				BMT_status.UI_SOC, BMT_status.bat_vol,
-				BMT_status.ICharging, BMT_status.temperature,
-				gFG_BATT_CAPACITY_aging, /*battery_remaining_charge,?*/
-				gFG_BATT_CAPACITY /*battery_remaining_charge_design*/
-				);
-			log_to_metrics(ANDROID_LOG_INFO, "bq24296", buf);
-
-			/* This delta will be negative when charging on AC, and
-			 * possibly also in the case of an SOC jump. */
-			drain_diff = info->suspend_capacity - BMT_status.UI_SOC;
-			if (drain_diff >= 0) {
-				battery_main.BAT_SuspendDrain += drain_diff;
-				battery_main.BAT_SuspendRealtime += diff.tv_sec;
-			}
-		}
-	}
-}
-#endif
 
 #if !defined(CONFIG_POWER_EXT)
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
@@ -2392,10 +2004,6 @@ static void battery_update(struct battery_data *bat_data)
 
 	mt_battery_update_EM(bat_data);
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	metrics_handle();
-#endif
-
 	if (cmd_discharging == 1) {
 		bat_data->BAT_STATUS = POWER_SUPPLY_STATUS_CMD_DISCHARGING;
 	}
@@ -3160,7 +2768,6 @@ static void mt_battery_thermal_check(void)
 		/* ignore default rule */
 	if (BMT_status.temperature <= -10) {
 		pr_notice("[Battery] Tbat(%d)<= -10, system need power down.\n", BMT_status.temperature);
-		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_BATTERY);
 		orderly_poweroff(true);
 	}
 #else
@@ -3206,109 +2813,6 @@ static void mt_battery_thermal_check(void)
 
 }
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-static void battery_charge_metric(void)
-{
-	unsigned long virtual_temp = get_virtualsensor_temp();
-	char buf[512];
-	long elaps_sec;
-	struct timespec diff;
-	static unsigned int last_vol;
-	static bool batt_metrics_first_run = true;
-	static int battery_was_charging;
-	static int battery_was_charging_ticks;
-	static unsigned int usb_charger_voltage_previous;
-
-	if (batt_metrics_first_run)
-	{
-		batt_metrics_first_run = false;
-
-		/* Default data for first boot */
-		metrics_battery_save_data();
-
-	}
-
-	/* Record Peak  Battery temperature during charge or discharge cycle */
-	if (BMT_status.temperature > metrics_charge_info.battery_peak_battery_temp)
-		metrics_charge_info.battery_peak_battery_temp = BMT_status.temperature;
-
-	/* Record Peak Virtual temperature during charge or discharge cycle */
-	if (virtual_temp > metrics_charge_info.battery_peak_virtual_temp)
-		metrics_charge_info.battery_peak_virtual_temp = virtual_temp;
-
-	if (metrics_charge_info.usb_charger_voltage_peak < BMT_status.charger_vol)
-		metrics_charge_info.usb_charger_voltage_peak = BMT_status.charger_vol;
-
-	/* Record Average Temperature Values */
-	metrics_charge_info.battery_average_virtual_temp =(((metrics_charge_info.battery_average_virtual_temp * metrics_charge_info.battery_charge_ticks) + virtual_temp) / (metrics_charge_info.battery_charge_ticks + 1));
-	metrics_charge_info.battery_average_battery_temp = ((metrics_charge_info.battery_average_battery_temp * metrics_charge_info.battery_charge_ticks) + BMT_status.temperature) / (metrics_charge_info.battery_charge_ticks + 1);
-
-	/* Increase Charging Ticks */
-	metrics_charge_info.battery_charge_ticks++;
-
-
-	/* Check to see of Charging event Status has changed. Add a 6 cycle (1 min) de-bounce to prevent extra events from firing.  */
-	if (battery_was_charging != battery_main.BAT_STATUS)
-		battery_was_charging_ticks++;
-	else {
-		if (battery_was_charging_ticks > 0)
-			battery_was_charging_ticks--;
-		else
-		{
-			/* Save Last Voltage - Most of the time this voltage will be from Before Charge Started, or Before Charge Stopped. On average 8 seconds before. Since there is a few microscend delay  */
-			/* between Actual charge start/Stop and FW knowing charge start/stop less then 1% of devices  */
-			last_vol = BMT_status.bat_vol;
-			usb_charger_voltage_previous = BMT_status.charger_vol;
-		}
-	}
-
-	if (battery_was_charging_ticks > 5)
-	{
-		/* Reset ticks to 0; */
-		battery_was_charging_ticks = 0;
-
-		/* Calculate Elapsed Time */
-		diff = timespec_sub(current_kernel_time(), metrics_charge_info.charger_time);
-		elaps_sec = diff.tv_sec + diff.tv_nsec/NSEC_PER_SEC;
-
-		/* Handle Case where Clock changes during Charging,
-		* be very generous with timing as clock may be
-		* more accurate then ticks.
-		*/
-		if (elaps_sec > metrics_charge_info.battery_charge_ticks * 30)
-			elaps_sec = metrics_charge_info.battery_charge_ticks * 15;
-
-		if (elaps_sec > 0 && elaps_sec < MAX_TIME_INTERVAL) {
-			/* Log Metric for Charge / Discharge Cycle */
-			snprintf(buf, sizeof(buf),
-				"bq24296:def:Charger_Status=%d;CT;1,Elaps_Sec=%ld;CT;1,"
-				"iVol=%d;CT;1,fVol=%d;CT;1,lVol=%d;CT;1,SOC=%d;CT;1,"
-				"Bat_aTemp=%d;CT;1,Vir_aTemp=%d;CT;1,Bat_pTemp=%ld;CT;1,"
-				"Vir_pTemp=%ld;CT;1,bTemp=%d;CT;1,Cycles=%d;CT;1,"
-				"pVUsb=%ld;CT;1,fVUsb=%d;CT;1:NA", battery_was_charging,
-				elaps_sec, metrics_charge_info.init_charging_vol,
-				BMT_status.bat_vol, last_vol, BMT_status.SOC,
-				(int)metrics_charge_info.battery_average_battery_temp,
-				(int)metrics_charge_info.battery_average_virtual_temp,
-				metrics_charge_info.battery_peak_battery_temp,
-				metrics_charge_info.battery_peak_virtual_temp,
-				BMT_status.temperature, gFG_battery_cycle,
-				metrics_charge_info.usb_charger_voltage_peak,
-				usb_charger_voltage_previous);
-
-			log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-			memset(buf, 0, sizeof(buf));
-		}
-
-		/*Save data for Next Metric */
-		metrics_battery_save_data();
-
-		/* Set Was charging Status */
-		battery_was_charging = battery_main.BAT_STATUS;
-
-	}
-}
-#endif
 
 static void mt_battery_update_status(void)
 {
@@ -3320,12 +2824,6 @@ static void mt_battery_update_status(void)
 		battery_update(&battery_main);
 		ac_update(&ac_main);
 		usb_update(&usb_main);
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-		metrics_charger_update(ac_main.AC_ONLINE, usb_main.USB_ONLINE);
-#ifdef CONFIG_AUSTIN_PROJECT
-		battery_charge_metric();
-#endif
-#endif
 	}
 
 #endif
@@ -3483,10 +2981,6 @@ void update_battery_2nd_info(int status_smb, int capacity_smb, int present_smb)
 
 void do_chrdet_int_task(void)
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	char buf[128] = {0};
-#endif
-
 	if (g_bat_init_flag == KAL_TRUE) {
 		#if !defined(CONFIG_MTK_DUAL_INPUT_CHARGER_SUPPORT)
 		if (upmu_is_chr_det() == KAL_TRUE) {
@@ -3497,13 +2991,6 @@ void do_chrdet_int_task(void)
 		#endif
 			battery_xlog_printk(BAT_LOG_CRTI, "[do_chrdet_int_task] charger exist!\n");
 			BMT_status.charger_exist = KAL_TRUE;
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			snprintf(buf, sizeof(buf),
-				"%s:bq24296:vbus_on=1;CT;1;DV;1:NR",
-				__func__);
-			log_to_metrics(ANDROID_LOG_INFO, "USBCableEvent", buf);
-#endif
 
 			wake_lock(&battery_suspend_lock);
 
@@ -3523,14 +3010,6 @@ void do_chrdet_int_task(void)
 			battery_xlog_printk(BAT_LOG_CRTI,
 					    "[do_chrdet_int_task] charger NOT exist!\n");
 			BMT_status.charger_exist = KAL_FALSE;
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			memset(buf, '\0', sizeof(buf));
-			snprintf(buf, sizeof(buf),
-				"%s:bq24296:vbus_off=1;CT;1;DV;1:NR",
-				__func__);
-			log_to_metrics(ANDROID_LOG_INFO, "USBCableEvent", buf);
-#endif
 
 			#if defined(CONFIG_MTK_DUAL_INPUT_CHARGER_SUPPORT)
 			battery_xlog_printk(BAT_LOG_CRTI,
@@ -3573,17 +3052,6 @@ void do_chrdet_int_task(void)
 		/* Place charger detection and battery update here is used to speed up charging icon display. */
 
 		mt_battery_charger_detect_check();
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		memset(buf, '\0', sizeof(buf));
-		if (BMT_status.charger_type > CHARGER_UNKNOWN) {
-			snprintf(buf, sizeof(buf),
-				"%s:bq24296:detect=1;CT;1;type=%d;DV;1:NR",
-				__func__, BMT_status.charger_type);
-			log_to_metrics(ANDROID_LOG_INFO, "USBCableEvent", buf);
-		}
-#endif
-
 		if (BMT_status.UI_SOC == 100 && BMT_status.charger_exist == KAL_TRUE) {
 			BMT_status.bat_charging_state = CHR_BATFULL;
 			BMT_status.bat_full = KAL_TRUE;
@@ -3622,12 +3090,6 @@ void BAT_thread(void)
 	static kal_bool battery_meter_initilized = KAL_FALSE;
 	struct timespec now_time;
 	unsigned long total_time_plug_in;
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-	char buf[256] = {0};
-	unsigned long virtual_temp = get_virtualsensor_temp();
-	static bool bat_14days_flag;
-	static bool bat_demo_flag;
-#endif
 
 	if (battery_meter_initilized == KAL_FALSE) {
 		battery_meter_initial();	/* move from battery_probe() to decrease booting time */
@@ -3653,44 +3115,10 @@ void BAT_thread(void)
 
 		if (total_time_plug_in > PLUGIN_THRESHOLD) {
 			g_custom_charging_cv = BATTERY_VOLT_04_100000_V;
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-			if (!bat_14days_flag) {
-				bat_14days_flag = true;
-				snprintf(buf, sizeof(buf),
-				"bq24296:def:Charing_Over_14days=%d;CT;1,Total_Plug_Time=%ld;CT;1,"
-				"Bat_Vol=%d;CT;1,UI_SOC=%d;CT;1,SOC=%d;CT;1,Bat_Temp=%d;CT;1,"
-				"Vir_Avg_Temp=%ld;CT;1,Bat_Cycle_Count=%d;CT;1:NA",
-				1, total_time_plug_in, BMT_status.bat_vol, BMT_status.UI_SOC, BMT_status.SOC, BMT_status.temperature,
-				virtual_temp, gFG_battery_cycle);
-
-				log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-				memset(buf, 0, 256);
-			}
-
-			if (total_time_plug_in <= PLUGIN_THRESHOLD && bat_14days_flag)
-				bat_14days_flag = false;
-#endif
 		}
 		else
 			g_custom_charging_cv = -1;
 
-#if defined(CONFIG_AMAZON_METRICS_LOG) && defined(CONFIG_AUSTIN_PROJECT)
-		if (g_custom_charging_mode == 1 && !bat_demo_flag) {
-			bat_demo_flag = true;
-			snprintf(buf, sizeof(buf),
-			"bq24296:def:Store_Demo_Mode=%d;CT;1,Total_Plug_Time=%ld;CT;1,"
-			"Bat_Vol=%d;CT;1,UI_SOC=%d;CT;1,SOC=%d;CT;1,Bat_Temp=%d;CT;1,"
-			"Vir_Avg_Temp=%ld;CT;1,Bat_Cycle_Count=%d;CT;1:NA",
-			g_custom_charging_mode, total_time_plug_in, BMT_status.bat_vol, BMT_status.UI_SOC, BMT_status.SOC, BMT_status.temperature,
-			virtual_temp, gFG_battery_cycle);
-
-			log_to_metrics(ANDROID_LOG_INFO, "battery", buf);
-
-		}
-
-		if (g_custom_charging_mode != 1 && bat_demo_flag)
-			bat_demo_flag = false;
-#endif
 		battery_xlog_printk(BAT_LOG_FULL, "total plug-in time(%lu), cv(%d)\r\n",
 			total_time_plug_in, g_custom_charging_cv);
 
@@ -3760,19 +3188,6 @@ void bat_thread_wakeup(void)
     _g_bat_sleep_total_time = 0;
 	wake_up(&bat_thread_wq);
 }
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-static void metrics_resume(void)
-{
-	struct battery_info *info = &BQ_info;
-
-	/* invalidate all the measurements */
-	mutex_lock(&info->lock);
-	info->flags |= BQ_STATUS_RESUMING;
-	mutex_unlock(&info->lock);
-	bat_thread_wakeup();
-}
-#endif
 
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 /* // fop API */
@@ -4257,10 +3672,6 @@ static int battery_probe(struct platform_device *dev)
 	}
 	battery_xlog_printk(BAT_LOG_CRTI, "[BAT_probe] power_supply_register Battery Success !!\n");
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	metrics_init();
-#endif
-
 #if !defined(CONFIG_POWER_EXT)
 
 #ifdef CONFIG_MTK_POWER_EXT_DETECT
@@ -4474,10 +3885,6 @@ static void battery_timer_resume(void)
 
 static int battery_remove(struct platform_device *dev)
 {
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	metrics_uninit();
-#endif
-
 	battery_xlog_printk(BAT_LOG_CRTI, "******** battery driver remove!! ********\n");
 
 	return 0;
@@ -4768,10 +4175,6 @@ static int battery_pm_suspend(struct device *device)
 	struct platform_device *pdev = to_platform_device(device);
 	BUG_ON(pdev == NULL);
 
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	metrics_suspend();
-#endif
-
 	return ret;
 }
 
@@ -4780,10 +4183,6 @@ static int battery_pm_resume(struct device *device)
 	int ret = 0;
 	struct platform_device *pdev = to_platform_device(device);
 	BUG_ON(pdev == NULL);
-
-#if defined(CONFIG_AMAZON_METRICS_LOG)
-	metrics_resume();
-#endif
 
 	return ret;
 }

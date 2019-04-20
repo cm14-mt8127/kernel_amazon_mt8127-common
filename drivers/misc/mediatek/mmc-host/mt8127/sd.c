@@ -64,10 +64,6 @@
 
 #include <mach/mt_storage_logger.h>
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
-#endif
-
 #define	METRICS_DELAY			HZ
 #define EXT_CSD_BOOT_SIZE_MULT          226 /* R */
 #define EXT_CSD_RPMB_SIZE_MULT          168 /* R */
@@ -256,24 +252,6 @@ static void msdc_remove_device_attrs(struct msdc_host *host, struct device_attri
 	for (i = 0; attrs[i]; ++i)
 		device_remove_file(host->dev, attrs[i]);
 }
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-static void msdc_metrics_work(struct work_struct *work)
-{
-	struct msdc_host *host = container_of(work, struct msdc_host,
-			metrics_work.work);
-
-	MSDC_LOG_COUNTER_TO_VITALS(crc, host->crc_count);
-	MSDC_LOG_COUNTER_TO_VITALS(crc_invalid, host->crc_invalid_count);
-	MSDC_LOG_COUNTER_TO_VITALS(req, host->req_count);
-	MSDC_LOG_COUNTER_TO_VITALS(datato, host->datatimeout_count);
-	MSDC_LOG_COUNTER_TO_VITALS(cmdto, host->cmdtimeout_count);
-	MSDC_LOG_COUNTER_TO_VITALS(reqto, host->reqtimeout_count);
-	MSDC_LOG_COUNTER_TO_VITALS(pc_count, host->pc_count);
-	MSDC_LOG_COUNTER_TO_VITALS(pc_suspend, host->pc_suspend);
-	MSDC_LOG_COUNTER_TO_VITALS(inserted, host->inserted);
-}
-#endif
 
 //=================================
 
@@ -1909,9 +1887,6 @@ static void msdc_tasklet_card(unsigned long arg)
 
 	if ((host->hw->host_function == MSDC_SD) && inserted) {
 		host->inserted++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 	}
 	if(host->block_bad_card){
 		inserted = 0;
@@ -2622,9 +2597,6 @@ static void msdc_set_power_mode(struct msdc_host *host, u8 mode)
 
 	if ((host->hw->host_function == MSDC_SD) && mode) {
 		host->pc_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-		mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 	}
 
 	dev_info(host->dev, "crc/total %d/%d invalcrc %d datato %d cmdto %d total_pc %d pc_sus %d\n",
@@ -3377,9 +3349,6 @@ static unsigned int msdc_command_start(struct msdc_host   *host,
                 cmd->error = (unsigned int)-ETIMEDOUT;
 		if (host->hw->host_function == MSDC_SD) {
 			host->reqtimeout_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 		}
 
                 msdc_reset_hw(host->id);
@@ -3395,9 +3364,6 @@ static unsigned int msdc_command_start(struct msdc_host   *host,
                 cmd->error = (unsigned int)-ETIMEDOUT;
 		if (host->hw->host_function == MSDC_SD) {
 			host->reqtimeout_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 		}
 
                 msdc_reset_hw(host->id);
@@ -3502,10 +3468,6 @@ static unsigned int msdc_command_resp_polling(struct msdc_host   *host,
 			cmd->error = (unsigned int)-ETIMEDOUT;
 			if (host->hw->host_function == MSDC_SD) {
 				host->cmdtimeout_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-				mod_delayed_work(system_wq, &host->metrics_work,
-						METRICS_DELAY);
-#endif
 			}
 
 			host->sw_timeout++;
@@ -3561,9 +3523,6 @@ static unsigned int msdc_command_resp_polling(struct msdc_host   *host,
 				host->crc_invalid_count++;
 			else
 				host->crc_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 		}
 	} else if (intsts & MSDC_INT_CMDTMO) {
 		cmd->error = (unsigned int)-ETIMEDOUT;
@@ -3571,9 +3530,6 @@ static unsigned int msdc_command_resp_polling(struct msdc_host   *host,
 		msdc_reset_hw(host->id);
 		if (host->hw->host_function == MSDC_SD) {
 			host->cmdtimeout_count++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 		}
 	}
 #ifdef MTK_MSDC_USE_CMD23
@@ -6798,9 +6754,6 @@ retune:
 out:
 		if (host->mclk < 25000000) {
 			pr_err("CMD 19 tune fail!\n");
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 			return -EIO;
 		}
 		msdc_set_mclk(host, ddr, host->mclk / 2); /* lower to 50Mhz */
@@ -7711,19 +7664,7 @@ static irqreturn_t msdc_irq(int irq, void *dev_id)
         //printk(KERN_INFO "msdc[%d] MMCIRQ: SDC_CSTS=0x%.8x\r\n", host->id, sdr_read32(SDC_CSTS));    
     }
     latest_int_status[host->id] = 0;
-
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	if ((host->hw->host_function == MSDC_SD) &&
-			((cmd &&
-			 (unlikely(cmd->error == -ETIMEDOUT) || unlikely(cmd->error == -EIO))) ||
-			(data &&
-			 (unlikely(data->error == -ETIMEDOUT) || unlikely(data->error == -EIO))) ||
-			(stop &&
-			 (unlikely(stop->error == -ETIMEDOUT) || unlikely(stop->error == -EIO)))))
-		mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
-
-	return IRQ_HANDLED;
+    return IRQ_HANDLED;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -8606,10 +8547,6 @@ static int msdc_drv_probe(struct platform_device *pdev)
     
     msdc_init_hw(host);
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-	INIT_DELAYED_WORK(&host->metrics_work, msdc_metrics_work);
-#endif
-
     //mt65xx_irq_set_sens(irq, MT65xx_EDGE_SENSITIVE);
     //mt65xx_irq_set_polarity(irq, MT65xx_POLARITY_LOW);
     ret = request_irq((unsigned int)irq, msdc_irq, IRQF_TRIGGER_LOW, DRV_NAME, host);
@@ -8798,9 +8735,6 @@ static int msdc_drv_resume(struct platform_device *pdev)
     if (mmc && (host->hw->flags & MSDC_SYS_SUSPEND)) {/* will set for card */
 		if (host->hw->host_function == MSDC_SD) {
 			host->pc_suspend++;
-#ifdef CONFIG_AMAZON_METRICS_LOG
-			mod_delayed_work(system_wq, &host->metrics_work, METRICS_DELAY);
-#endif
 		}
 
         msdc_pm(state, (void*)host);

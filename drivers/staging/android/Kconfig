@@ -89,17 +89,6 @@ config ANDROID_INTF_ALARM_DEV
 	  elapsed realtime, and a non-wakeup alarm on the monotonic clock.
 	  Also exports the alarm interface to user-space.
 
-config AMAZON_METRICS_LOG
-	bool "Amazon metrics logging support"
-	depends on ANDROID_LOGGER
-	default y
-	help
-	  Enables a new metrics log for collecting
-	  metrics information.
-
-	  These logs will be present at
-	  /dev/log/metrics.
-
 config SYNC
 	bool "Synchronization framework"
 	default n
@@ -126,12 +115,6 @@ config SW_SYNC_USER
 	  Provides a user space API to the sw sync object.
 	  *WARNING* improper use of this can result in deadlocking kernel
 	  drivers from userspace.
-
-config AMAZON_LOG
-	bool "Amazon Log"
-	---help---
-	  Create a special Amazon Log area for all Amazon applications
-	default y
 
 config MTK_LCA_RAM_OPTIMIZE
 	bool "MTK LCA ram optimize"
