@@ -2127,3 +2127,8 @@ UINT32 wmt_lib_consys_osc_en_ctrl(UINT32 en)
 }
 #endif
 
+INT32 wmt_lib_trigger_reset(VOID)
+{
+	return wmt_btm_trigger_reset();
+}
+

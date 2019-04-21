@@ -42,6 +42,8 @@ extern void mtkfb_switch_normal_to_factory(void);
 extern void mtkfb_switch_factory_to_normal(void);
 extern void set_ovlengine_debug_level(int level);
 extern int fb_pattern_en(int enable);
+extern void mtkfb_early_suspend_test();
+extern void mtkfb_late_resume_test();
 
 extern unsigned int gCaptureLayerEnable;
 extern unsigned int gCaptureLayerDownX;
@@ -500,6 +502,17 @@ void DBG_OnHDMIDone(void)
 extern void mtkfb_clear_lcm(void);
 extern void hdmi_force_init(void);
 
+extern unsigned char dump_init;
+extern unsigned int va[4]; 
+extern unsigned int src_va;
+extern unsigned int buf_size[4];
+extern unsigned int gdump_layer_en;
+extern unsigned int layer_pitch[4];
+extern unsigned int layer_height[4];
+extern unsigned int layer_enable[4];
+extern unsigned char layer_fmt[4][100];
+unsigned char file_name[100];
+
 static void process_dbg_opt(const char *opt)
 {
 
@@ -509,6 +522,40 @@ static void process_dbg_opt(const char *opt)
     {
 //	hdmi_force_init();
     }
+	else if (0 == strncmp(opt, "dump:", 5))
+	{
+		DISP_LOG_PRINT(ANDROID_LOG_INFO, "ERROR","[debug] Dumping\n");
+		if (0 == strncmp(opt + 5, "on", 2))
+        {
+			DISP_LOG_PRINT(ANDROID_LOG_INFO, "ERROR","Dump layer on.\n");
+			gdump_layer_en = 1;
+        }
+		else if (0 == strncmp(opt + 5, "pull", 4))
+        {
+			unsigned char i;
+			struct file *filp;
+			mm_segment_t fs;
+			DISP_LOG_PRINT(ANDROID_LOG_INFO, "ERROR","Pulling dump layer data.\n");			
+			fs =get_fs();
+			set_fs(KERNEL_DS);
+			for(i = 0; i < 4; i++)
+			{
+				if(layer_enable[i] == 1){
+					sprintf(file_name, "/sdcard/Music/layer%d_%dx%d%s", i, layer_pitch[i], layer_height[i], layer_fmt[i]);
+					DISP_LOG_PRINT(ANDROID_LOG_INFO, "ERROR","Pulling : VA[%d]=0x%x buf_size[i] file name =%s\n",i,buf_size[i],va[i],file_name);
+					filp=filp_open(file_name,O_RDWR|O_CREAT,0x644);
+					filp->f_op->write(filp,va[i],buf_size[i],&filp->f_pos);
+					filp_close(filp,NULL);
+					vfree((void*)va[i]);
+				}
+			}
+			set_fs(fs);
+        }
+		else {
+			DISP_LOG_PRINT(ANDROID_LOG_INFO, "ERROR","[debug] wrong dump option\n");
+        	goto Error;
+    	}
+	}
     else if (0 == strncmp(opt, "fps:", 4))
     {
         if (0 == strncmp(opt + 4, "on", 2)) {
@@ -534,15 +581,19 @@ static void process_dbg_opt(const char *opt)
     {
 	mtkfb_clear_lcm();
     }
-    else if (0 == strncmp(opt, "suspend", 4))
+    else if (0 == strncmp(opt, "suspend", 7))
     {
-        DISP_PanelEnable(FALSE);
-        DISP_PowerEnable(FALSE);
+        //DISP_PanelEnable(FALSE);
+        //DISP_PowerEnable(FALSE);
+        DISP_LOG_PRINT(ANDROID_LOG_INFO, "DBG", "[mtkfb_dbg] opt=suspend\n");
+        mtkfb_early_suspend_test();
     }
-    else if (0 == strncmp(opt, "resume", 4))
+    else if (0 == strncmp(opt, "resume", 6))
     {
-        DISP_PowerEnable(TRUE);
-        DISP_PanelEnable(TRUE);
+        //DISP_PowerEnable(TRUE);
+        //DISP_PanelEnable(TRUE);
+        DISP_LOG_PRINT(ANDROID_LOG_INFO, "DBG", "[mtkfb_dbg] opt=resume\n");
+        mtkfb_late_resume_test();
     }
     else if (0 == strncmp(opt, "lcm:", 4))
     {

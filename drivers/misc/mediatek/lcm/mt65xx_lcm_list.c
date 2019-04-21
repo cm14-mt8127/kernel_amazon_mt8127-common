@@ -194,24 +194,64 @@ extern LCM_DRIVER r63419_wqhd_truly_phantom_lcm_drv;
 extern LCM_DRIVER r63419_fhd_truly_phantom_lcm_drv;
 extern LCM_DRIVER r63423_wqhd_truly_phantom_lcm_drv;
 extern LCM_DRIVER kr101ia2s_dsi_vdo_lcm_drv;
+extern LCM_DRIVER kr070ia4t_dsi_vdo_lcm_drv;
 extern LCM_DRIVER r69338_hd720_dsi_vdo_jdi_dw8755a_drv;
 extern LCM_DRIVER otm9605a_qhd_dsi_vdo_drv;
 extern LCM_DRIVER ili9806e_dsi_vdo_fwvga_drv;
-extern LCM_DRIVER kr076_ek79007_wsvga_dsi_vdo_lcm_drv;
-extern LCM_DRIVER rm72013_wxga_dsi_vdo_lcm_drv;
-extern LCM_DRIVER ota7291_wxga_dsi_vdo_lcm_drv;
+extern LCM_DRIVER hx8282_a01_lvds_dpi_vdo_lcm_drv;
+extern LCM_DRIVER hx8282_a01_lvds_dpi_vdo_lcm_drv_txd;
+extern LCM_DRIVER hx8282_a01_lvds_dpi_vdo_lcm_drv_tpv3;
+extern LCM_DRIVER hx8282_a01_lvds_dpi_vdo_lcm_drv_kd;
+
+extern LCM_DRIVER nt51021_inx_dsi_vdo_kd_lcm_drv;
+extern LCM_DRIVER ota7290b_auo_dsi_vdo_kd_lcm_drv;
+extern LCM_DRIVER nt51021_inx_dsi_vdo_inx_lcm_drv;
+extern LCM_DRIVER ota7290b_auo_dsi_vdo_tpv_lcm_drv;
+extern LCM_DRIVER ota7290b_hsd_dsi_vdo_kd_lcm_drv;
+extern LCM_DRIVER nt51021_inx_dsi_vdo_txd_lcm_drv;
 
 LCM_DRIVER* lcm_driver_list[] = 
 {
-#if defined(KR076_EK79007_WSVGA_DSI_VDO)
-	&kr076_ek79007_wsvga_dsi_vdo_lcm_drv,
+#if defined(NT51021_INX_DSI_VDO_KD)
+	&nt51021_inx_dsi_vdo_kd_lcm_drv,
 #endif
-//[BUGFIX]-Mod-BEGIN by SCDTABLET.jinghuang@tcl.com,02/4/2015,
-//add ek79007 lcd for KD.
-#if defined(KR076_STARRY_EK79007_WSVGA_DSI_VDO)
-	&kr076_ek79007_wsvga_dsi_vdo_lcm_drv,
+
+#if defined(OTA7290B_AUO_DSI_VDO_KD)
+	&ota7290b_auo_dsi_vdo_kd_lcm_drv,
 #endif
-//[BUGFIX]-Mod-END by SCDTABLET.jinghuang@tcl.com
+
+#if defined(NT51021_INX_DSI_VDO_INX)
+	&nt51021_inx_dsi_vdo_inx_lcm_drv,
+#endif
+
+#if defined(OTA7290B_AUO_DSI_VDO_TPV)
+	&ota7290b_auo_dsi_vdo_tpv_lcm_drv,
+#endif
+
+#if defined(OTA7290B_HSD_DSI_VDO_KD)
+	&ota7290b_hsd_dsi_vdo_kd_lcm_drv,
+#endif
+
+#if defined(NT51021_INX_DSI_VDO_TXD)
+	&nt51021_inx_dsi_vdo_txd_lcm_drv,
+#endif
+
+#if defined(HX8282_A01_LVDS_DPI_VDO)
+	&hx8282_a01_lvds_dpi_vdo_lcm_drv,
+#endif
+
+#if defined(HX8282_A01_LVDS_DPI_VDO_TXD)
+	&hx8282_a01_lvds_dpi_vdo_lcm_drv_txd,
+#endif
+
+#if defined(HX8282_A01_LVDS_DPI_VDO_TPV3)
+	&hx8282_a01_lvds_dpi_vdo_lcm_drv_tpv3,
+#endif
+
+#if defined(HX8282_A01_LVDS_DPI_VDO_KD)
+	&hx8282_a01_lvds_dpi_vdo_lcm_drv_kd,
+#endif
+
 #if defined(OTM1283A_HD720_DSI_VDO_TM)
 	&otm1283a_hd720_dsi_vdo_tm_lcm_drv,
 #endif
@@ -225,6 +265,10 @@ LCM_DRIVER* lcm_driver_list[] =
 
 #if defined(KR101IA2S_DSI_VDO)
 	&kr101ia2s_dsi_vdo_lcm_drv,
+#endif
+
+#if defined(KR070IA4T_DSI_VDO)
+	&kr070ia4t_dsi_vdo_lcm_drv,
 #endif
 
 #if defined(HX8394A_HD720_DSI_VDO_TIANMA_V2)
@@ -873,6 +917,10 @@ LCM_DRIVER* lcm_driver_list[] =
     &it6151_fhd_edp_dsi_video_auo_lcm_drv,
 #endif
 
+#if defined(A080EAN01_DSI_VDO)
+	&a080ean01_dsi_vdo_lcm_drv,
+#endif
+
 #if defined(IT6121_G156XW01V1_LVDS_VDO)
     &it6121_g156xw01v1_lvds_vdo_lcm_drv,
 #endif
@@ -904,19 +952,6 @@ LCM_DRIVER* lcm_driver_list[] =
 #if defined(OTM9605A_QHD_DSI_VDO)
 	&otm9605a_qhd_dsi_vdo_drv,
 #endif
-
-#if defined(RM72013_WXGA_DSI_VDO)
-    &rm72013_wxga_dsi_vdo_lcm_drv,
-#endif
-
-#if defined(OTA7291_WXGA_DSI_VDO)
-    &ota7291_wxga_dsi_vdo_lcm_drv,
-#endif
-
-#if defined(A080EAN01_DSI_VDO)
-	&a080ean01_dsi_vdo_lcm_drv,
-#endif
-
 };
 
 #define LCM_COMPILE_ASSERT(condition) LCM_COMPILE_ASSERT_X(condition, __LINE__)

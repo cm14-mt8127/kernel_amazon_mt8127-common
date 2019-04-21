@@ -346,8 +346,8 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 
 	if (trip_type == THERMAL_TRIP_CRITICAL) {
 		dev_emerg(&tz->device,
-			  "critical temperature reached(%d C),shutting down\n",
-			  tz->temperature / 1000);
+			  "%s: critical temperature reached(%d C),shutting down\n",
+			  tz->type, tz->temperature / 1000);
 		orderly_poweroff(true);
 	}
 }
@@ -924,7 +924,7 @@ temp_crit_show(struct device *dev, struct device_attribute *attr,
 	long temperature;
 	int ret;
 
-	ret = tz->ops->get_crit_temp(tz, &temperature);
+	ret = tz->ops->get_trip_temp(tz, 0, &temperature);
 	if (ret)
 		return ret;
 

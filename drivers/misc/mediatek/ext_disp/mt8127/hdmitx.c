@@ -255,6 +255,9 @@ typedef struct
     bool is_enabled;    // whether HDMI is enabled or disabled by user
     bool is_force_disable;      //used for camera scenario.
     bool is_clock_on;   // DPI is running or not
+#if 1 //def monica_porting
+		bool is_rdma_clock_on; /*rdma1 clock is running or not*/
+#endif
     atomic_t state; // HDMI_POWER_STATE state
     int     lcm_width;  // LCD write buffer width
     int     lcm_height; // LCD write buffer height
@@ -1425,14 +1428,51 @@ static int hdmi_rdma_update_kthread(void *data)
 
     int remove_buffer_cnt = 0;
     int using_buf_cnt = 0;
+    unsigned long timeout_cnt = 0;
 
     sched_setscheduler(current, SCHED_RR, &param);
 
     for (;;)
     {
         remove_buffer_cnt = 0;
-		
-        wait_event_interruptible(hdmi_rdma_update_wq, atomic_read(&hdmi_rdma_update_event));
+
+        if (wait_event_interruptible_timeout(hdmi_rdma_update_wq, atomic_read(&hdmi_rdma_update_event), HZ / 4) == 0)
+        {
+            unsigned long sleep_cnt = 0;
+
+            if ((timeout_cnt < 3) || (0 == (timeout_cnt % 10)))
+            {
+                printk("[hdmi] sw rdma update. early_suspend=%d, %d (%lu)\n", is_early_suspended, p->is_clock_on, timeout_cnt);
+            }
+
+            /* If HDMI_Buffer_List is cleared*/
+            while (list_empty(&HDMI_Buffer_List))
+            {
+                sleep_cnt ++;
+                msleep(20);
+
+                if (0 == (sleep_cnt % 500))
+                {
+                    printk("[hdmi] list empty %lu, sleeping\n", sleep_cnt);
+                }
+            }
+
+            if (sleep_cnt > 0)
+            {
+                printk("[hdmi] after sleep %lu, early_suspend=%d, %d (%lu)\n", sleep_cnt, is_early_suspended, p->is_clock_on, timeout_cnt);
+            }
+
+            timeout_cnt ++;
+        }
+        else
+        {
+            if (timeout_cnt > 0)
+            {
+                printk("[hdmi] hw rdma update after %lu.\n", timeout_cnt);
+                timeout_cnt = 0;
+            }
+        }
+
         atomic_set(&hdmi_rdma_update_event, 0);
 
         MMProfileLogEx(HDMI_MMP_Events.BufferUpdate, MMProfileFlagStart, p->is_clock_on, 1);
@@ -1871,6 +1911,9 @@ static HDMI_STATUS hdmi_drv_init(void)
     p->output_video_resolution = hdmi_params->init_config.vformat;
     p->output_audio_format = hdmi_params->init_config.aformat;
     p->scaling_factor = hdmi_params->scaling_factor < 10 ? hdmi_params->scaling_factor : 10;
+#if 1 //def monica_porting
+	p->is_rdma_clock_on = false;
+#endif
 
     ///if (p->lcm_is_video_mode)
     {
@@ -2357,14 +2400,7 @@ int hdmi_rdma_address_config(bool enable, hdmi_video_buffer_info buffer_info)
             gRDMASecure = buffer_info.security;
             hdmi_config_m4u(buffer_info.security);  //Config M4U normal or secure
             disp_path_config_(&config, dp_mutex_dst);   //RDMA1 will not be started and setted buffer address in this function for SVP
-            if (buffer_info.security)
-            {
-           	 hdmi_set_rdma_addr(hdmiSourceAddr, buffer_size, buffer_info.security);
-            }
-            else
-            {
-            	DISP_REG_SET(0xa000 + DISP_REG_RDMA_MEM_START_ADDR, hdmiSourceAddr);
-            }
+            hdmi_set_rdma_addr(hdmiSourceAddr, buffer_size, buffer_info.security);   //Really setting frame buffer address
             disp_path_release_mutex_(dp_mutex_dst);
             DPI_CHECK_RET(HDMI_DPI(_EnableClk)());
             RDMAStart(1);   //Start RDMA1 for HDMI Path
@@ -2562,10 +2598,9 @@ static int hdmi_video_config(HDMI_VIDEO_RESOLUTION vformat, HDMI_VIDEO_INPUT_FOR
     #else
     RETIF(IS_HDMI_NOT_ON(), 0);
     #endif
-#if 0//for debug using
+
     hdmi_allocate_hdmi_buffer();
-#endif 
-	///hdmi_dst_display_path_config(true);
+    ///hdmi_dst_display_path_config(true);
 
     hdmi_fps_control_overlay = 0;
     hdmi_fps_control_dpi = 0;
@@ -2843,11 +2878,17 @@ void hdmi_cec_state_callback(HDMI_CEC_STATE state)
 
     // enable/disable pll must be couple
     //hdmi_dpi_power_switch(true);
-    enable_clock(MT_CG_DISP0_SMI_COMMON   , "HDMITX");
-    enable_clock(MT_CG_DISP0_SMI_LARB0   , "HDMITX");
-    enable_clock(MT_CG_DISP0_MUTEX_32K   , "HDMITX");
-    enable_clock(MT_CG_DISP0_DISP_RMDA1, "HDMITX");
-    hdmi_drv->power_on();
+#if 1 //def monica_porting
+		if (!p->is_rdma_clock_on) {
+			enable_clock(MT_CG_DISP0_SMI_COMMON   , "HDMITX");
+			enable_clock(MT_CG_DISP0_SMI_LARB0	 , "HDMITX");
+			enable_clock(MT_CG_DISP0_MUTEX_32K	 , "HDMITX");
+			enable_clock(MT_CG_DISP0_DISP_RMDA1, "HDMITX");
+			p->is_rdma_clock_on = true;
+		}
+#endif
+
+	hdmi_drv->power_on();
 
     // When camera is open, the state will only be changed when camera exits.
     // So we bypass state_reset here, if camera is open.
@@ -2912,10 +2953,15 @@ void hdmi_cec_state_callback(HDMI_CEC_STATE state)
     memset(&temp, 0, sizeof(temp));
     hdmi_rdma_address_config(false, temp);
 
-    disable_clock(MT_CG_DISP0_DISP_RMDA1, "HDMITX");
-    disable_clock(MT_CG_DISP0_MUTEX_32K   , "HDMITX");
-    disable_clock(MT_CG_DISP0_SMI_LARB0   , "HDMITX");
-    disable_clock(MT_CG_DISP0_SMI_COMMON   , "HDMITX");
+#if 1 //def monica_porting
+	if (p->is_rdma_clock_on) {
+		disable_clock(MT_CG_DISP0_DISP_RMDA1, "HDMITX");
+		disable_clock(MT_CG_DISP0_MUTEX_32K   , "HDMITX");
+		disable_clock(MT_CG_DISP0_SMI_LARB0   , "HDMITX");
+		disable_clock(MT_CG_DISP0_SMI_COMMON   , "HDMITX");
+		p->is_rdma_clock_on = false;
+	}
+#endif
 
     HDMI_LOG("hdmi set power state(%d) off\n",atomic_read(&p->state));
 
@@ -2957,8 +3003,12 @@ void hdmi_cec_state_callback(HDMI_CEC_STATE state)
 
     hdmi_drv->suspend();
     SET_HDMI_STANDBY();
-
-    disp_module_clock_off(DISP_MODULE_RDMA1, "HDMI");
+#if 1 //def monica_porting
+		if (p->is_rdma_clock_on) {
+			disp_module_clock_off(DISP_MODULE_RDMA1, "HDMI");
+			p->is_rdma_clock_on = false;
+		}
+#endif
     up(&hdmi_update_mutex);
 
     if (hdmi_bufferdump_on > 0)
@@ -2992,8 +3042,12 @@ void hdmi_cec_state_callback(HDMI_CEC_STATE state)
         printk("[hdmi][HDMI] can't get semaphore in %s()\n", __func__);
         return;
     }
-
-    disp_module_clock_on(DISP_MODULE_RDMA1, "HDMI");
+#if 1 //def monica_porting
+	if (!p->is_rdma_clock_on) {
+		disp_module_clock_on(DISP_MODULE_RDMA1, "HDMI");
+		p->is_rdma_clock_on = true;
+	}
+#endif
 
     hdmi_dpi_power_switch(true);
     hdmi_drv->resume();
@@ -3637,7 +3691,7 @@ static long hdmi_ioctl_ex(struct file *file, unsigned int cmd, unsigned long arg
     int r = 0;
 	#if defined(MTK_MT8193_HDMI_SUPPORT)|| defined(CONFIG_MTK_INTERNAL_HDMI_SUPPORT)
     hdmi_device_write w_info;
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT)&&defined(CONFIG_MTK_DRM_KEY_MNG_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT)&&defined(MTK_DRM_KEY_MNG_SUPPORT))
 	hdmi_hdcp_drmkey key;
 #else
 	hdmi_hdcp_key key;
@@ -3666,7 +3720,7 @@ static long hdmi_ioctl_ex(struct file *file, unsigned int cmd, unsigned long arg
 	unsigned char pdata[16];
 	MHL_3D_INFO_T pv_3d_info;
 	hdmi_para_setting data_info;
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT)&&defined(CONFIG_MTK_DRM_KEY_MNG_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT)&&defined(MTK_DRM_KEY_MNG_SUPPORT))
 	hdmi_hdcp_drmkey key;
 #else
 	hdmi_hdcp_key key;

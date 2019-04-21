@@ -179,6 +179,11 @@ void aee_rr_proc_done(struct proc_dir_entry *aed_proc_dir);
 void dram_console_init(struct proc_dir_entry *aed_proc_dir);
 void dram_console_done(struct proc_dir_entry *aed_proc_dir);
 
+#ifdef CONFIG_MTK_AEE_IPANIC
 struct aee_oops *ipanic_oops_copy(void);
 void ipanic_oops_free(struct aee_oops *oops, int erase);
+#else
+static inline struct aee_oops *ipanic_oops_copy(void) { return NULL; }
+static inline void ipanic_oops_free(struct aee_oops *oops, int erase) {}
+#endif
 #endif

@@ -111,6 +111,10 @@
 #include <linux/musb/mtk_musb.h>
 #endif
 
+int musb_host_dynamic_fifo = 1;
+int musb_host_dynamic_fifo_usage_msk;
+module_param(musb_host_dynamic_fifo, int, 0644);
+module_param(musb_host_dynamic_fifo_usage_msk, int, 0644);
 
 
 
@@ -158,6 +162,12 @@ MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" MUSB_DRIVER_NAME);
 
+void musb_bug(void)
+{
+	/* make KE happen */
+	char *ptr = NULL;
+	*ptr = 10;
+}
 void dumpTime(writeFunc_enum func, int epnum)
 {
 #if 0
@@ -855,6 +865,8 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 
 		musb->ep0_stage = MUSB_EP0_START;
 
+		if (musb_host_dynamic_fifo)
+			musb_host_dynamic_fifo_usage_msk = 0;
 		/* flush endpoints when transitioning from Device Mode */
 		if (is_peripheral_active(musb)) {
 			/* REVISIT HNP; just force disconnect */
@@ -1436,6 +1448,8 @@ int ep_config_from_table_for_host(struct musb *musb)
 	unsigned		i, n;
 	int			offset;
 	struct musb_hw_ep	*hw_ep = musb->endpoints;
+	if (musb_host_dynamic_fifo)
+		musb_host_dynamic_fifo_usage_msk = 0;
 	if (musb->fifo_cfg_host) {
 		cfg = musb->fifo_cfg_host;
 		n = musb->fifo_cfg_host_size;

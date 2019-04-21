@@ -1,45 +1,14 @@
-/*
- * Copyright (C) 2007 The Android Open Source Project
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
-/*******************************************************************************
- *
- * Filename:
- * ---------
- *   AudDrv_Ana.h
- *
- * Project:
- * --------
- *   MT6397 Audio Driver Digital/Analog
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- *   Luke Liu
- *   Daniel Hsiao (mtk00469)
- *   Chipeng Chang (mtk02308)
- *
- *------------------------------------------------------------------------------
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
- *******************************************************************************/
 
 #ifndef _AUDDRV_ANA_H_
 #define _AUDDRV_ANA_H_
@@ -69,7 +38,7 @@
 /*****************************************************************************
  *                  R E G I S T E R       D E F I N I T I O N
  *****************************************************************************/
- 
+
 //---------------digital pmic register define start -------------------------------------------
 #define AFE_PMICDIG_AUDIO_BASE        (0x4000)
 #define AFE_UL_DL_CON0               (AFE_PMICDIG_AUDIO_BASE+0x0000)
@@ -107,10 +76,6 @@
 #define AFE_SGEN_CFG0               (AFE_PMICDIG_AUDIO_BASE + 0x0040)
 #define AFE_SGEN_CFG1               (AFE_PMICDIG_AUDIO_BASE + 0x0042)
 //---------------digital pmic  register define end ---------------------------------------
-
-/* The valid range of audio digital hardware in PMIC */
-#define AFE_ADDR_START	AFE_UL_DL_CON0
-#define AFE_ADDR_END		AFE_SGEN_CFG1
 
 //---------------analog pmic  register define start --------------------------------------
 #if 0
@@ -177,8 +142,6 @@
 #include <mach/upmu_hw.h>
 #endif
 
-/* The valid range of audio analog hardware in PMIC */
-#define AUDTOP_MAX_ADDR_OFFSET		(0x079A)
 //---------------analog pmic register define end ---------------------------------------
 
 typedef struct

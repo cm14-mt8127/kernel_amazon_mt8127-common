@@ -684,13 +684,13 @@ static IST_EVENT_FUNCTION apfnEventFuncTable[] = {
  */
 #define LOCAL_NIC_ALLOCATE_MEMORY(pucMem, u4Size, eMemType, pucComment) \
         { \
-            DBGLOG(INIT, INFO, ("Allocating %u bytes for %s.\n", u4Size, pucComment)); \
+            DBGLOG(INIT, TRACE, ("Allocating %u bytes for %s.\n", u4Size, pucComment)); \
             if ((pucMem = (PUINT_8)kalMemAlloc(u4Size, eMemType)) == (PUINT_8)NULL) { \
                 DBGLOG(INIT, ERROR, ("Could not allocate %u bytes for %s.\n", u4Size, pucComment)); \
                 break; \
             } \
             ASSERT(((ULONG)pucMem % 4) == 0); \
-            DBGLOG(INIT, INFO, ("Virtual Address = %p for %s.\n", pucMem, pucComment)); \
+            DBGLOG(INIT, TRACE, ("Virtual Address = %p for %s.\n", pucMem, pucComment)); \
         }
 
 
@@ -1239,8 +1239,8 @@ nicVerifyChipID (
 
     HAL_MCR_RD(prAdapter, MCR_WCIR, &u4CIR );
 
-    DBGLOG(INIT, TRACE,("Chip ID: 0x%x\n", (UINT_32)(u4CIR & WCIR_CHIP_ID)));
-    DBGLOG(INIT, TRACE,("Revision ID: 0x%x\n", (UINT_32)((u4CIR & WCIR_REVISION_ID) >> 16)));
+    DBGLOG(INIT, INFO,("Chip ID: 0x%x\n", (UINT_32)(u4CIR & WCIR_CHIP_ID)));
+    DBGLOG(INIT, INFO,("Revision ID: 0x%x\n", (UINT_32)((u4CIR & WCIR_REVISION_ID) >> 16)));
 
 #if 0
     if (((u4CIR & WCIR_CHIP_ID) != MTK_CHIP_REV_72) &&
@@ -1381,6 +1381,10 @@ nicProcessAbnormalInterrupt (
     UINT_32 u4Value;
 
     HAL_MCR_RD(prAdapter, MCR_WASR, &u4Value);
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+	nicUpdateWakeupStatistics(prAdapter, ABNORMAL_INT);
+#endif
+
     DBGLOG(REQ, WARN, ("MCR_WASR: 0x%x \n", u4Value));
 }
 
@@ -1446,6 +1450,10 @@ nicProcessSoftwareInterrupt(
             kalSetEvent(prAdapter->prGlueInfo);
         }
     }
+#endif
+
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+		nicUpdateWakeupStatistics(prAdapter, SOFTWARE_INT);
 #endif
 
     DBGLOG(REQ, WARN, ("u4IntrBits: 0x%x \n", u4IntrBits));
@@ -2172,7 +2180,8 @@ nicDeactivateNetwork(
 WLAN_STATUS
 nicUpdateBss(
     IN P_ADAPTER_T prAdapter,
-    IN ENUM_NETWORK_TYPE_INDEX_T eNetworkTypeIdx
+    IN ENUM_NETWORK_TYPE_INDEX_T eNetworkTypeIdx,
+    IN UINT_8 ucStaNoClear
     )
 {
     WLAN_STATUS u4Status;
@@ -2246,6 +2255,7 @@ nicUpdateBss(
             prBssInfo->eCurrentOPMode == OP_MODE_INFRASTRUCTURE &&
             prBssInfo->prStaRecOfAP != NULL) {
         rCmdSetBssInfo.ucStaRecIdxOfAP          = prBssInfo->prStaRecOfAP->ucIndex;
+		rCmdSetBssInfo.ucStaRecNoClear 		    = ucStaNoClear;
 
         cnmAisInfraConnectNotify(prAdapter);
     }
@@ -2255,6 +2265,7 @@ nicUpdateBss(
             (prBssInfo->eCurrentOPMode == OP_MODE_INFRASTRUCTURE) &&
             (prBssInfo->prStaRecOfAP != NULL)) {
         rCmdSetBssInfo.ucStaRecIdxOfAP = prBssInfo->prStaRecOfAP->ucIndex;
+		rCmdSetBssInfo.ucStaRecNoClear 		    = STA_REC_INDEX_NOT_FOUND;
     }
 #endif
 
@@ -2263,10 +2274,12 @@ nicUpdateBss(
             prBssInfo->eCurrentOPMode == OP_MODE_BOW &&
             prBssInfo->prStaRecOfAP != NULL) {
         rCmdSetBssInfo.ucStaRecIdxOfAP = prBssInfo->prStaRecOfAP->ucIndex;
+		rCmdSetBssInfo.ucStaRecNoClear 		    = STA_REC_INDEX_NOT_FOUND;
     }
 #endif
     else {
         rCmdSetBssInfo.ucStaRecIdxOfAP              = STA_REC_INDEX_NOT_FOUND;
+		rCmdSetBssInfo.ucStaRecNoClear 		    = STA_REC_INDEX_NOT_FOUND;
     }
 
     u4Status = wlanSendSetQueryCmd(prAdapter,
@@ -2460,7 +2473,7 @@ nicConfigPowerSaveProfile (
     )
 {
     DEBUGFUNC("nicConfigPowerSaveProfile");
-    DBGLOG(INIT, TRACE, ("eNetTypeIndex:%d, ePwrMode:%d, fgEnCmdEvent:%d\n",
+    DBGLOG(INIT, INFO, ("eNetTypeIndex:%d, ePwrMode:%d, fgEnCmdEvent:%d\n",
                     eNetTypeIndex, ePwrMode, fgEnCmdEvent));
 
     ASSERT(prAdapter);
@@ -4668,6 +4681,27 @@ nicUpdateRddTestMode(
             (PUINT_8)prRddChParam,
             NULL,
             0);
+}
+#endif
+
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+INT_32 nicUpdateWakeupStatistics(P_ADAPTER_T prAdapter, WAKEUP_TYPE intType)
+{
+	P_WAKEUP_STATISTIC *prWakeupSta = &prAdapter->arWakeupStatistic[intType];
+	if (glWlanGetSuspendFlag() == 0)
+		return 0;
+	prWakeupSta->u2Count++;
+	glWlanClearSuspendFlag();
+	if (prWakeupSta->u2Count % 100 == 0) {
+		OS_SYSTIME rCurrent;
+		if (prWakeupSta->u2Count > 0) {
+			GET_CURRENT_SYSTIME(&rCurrent);
+			prWakeupSta->u2TimePerHundred = rCurrent-prWakeupSta->rStartTime;
+		}
+		GET_CURRENT_SYSTIME(&prWakeupSta->rStartTime)
+		DBGLOG(RX, INFO, ("wakeup frequency: %d", prWakeupSta->u2TimePerHundred));
+	}
+	return 1;
 }
 #endif
 

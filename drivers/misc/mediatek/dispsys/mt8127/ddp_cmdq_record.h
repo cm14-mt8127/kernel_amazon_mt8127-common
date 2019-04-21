@@ -137,7 +137,8 @@ typedef struct cmdqRecStruct
     struct TaskStruct *pRunningTask;     // running task after flush() or startLoop()
     CMDQ_HW_THREAD_PRIORITY_ENUM  priority; // setting high priority. This implies Prefetch ENABLE.
     bool     finalized;           // set to true after flush() or startLoop()
-    uint32_t prefetchCount;       // maintainence prefetch instruction    
+    uint32_t prefetchCount;       // maintainence prefetch instruction, not support util ROME
+    
     cmdqSecDataStruct secData;     // metadata about secure command
 } cmdqRecStruct, *cmdqRecHandle;
 

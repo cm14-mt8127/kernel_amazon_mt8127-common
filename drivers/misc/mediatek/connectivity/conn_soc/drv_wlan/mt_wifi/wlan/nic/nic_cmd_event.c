@@ -333,6 +333,36 @@
 */
 
 VOID
+nicCmdEventTsfRead (
+    IN P_ADAPTER_T  prAdapter,
+    IN P_CMD_INFO_T prCmdInfo,
+    IN PUINT_8      pucEventBuf
+    )
+{
+    UINT_32 u4QueryInfoLen;
+    P_CMD_TSF_GET_T prTsfRdInfo;
+    P_GLUE_INFO_T prGlueInfo;
+
+
+    ASSERT(prAdapter);
+    ASSERT(prCmdInfo);
+    ASSERT(pucEventBuf);
+    //4 <2> Update information of OID
+    if (prCmdInfo->fgIsOid) {
+        prGlueInfo = prAdapter->prGlueInfo;
+        prTsfRdInfo = (P_CMD_TSF_GET_T)(pucEventBuf);
+        u4QueryInfoLen = sizeof(CMD_TSF_GET_T);
+		kalMemCopy(prCmdInfo->pvInformationBuffer, prTsfRdInfo, u4QueryInfoLen);
+        kalOidComplete(prGlueInfo, prCmdInfo->fgSetQuery, u4QueryInfoLen, WLAN_STATUS_SUCCESS);
+    }
+
+    return;
+
+}
+
+
+
+VOID
 nicCmdEventQueryMcrRead (
     IN P_ADAPTER_T  prAdapter,
     IN P_CMD_INFO_T prCmdInfo,
@@ -340,7 +370,7 @@ nicCmdEventQueryMcrRead (
     )
 {
     UINT_32 u4QueryInfoLen;
-    P_PARAM_CUSTOM_MCR_RW_STRUC_T prMcrRdInfo;
+    P_PARAM_CUSTOM_MCR_RW_STRUCT_T prMcrRdInfo;
     P_GLUE_INFO_T prGlueInfo;
     P_CMD_ACCESS_REG prCmdAccessReg;
 
@@ -354,9 +384,9 @@ nicCmdEventQueryMcrRead (
         prGlueInfo = prAdapter->prGlueInfo;
         prCmdAccessReg = (P_CMD_ACCESS_REG)(pucEventBuf);
 
-        u4QueryInfoLen = sizeof(PARAM_CUSTOM_MCR_RW_STRUC_T);
+        u4QueryInfoLen = sizeof(PARAM_CUSTOM_MCR_RW_STRUCT_T);
 
-        prMcrRdInfo = (P_PARAM_CUSTOM_MCR_RW_STRUC_T) prCmdInfo->pvInformationBuffer;
+        prMcrRdInfo = (P_PARAM_CUSTOM_MCR_RW_STRUCT_T) prCmdInfo->pvInformationBuffer;
         prMcrRdInfo->u4McrOffset = prCmdAccessReg->u4Address;
         prMcrRdInfo->u4McrData = prCmdAccessReg->u4Data;
 
@@ -376,7 +406,7 @@ nicCmdEventQuerySwCtrlRead (
     )
 {
     UINT_32 u4QueryInfoLen;
-    P_PARAM_CUSTOM_SW_CTRL_STRUC_T prSwCtrlInfo;
+    P_PARAM_CUSTOM_SW_CTRL_STRUCT_T prSwCtrlInfo;
     P_GLUE_INFO_T prGlueInfo;
     P_CMD_SW_DBG_CTRL_T prCmdSwCtrl;
 
@@ -389,9 +419,9 @@ nicCmdEventQuerySwCtrlRead (
         prGlueInfo = prAdapter->prGlueInfo;
         prCmdSwCtrl = (P_CMD_SW_DBG_CTRL_T)(pucEventBuf);
 
-        u4QueryInfoLen = sizeof(PARAM_CUSTOM_SW_CTRL_STRUC_T);
+        u4QueryInfoLen = sizeof(PARAM_CUSTOM_SW_CTRL_STRUCT_T);
 
-        prSwCtrlInfo = (P_PARAM_CUSTOM_SW_CTRL_STRUC_T) prCmdInfo->pvInformationBuffer;
+        prSwCtrlInfo = (P_PARAM_CUSTOM_SW_CTRL_STRUCT_T) prCmdInfo->pvInformationBuffer;
         prSwCtrlInfo->u4Id = prCmdSwCtrl->u4Id;
         prSwCtrlInfo->u4Data = prCmdSwCtrl->u4Data;
 

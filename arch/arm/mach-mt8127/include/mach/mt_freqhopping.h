@@ -31,11 +31,7 @@
 #define VERBOSE_DEBUG 0
 
 #if 1//VERBOSE_DEBUG
-#define FH_MSG(fmt, args...) \
-do {    \
-		printk( FHTAG""fmt" <- %s(): L<%d>  PID<%s><%d>\n", \
-            	##args ,__FUNCTION__,__LINE__,current->comm,current->pid); \
-} while(0);
+#define FH_MSG(fmt, args...)
 #else
 
 #if 1 //log level is 6 xlog

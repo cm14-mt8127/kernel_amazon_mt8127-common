@@ -1,34 +1,15 @@
-/*******************************************************************************
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Filename:
- * ---------
- *  auddrv_ioctl.h
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Project:
- * --------
- *   Android Audio Driver
- *
- * Description:
- * ------------
- *   ioctl control message
- *
- * Author:
- * -------
- *   Chipeng    (mtk02308)
- *
- *
- *------------------------------------------------------------------------------
- * $Revision$
- * $Modtime:$
- * $Log:$
- *
- * 09 28 2011 weiguo.li
- * [ALPS00076254] [Need Patch] [Volunteer Patch]LGE audio driver using Voicebuffer for incall
- * .
- *
- *
- *
- *******************************************************************************/
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef _AUDDRV_IOCTL_MSG_H
 #define _AUDDRV_IOCTL_MSG_H
 
@@ -59,6 +40,7 @@
 #define AUDDRV_GET_UL_REMAINDATA_TIME   _IOWR(AUD_DRV_IOC_MAGIC, 0x0B, int)
 // used audio get time stamp
 #define AUDDRV_AUDIO_REMAINING    _IOWR(AUD_DRV_IOC_MAGIC, 0x0C, struct Data_Remaining*)
+#define AUDDRV_AUDIO_CAPTURE_REMAINING    _IOWR(AUD_DRV_IOC_MAGIC, 0x0D, struct Data_Remaining*)
 
 // Allocate mean allocate buffer and set stream into ready state.
 #define ALLOCATE_MEMIF_DL1           _IOWR(AUD_DRV_IOC_MAGIC, 0x10,unsigned int)

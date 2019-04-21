@@ -62,7 +62,7 @@ UINT32 gDbgLevel = WIFI_LOG_DBG;
 
 
 #define WLAN_IFACE_NAME "wlan0"
-#if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+#if CFG_TC1_FEATURE
 #define LEGACY_IFACE_NAME "legacy0"
 #endif
 
@@ -72,10 +72,14 @@ enum {
     WLAN_MODE_STA_P2P,
     WLAN_MODE_MAX
 };
+
+#define POWER_RECOVERING 0xFDEAD
+static int recovery_state = 0;
 static INT32 wlan_mode = WLAN_MODE_HALT;
 static INT32 powered = 0;
 static INT8 *ifname = WLAN_IFACE_NAME;
-#if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+static wait_queue_head_t recover_waitq;
+#if CFG_TC1_FEATURE
 volatile INT32 wlan_if_changed = 0;
 EXPORT_SYMBOL(wlan_if_changed);
 #endif
@@ -166,7 +170,7 @@ module_param(WIFI_major, uint, 0);
 static struct cdev WIFI_cdev;
 volatile INT32 retflag = 0;
 static struct semaphore wr_mtx;
-
+static struct semaphore recovery_mtx;
 
 /*******************************************************************
  *  WHOLE CHIP RESET PROCEDURE:
@@ -187,7 +191,7 @@ INT32 wifi_reset_start(VOID)
     struct net_device *netdev = NULL;
     PARAM_CUSTOM_P2P_SET_STRUC_T p2pmode;
 
-    down(&wr_mtx);
+    down(&recovery_mtx);
 
     if (powered == 1) {
         netdev = dev_get_by_name(&init_net, ifname);
@@ -200,9 +204,9 @@ INT32 wifi_reset_start(VOID)
 
             if (pf_set_p2p_mode) {
                 if (pf_set_p2p_mode(netdev, p2pmode) != 0){
-                    WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
+                    WIFI_ERR_FUNC("Turn off p2p/ap mode fail\n");
                 } else {
-                    WIFI_INFO_FUNC("Turn off p2p/ap mode");
+                    WIFI_INFO_FUNC("Turn off p2p/ap mode\n");
                 }
             }
             dev_put(netdev);
@@ -210,7 +214,7 @@ INT32 wifi_reset_start(VOID)
         }
     }
     else {
-        /* WIFI is off before whole chip reset, do nothing */
+		WIFI_INFO_FUNC("WIFI is off before whole chip reset, do nothing\n");
     }
 
     return 0;
@@ -224,80 +228,96 @@ EXPORT_SYMBOL(wifi_reset_start);
 /*-----------------------------------------------------------------*/
 INT32 wifi_reset_end(ENUM_RESET_STATUS_T status)
 {
-    struct net_device *netdev = NULL;
-    PARAM_CUSTOM_P2P_SET_STRUC_T p2pmode;
-    INT32 wait_cnt = 0;
-    INT32 ret = -1;
+	struct net_device *netdev = NULL;
+	PARAM_CUSTOM_P2P_SET_STRUC_T p2pmode;
+	INT32 wait_cnt = 0;
+	INT32 ret = -1;
 
-    if (status == RESET_FAIL) {
-        /* whole chip reset fail, donot recover WIFI */
-        ret = 0;
-        up(&wr_mtx);
-    }
-    else if (status == RESET_SUCCESS) {
-        WIFI_WARN_FUNC("WIFI state recovering...\n");
+	if (status == RESET_FAIL) {
+		/* whole chip reset fail, donot recover WIFI */
+		if (recovery_state == POWER_RECOVERING) {
+			/* WIFI is doing recovery wakeup userspace thread */
+			WIFI_INFO_FUNC("Chip reset failed, wakeup userspace thread\n");
+			recovery_state = 0;
+			wake_up_interruptible(&recover_waitq);
+		}
 
-        if (powered == 1) {
-            /* WIFI is on before whole chip reset, reopen it now */
-            if (MTK_WCN_BOOL_FALSE == mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI)) {
-                WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
-                goto done;
-            }
-            else {
-                WIFI_INFO_FUNC("WMT turn on WIFI success!\n");
-            }
+		ret = 0;
+		up(&recovery_mtx);
+	} else if (status == RESET_SUCCESS) {
+		WIFI_WARN_FUNC("WIFI state recovering...\n");
 
-            if (pf_set_p2p_mode == NULL) {
-                WIFI_ERR_FUNC("Set p2p mode handler is NULL\n");
-                goto done;
-            }
+		if (powered == 1) {
+			/* WIFI is on before whole chip reset, reopen it now */
+			if (MTK_WCN_BOOL_FALSE == mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI)) {
+				WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
+				goto done;
+			} else {
+				WIFI_INFO_FUNC("WMT turn on WIFI success!\n");
+			}
 
-            netdev = dev_get_by_name(&init_net, ifname);
-            while (netdev == NULL && wait_cnt < 10) {
-                WIFI_ERR_FUNC("Fail to get %s net device, sleep 300ms\n", ifname);
-                msleep(300);
-                wait_cnt ++;
-                netdev = dev_get_by_name(&init_net, ifname);
-            }
-            if (wait_cnt >= 10) {
-                WIFI_ERR_FUNC("Get %s net device timeout\n", ifname);
-                goto done;
-            }
+			if (pf_set_p2p_mode == NULL) {
+				WIFI_ERR_FUNC("Set p2p mode handler is NULL\n");
+				goto done;
+			}
 
-            if (wlan_mode == WLAN_MODE_STA_P2P){
-                p2pmode.u4Enable = 1;
-                p2pmode.u4Mode = 0;
-                if (pf_set_p2p_mode(netdev, p2pmode) != 0){
-                    WIFI_ERR_FUNC("Set wlan mode fail\n");
-                }
-                else{
-                    WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_STA_P2P);
-                    ret = 0;
-                }
-            } else if (wlan_mode == WLAN_MODE_AP){
-                p2pmode.u4Enable = 1;
-                p2pmode.u4Mode = 1;
-                if (pf_set_p2p_mode(netdev, p2pmode) != 0){
-                    WIFI_ERR_FUNC("Set wlan mode fail\n");
-                }
-                else{
-                    WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_AP);
-                    ret = 0;
-                }
-            }
+			netdev = dev_get_by_name(&init_net, ifname);
+			while (netdev == NULL && wait_cnt < 10) {
+				WIFI_ERR_FUNC("Fail to get %s net device, sleep 300ms\n", ifname);
+				msleep(300);
+				wait_cnt ++;
+				netdev = dev_get_by_name(&init_net, ifname);
+			}
+			if (wait_cnt >= 10) {
+				WIFI_ERR_FUNC("Get %s net device timeout\n", ifname);
+				goto done;
+			}
+
+			if (wlan_mode == WLAN_MODE_STA_P2P){
+				p2pmode.u4Enable = 1;
+				p2pmode.u4Mode = 0;
+				if (pf_set_p2p_mode(netdev, p2pmode) != 0){
+					WIFI_ERR_FUNC("Set wlan mode fail\n");
+				} else{
+					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_STA_P2P);
+					ret = 0;
+				}
+			} else if (wlan_mode == WLAN_MODE_AP){
+				p2pmode.u4Enable = 1;
+				p2pmode.u4Mode = 1;
+				if (pf_set_p2p_mode(netdev, p2pmode) != 0){
+					WIFI_ERR_FUNC("Set wlan mode fail\n");
+				} else{
+					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_AP);
+					ret = 0;
+				}
+			}
+			if (recovery_state == POWER_RECOVERING) {
+				/* WIFI is doing recovery wakeup userspace thread */
+				WIFI_INFO_FUNC("Powered Wifi Rcovery end, wakeup userspace thread\n");
+				recovery_state = 0;
+				wake_up_interruptible(&recover_waitq);
+				ret = 0;
+			}
 done:
-            if (netdev != NULL){
-                dev_put(netdev);
-            }
-        }
-        else {
-            /* WIFI is off before whole chip reset, do nothing */
-            ret = 0;
-        }
-        up(&wr_mtx);
-    }
+			if (netdev != NULL){
+				dev_put(netdev);
+			}
+		}  else if (recovery_state == POWER_RECOVERING){
+			/* WIFI is doing recovery wakeup userspace thread */
+			WIFI_INFO_FUNC("Wifi Rcovery end, wakeup userspace thread\n");
+			recovery_state = 0;
+			wake_up_interruptible(&recover_waitq);
+			ret = 0;
+		} else {
+			/* WIFI is off before whole chip reset, do nothing */
+			WIFI_INFO_FUNC("WIFI is off before whole chip reset, do nothing \n");
 
-    return ret;
+			ret = 0;
+		}
+		up(&recovery_mtx);
+	}
+	return ret;
 }
 EXPORT_SYMBOL(wifi_reset_end);
 
@@ -332,6 +352,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
     struct net_device *netdev = NULL;
     PARAM_CUSTOM_P2P_SET_STRUC_T p2pmode;
     INT32 wait_cnt = 0;
+	long timeout = 0;
 
     down(&wr_mtx);
     if (count <= 0) {
@@ -380,7 +401,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
                 powered = 0;
                 retval = count;
                 wlan_mode = WLAN_MODE_HALT;
-            #if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+            #if CFG_TC1_FEATURE
                 ifname = WLAN_IFACE_NAME;
                 wlan_if_changed = 0;
             #endif
@@ -399,7 +420,9 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
             }
 
             if (MTK_WCN_BOOL_FALSE == mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI)) {
-                WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
+                WIFI_ERR_FUNC("WMT turn on WIFI fail!, should do chip reset\n");
+                retval = 0xDEAD;
+
             }
             else {
                 powered = 1;
@@ -407,8 +430,29 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
                 WIFI_INFO_FUNC("WMT turn on WIFI success!\n");
                 wlan_mode = WLAN_MODE_HALT;
             }
-        }
-        else if (local[0] == 'D') {
+        } else if (local[0] == '2') {
+             /*
+              * power 2 means should do chip recovery as previous 
+              * power 1 failed
+              */
+            WIFI_INFO_FUNC("WMT WIFI before chip reset\n");
+            recovery_state = POWER_RECOVERING;
+            mtk_wcn_wmt_do_reset(WMTDRV_TYPE_WIFI);
+
+            timeout = wait_event_interruptible_timeout(recover_waitq,
+                                   (recovery_state != POWER_RECOVERING),
+                                   (10 * HZ));
+            if (timeout == 0) {
+                WIFI_ERR_FUNC("WMT WIFI recover timeout\n");
+                recovery_state = 0;
+            }
+            if (timeout < 0) {
+                recovery_state = 0;
+                WIFI_INFO_FUNC("WMT WIFI recover wait error\n");
+            }
+            WIFI_INFO_FUNC("WMT WIFI after chip reset\n");
+            retval = count;
+        } else if (local[0] == 'D') {
             INT32 k = 0;
             /* 
              * 0: no debug
@@ -538,7 +582,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
             }
 
             if (local[0] == 'S' || local[0] == 'P'){
-            #if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+            #if CFG_TC1_FEATURE
                 /* Restore NIC name to wlan0 */
                 rtnl_lock();
                 if (strcmp(ifname, WLAN_IFACE_NAME) != 0){
@@ -566,7 +610,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
                     retval = count;
                 }
             } else if (local[0] == 'A'){
-            #if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+            #if CFG_TC1_FEATURE
                 /* Change NIC name to legacy0, since wlan0 is used for AP */
                 rtnl_lock();
                 if (strcmp(ifname, LEGACY_IFACE_NAME) != 0){
@@ -651,6 +695,9 @@ static int WIFI_init(void)
 #endif
 
     sema_init(&wr_mtx, 1);
+    sema_init(&recovery_mtx, 1);
+
+    init_waitqueue_head(&recover_waitq);
 
     WIFI_INFO_FUNC("%s driver(major %d) installed.\n", WIFI_DRIVER_NAME, WIFI_major);
     retflag = 0;

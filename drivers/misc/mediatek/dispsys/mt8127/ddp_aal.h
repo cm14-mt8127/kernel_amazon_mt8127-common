@@ -71,4 +71,6 @@ int disp_is_aal_config(void);
 
 void disp_aal_reset(void);
 
+int disp_disable_aal_service(void);
+
 #endif

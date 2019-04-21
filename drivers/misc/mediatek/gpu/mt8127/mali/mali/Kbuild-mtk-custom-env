@@ -1,3 +1,15 @@
+#
+# Copyright (C) 2015 MediaTek Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
 #clouds add
 VER:=eng
 ifneq ($(strip $(TARGET_BUILD_VARIANT)),)
@@ -28,8 +40,8 @@ endif
 #CONFIG_PM_RUNTIME := y
 CONFIG_DMA_SHARED_BUFFER := y
 #CONFIG_MALI400_UMP := y
-#CONFIG_MALI400_PROFILING := y
-#CONFIG_MALI400_INTERNAL_PROFILING := y
+CONFIG_MALI400_PROFILING := y
+CONFIG_MALI400_INTERNAL_PROFILING := y
 
 CONFIG_SYNC := y
 ccflags-y += -DCONFIG_SYNC

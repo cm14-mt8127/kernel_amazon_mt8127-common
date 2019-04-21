@@ -1,45 +1,14 @@
-/*
- * Copyright (C) 2007 The Android Open Source Project
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
-/*******************************************************************************
- *
- * Filename:
- * ---------
- *   AudioAfe.h
- *
- * Project:
- * --------
- *   MT8127  Audio Driver Afe Register setting
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- *   Ir Lian (mtk00976)
- *   Harvey Huang (mtk03996)
- *   Chipeng Chang (mtk02308)
- *
- *------------------------------------------------------------------------------
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
- *******************************************************************************/
 
 #ifndef _AUDDRV_AFE_H_
 #define _AUDDRV_AFE_H_
@@ -608,6 +577,8 @@ typedef struct
 #define AFE_ASRC_CON20   (AFE_BASE + 0x56C)
 #define AFE_ASRC_CON21   (AFE_BASE + 0x570)
 
+/* The maximum address offset of Audio Front End */
+#define AFE_MAX_ADDR_OFFSET	(0x570)
 
 /**********************************
  *  Detailed Definitions
@@ -917,8 +888,6 @@ typedef struct
 #define AUDPLL_TUNER_EN_LEN      1
 #define AUDPLL_TUNER_EN_MASK     0x80000000
 
-/* The maximum address offset of Audio Front End */
-#define AFE_MAX_ADDR_OFFSET	(0x570)
 #define CLK_APLL_SEL_POS     16
 #define CLK_APLL_SEL_LEN     3
 #define CLKSQ_MUX_CK     0

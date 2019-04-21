@@ -505,7 +505,25 @@ int Disp_Ovl_Engine_Ack_Request(struct disp_ovl_engine_request_struct *overlayRe
 }
 #endif
 
+#if 1 //def monica_porting
+void Disp_Ovl_Engine_clock_on(void)
+{
+	/* porting from abc123 */
+	/*if (!disp_ovl_engine.bCouple) {
+		//disp_module_clock_on(DISP_MODULE_GAMMA, "DDP");
+		disp_module_clock_on(DISP_MODULE_WDMA, "DDP");
+	}*/
+}
 
+void Disp_Ovl_Engine_clock_off(void)
+{
+	/* porting from abc123 */
+	/*if (!disp_ovl_engine.bCouple) {
+		//disp_module_clock_off(DISP_MODULE_GAMMA, "DDP");
+		disp_module_clock_off(DISP_MODULE_WDMA, "DDP");
+	}*/
+}
+#endif
 unsigned long disp_ovl_engine_get_current_time_us(void)
 {
     struct timeval t;
@@ -514,41 +532,44 @@ unsigned long disp_ovl_engine_get_current_time_us(void)
 }
 
 void disp_ovl_engine_wake_up_rdma0_update_thread(void)
-{    
+{
     gWakeupRdma0UpdateThread = 1;
     wake_up(&disp_rdma0_update_wq);
 }
-
+extern struct semaphore sem_early_suspend;		///JIRA-1372
 static int disp_ovl_engine_rdma0_update_kthread(void *data)
 {
     int wait_ret = 0;
     struct sched_param param = { .sched_priority = RTPM_PRIO_SCRN_UPDATE };
-    
+
     sched_setscheduler(current, SCHED_RR, &param);
-    
+
     while(1)
     {
-		//DISP_OVL_ENGINE_DBG("wait_event_interruptible\n");
+	//DISP_OVL_ENGINE_DBG("wait_event_interruptible\n");
 
         wait_ret = wait_event_interruptible(disp_rdma0_update_wq, gWakeupRdma0UpdateThread);
         gWakeupRdma0UpdateThread = 0;
 
-		//DISP_OVL_ENGINE_DBG("disp_ovl_engine_rdma0_update_kthread wake_up\n");
+	//DISP_OVL_ENGINE_DBG("disp_ovl_engine_rdma0_update_kthread wake_up\n");
+	if (is_early_suspended)
+		continue;
 
-		if(down_interruptible(&disp_rdma0_update_semaphore)) 
+	if(down_interruptible(&sem_early_suspend)) 
+	//if(down_interruptible(&disp_rdma0_update_semaphore)) 
         {
-			DISP_OVL_ENGINE_ERR("disp_ovl_engine_rdma0_update_kthread down_interruptible(disp_rdma0_update_semaphore) fail\n");
-            continue;
-		}
+		DISP_OVL_ENGINE_ERR("disp_ovl_engine_rdma0_update_kthread down_interruptible(disp_rdma0_update_semaphore) fail\n");
+		continue;
+	}
 
         disp_ovl_engine_update_rdma0();
         
-        up(&disp_rdma0_update_semaphore);
-        
+	up(&sem_early_suspend);
+        //up(&disp_rdma0_update_semaphore);
+
         if (kthread_should_stop())
             break;
     }
-    
     return OVL_OK;
 }
 

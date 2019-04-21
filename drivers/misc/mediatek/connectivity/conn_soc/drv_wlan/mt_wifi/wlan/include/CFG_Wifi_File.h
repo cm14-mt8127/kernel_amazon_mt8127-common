@@ -191,6 +191,20 @@ typedef struct _MT6620_CFG_PARAM_STRUCT {
 } MT6620_CFG_PARAM_STRUCT, *P_MT6620_CFG_PARAM_STRUCT,
     WIFI_CFG_PARAM_STRUCT, *P_WIFI_CFG_PARAM_STRUCT;
 
+typedef struct _BANDEDGE_5G_T {
+	UINT_8 uc5GBandEdgePwrUsed;
+	UINT_8 c5GBandEdgeMaxPwrOFDM20;
+	UINT_8 c5GBandEdgeMaxPwrOFDM40;
+
+} BANDEDGE_5G_T, *P_BANDEDGE_5G_T;
+
+typedef struct _BANDEDGE_2G_T {
+	UINT_8 fg2G4BandEdgePwrUsed;
+	INT_8 cBandEdgeMaxPwrCCK;
+	INT_8 cBandEdgeMaxPwrOFDM20;
+	INT_8 cBandEdgeMaxPwrOFDM40;
+} BANDEDGE_2G_T, *P_BANDEDGE_2G_T;
+
 /*******************************************************************************
 *                           P R I V A T E   D A T A
 ********************************************************************************

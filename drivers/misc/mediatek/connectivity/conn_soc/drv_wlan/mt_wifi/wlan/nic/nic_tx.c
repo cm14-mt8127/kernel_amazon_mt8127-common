@@ -679,10 +679,11 @@ nicTxReleaseResource (
         for (i = 0; i < TC_NUM; i++) {
             prTxCtrl->rTc.aucFreeBufferCount[i] += aucTxRlsCnt[i];
         }
-		if (aucTxRlsCnt[TC4_INDEX] != 0 || aucTxRlsCnt[TC5_INDEX] != 0){
+
+        if (aucTxRlsCnt[TC4_INDEX] != 0 || aucTxRlsCnt[TC5_INDEX] != 0){
             DBGLOG(TX, STATE, ("Release: TC4 count %d, Free=%d; TC5 count %d, Free=%d\n",
-                aucTxRlsCnt[TC4_INDEX], prTxCtrl->rTc.aucFreeBufferCount[TC4_INDEX],
-                aucTxRlsCnt[TC5_INDEX], prTxCtrl->rTc.aucFreeBufferCount[TC5_INDEX]));
+                    aucTxRlsCnt[TC4_INDEX], prTxCtrl->rTc.aucFreeBufferCount[TC4_INDEX],
+                    aucTxRlsCnt[TC5_INDEX], prTxCtrl->rTc.aucFreeBufferCount[TC5_INDEX]));
         }
         KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_RESOURCE);
 #if 0
@@ -1947,6 +1948,9 @@ nicProcessTxInterrupt(
 #endif /* CFG_SDIO_INTR_ENHANCE */
 
     nicTxAdjustTcq(prAdapter);
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+	nicUpdateWakeupStatistics(prAdapter, TX_INT);
+#endif
 
     // Indicate Service Thread
     if(kalGetTxPendingCmdCount(prAdapter->prGlueInfo) > 0
@@ -2053,6 +2057,7 @@ nicTxReturnMsduInfo (
         }
 
         KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_MSDU_INFO_LIST);
+	prMsduInfo->fgIsBasicRate = FALSE;
         QUEUE_INSERT_TAIL(&prTxCtrl->rFreeMsduInfoList, (P_QUE_ENTRY_T)prMsduInfo);
         KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_MSDU_INFO_LIST);
         prMsduInfo = prNextMsduInfo;

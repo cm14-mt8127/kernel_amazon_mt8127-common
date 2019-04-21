@@ -2711,7 +2711,7 @@ int32_t cmdq_core_wait_task_done_with_interruptible_timeout(
             swTimeout, predump_start_time_ms, predump_duration_ms, predump_retry_count);
 
     timeout_ms = predump_start_time_ms;
-	waitQ = wait_event_interruptible_timeout(gCmdWaitQueue[thread], (TASK_STATE_BUSY != pTask->taskState), msecs_to_jiffies(timeout_ms));
+    waitQ = wait_event_interruptible_timeout(gCmdWaitQueue[thread], (TASK_STATE_BUSY != pTask->taskState), msecs_to_jiffies(timeout_ms));
 
     // if SW timeout, predump HW PC
     timeout_ms = predump_duration_ms; 

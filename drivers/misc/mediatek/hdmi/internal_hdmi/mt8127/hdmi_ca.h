@@ -1,6 +1,6 @@
 #ifndef _HDMI_CA_H_
 #define _HDMI_CA_H_
-#ifdef CONFIG_MTK_IN_HOUSE_TEE_SUPPORT
+#ifdef MTK_IN_HOUSE_TEE_SUPPORT
 
 bool fgCaHDMICreate(void);
 bool fgCaHDMIClose(void);

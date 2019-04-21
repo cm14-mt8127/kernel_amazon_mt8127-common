@@ -56,3 +56,7 @@ endif
 endif
 endif
 
+ifeq  ($(CONFIG_MTK_SN2871_SUPPORT),y)
+	obj-$(CONFIG_MTK_SMART_BATTERY) += sn2871.o charging_hw_sn2871.o
+endif
+

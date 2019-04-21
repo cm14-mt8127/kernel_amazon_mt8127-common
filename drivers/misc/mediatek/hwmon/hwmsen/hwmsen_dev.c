@@ -35,7 +35,12 @@
 #include <linux/hwmsen_dev.h>
 //add for fix resume issue
 #include <linux/earlysuspend.h> 
+#ifdef CONFIG_PM_WAKELOCKS
+#include <linux/pm_wakeup.h>
+#else
 #include <linux/wakelock.h>
+#endif
+
 //add for fix resume issue end
 
 #include <cust_alsps.h>
@@ -118,7 +123,11 @@ struct hwmdev_object {
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 	//add for fix resume issue
 	struct early_suspend    early_drv;
-	struct wake_lock        read_data_wake_lock;
+	#ifdef CONFIG_PM_WAKELOCKS
+	struct wakeup_source read_data_wake_lock;
+	#else
+	struct wake_lock read_data_wake_lock;
+	#endif
 	atomic_t                early_suspend;
 	//add for fix resume end
 #endif //#if defined(CONFIG_HAS_EARLYSUSPEND)
@@ -144,7 +153,7 @@ int hwmsen_aal_enable(int en)
 {
 	struct hwmsen_context *cxt = NULL;
 	int err = 0;
-	int enable = 0;
+
 	
 	if(!hwm_obj)
 	{
@@ -188,12 +197,11 @@ int hwmsen_aal_get_data()
 {
 	struct hwmsen_context *cxt = NULL;
 	int err = 0;
-	int enable = 0;
 	int out_size;
 	hwm_sensor_data sensor_data;
 	int als_data = 0;
 	
-	//HWM_LOG("hwmsen_aal_get_data1\n");
+	HWM_LOG("hwmsen_aal_get_data1\n");
 	if(!hwm_obj)
 	{
 		HWM_ERR("AAL hwmdev obj pointer is NULL!\n");
@@ -207,7 +215,7 @@ int hwmsen_aal_get_data()
 
 	mutex_lock(&hwm_obj->dc->lock);
 	cxt = hwm_obj->dc->cxt[ID_LIGHT];
-	//HWM_LOG("hwmsen_aal_get_data2\n");
+	HWM_LOG("hwmsen_aal_get_data2\n");
 	err = cxt->obj.sensor_operate(cxt->obj.self,SENSOR_GET_DATA, NULL, 0, 
 		&sensor_data, sizeof(hwm_sensor_data), &out_size);
 	if(err)
@@ -221,7 +229,7 @@ int hwmsen_aal_get_data()
 		als_data = sensor_data.values[0];
 	}
 	mutex_unlock(&hwm_obj->dc->lock);
-	//HWM_LOG("hwmsen_aal_get_data3\n");
+	HWM_LOG("hwmsen_aal_get_data3\n");
 	return als_data;
 }
 
@@ -265,7 +273,7 @@ static void hwmsen_work_func(struct work_struct *work)
 	
 	memset(&sensor_data, 0, sizeof(sensor_data));	
 	time.tv_sec = time.tv_nsec = 0;    
-	get_monotonic_boottime(&time);
+	time = get_monotonic_coarse(); 
 	nt = time.tv_sec*1000000000LL+time.tv_nsec;
 	//mutex_lock(&obj_data.lock);
 	for(idx = 0; idx < MAX_ANDROID_SENSOR_NUM; idx++)
@@ -287,7 +295,11 @@ static void hwmsen_work_func(struct work_struct *work)
 				obj_data.data_updata[idx] = 0;
 				mutex_unlock(&obj_data.lock);
 			}
-			continue;
+			//Evne if interrupt mode, try to take the initiative in querying a valid sensor data.
+			else if (obj_data.sensors_data[idx].values[0] != SENSOR_INVALID_VALUE)
+			{
+				continue;
+			}
 		}
 		
 		
@@ -340,12 +352,12 @@ static void hwmsen_work_func(struct work_struct *work)
 				if((sensor_data.values[0] != obj_data.sensors_data[idx].values[0]) 
 					|| (sensor_data.values[1] != obj_data.sensors_data[idx].values[1])
 					|| (sensor_data.values[2] != obj_data.sensors_data[idx].values[2])
-					|| (idx == ID_MAGNETIC) || (idx == ID_ACCELEROMETER))
+					|| (idx == ID_MAGNETIC) || (idx == ID_ACCELEROMETER)
+					|| (idx == ID_GYROSCOPE) || (idx == ID_ORIENTATION))
 				{	
-				    if( 0 == sensor_data.values[0] && 0==sensor_data.values[1] 
-						&& 0 == sensor_data.values[2])
+				    if((0 == sensor_data.values[0] && 0==sensor_data.values[1] 
+						&& 0 == sensor_data.values[2]) && (idx != ID_GYROSCOPE))
 				    {
-				    	
 				       continue;
 				    }
 					mutex_lock(&obj_data.lock);
@@ -443,7 +455,7 @@ int hwmsen_get_interrupt_data(int sensor, hwm_sensor_data *data)
 	else
 	{		
 		time.tv_sec = time.tv_nsec = 0;    
-		get_monotonic_boottime(&time);
+		time = get_monotonic_coarse(); 
 		nt = time.tv_sec*1000000000LL+time.tv_nsec;  
 		if((sensor == ID_LIGHT) ||(sensor == ID_PRESSURE) 
 			||(sensor == ID_PROXIMITY) || (sensor == ID_TEMPRERATURE))
@@ -602,11 +614,11 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 	uint32_t sensor_type;
 
 	sensor_type = 1 << sensor;
-	
-	if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
-		HWM_ERR("handle %d!\n", sensor);
-		return -EINVAL;
-	}
+
+    if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
+        HWM_ERR("handle %d!\n", sensor);
+        return -EINVAL;
+    }
 
 	if(!obj)
 	{
@@ -618,6 +630,7 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 		HWM_ERR("the sensor (%d) is not attached!!\n", sensor);
 		return -ENODEV;
 	}
+	
 
 	mutex_lock(&obj->dc->lock);
 	cxt = obj->dc->cxt[sensor];    
@@ -728,10 +741,10 @@ static int hwmsen_enable_nodata(struct hwmdev_object *obj, int sensor, int enabl
 	HWM_FUN(f);
 	sensor_type = 1 << sensor;
 
-	if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
-		HWM_ERR("handle %d!\n", sensor);
-		return -EINVAL;
-	}
+    if (sensor > MAX_ANDROID_SENSOR_NUM || sensor < 0) {
+        HWM_ERR("handle %d!\n", sensor);
+        return -EINVAL;
+    }
 
 	if(NULL == obj)
 	{
@@ -743,6 +756,7 @@ static int hwmsen_enable_nodata(struct hwmdev_object *obj, int sensor, int enabl
 		HWM_ERR("the sensor (%d) is not attached!!\n", sensor);
 		return -ENODEV;
 	}
+	
 
 	mutex_lock(&obj->dc->lock);
 	cxt = obj->dc->cxt[sensor];
@@ -792,10 +806,11 @@ static int hwmsen_set_delay(int delay, int handle )
 	int err = 0;
 	struct hwmsen_context *cxt = NULL;
 
-	if (handle > MAX_ANDROID_SENSOR_NUM || handle < 0) {
-		HWM_ERR("handle %d!\n", handle);
-		return -EINVAL;
-	}
+    if (handle > MAX_ANDROID_SENSOR_NUM || handle < 0) {
+        HWM_ERR("handle %d!\n", handle);
+        return -EINVAL;
+    }
+
 	cxt = hwm_obj->dc->cxt[handle];
 	if(NULL == cxt ||(cxt->obj.sensor_operate == NULL))
 	{
@@ -987,9 +1002,9 @@ static ssize_t hwmsen_store_trace(struct device* dev,
 		HWM_ERR("set trace level fail!!\n");
 	}
 	return count;
-}                                                      
+}
 /*----------------------------------------------------------------------------*/
-static ssize_t hwmsen_show_sensordevnum(struct device *dev, 
+static ssize_t hwmsen_show_sensordevnum(struct device *dev,
                                   struct device_attribute *attr, char *buf)
 {
 	const char *devname = NULL;
@@ -997,12 +1012,20 @@ static ssize_t hwmsen_show_sensordevnum(struct device *dev,
 
 	return snprintf(buf, PAGE_SIZE, "%s\n", devname+5);
 }
+/*----------------------------------------------------------------------------*/
+static ssize_t hwmsen_show_gsensor_name(struct device *dev,
+                                  struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, sizeof(gsensor_name), "%s\n", gsensor_name);
+}
+
 DEVICE_ATTR(hwmdev,     S_IRUGO, hwmsen_show_hwmdev, NULL);
 DEVICE_ATTR(active,     S_IWUSR | S_IRUGO, hwmsen_show_hwmdev, hwmsen_store_active);
 DEVICE_ATTR(delay,      S_IWUSR | S_IRUGO, hwmsen_show_delay,  hwmsen_store_delay);
 DEVICE_ATTR(wake,       S_IWUSR | S_IRUGO, hwmsen_show_wake,   hwmsen_store_wake);
 DEVICE_ATTR(trace,      S_IWUSR | S_IRUGO, hwmsen_show_trace,  hwmsen_store_trace);
 DEVICE_ATTR(hwmsensordevnum,      S_IRUGO, hwmsen_show_sensordevnum,  NULL);
+DEVICE_ATTR(gsensor_name,      S_IRUGO, hwmsen_show_gsensor_name,  NULL);
 /*----------------------------------------------------------------------------*/
 static struct device_attribute *hwmsen_attr_list[] =
 {
@@ -1012,11 +1035,12 @@ static struct device_attribute *hwmsen_attr_list[] =
 	&dev_attr_wake,
 	&dev_attr_trace,
 	&dev_attr_hwmsensordevnum,
+	&dev_attr_gsensor_name,
 };
 
 
 /*----------------------------------------------------------------------------*/
-static int hwmsen_create_attr(struct device *dev) 
+static int hwmsen_create_attr(struct device *dev)
 {
 	int idx, err = 0;
 	int num = (int)(sizeof(hwmsen_attr_list)/sizeof(hwmsen_attr_list[0]));
@@ -1024,13 +1048,13 @@ static int hwmsen_create_attr(struct device *dev)
 	if(!dev)
 	{
 		return -EINVAL;
-	}	
+	}
 
 	for(idx = 0; idx < num; idx++)
 	{
 		if((err = device_create_file(dev, hwmsen_attr_list[idx])))
-		{            
-			HWM_ERR("device_create_file (%s) = %d\n", hwmsen_attr_list[idx]->attr.name, err);        
+		{
+			HWM_ERR("device_create_file (%s) = %d\n", hwmsen_attr_list[idx]->attr.name, err);
 			break;
 		}
 	}
@@ -1040,7 +1064,7 @@ static int hwmsen_create_attr(struct device *dev)
 /*----------------------------------------------------------------------------*/
 static int hwmsen_delete_attr(struct device *dev)
 {
-	
+
 	int idx ,err = 0;
 	int num = (int)(sizeof(hwmsen_attr_list)/sizeof(hwmsen_attr_list[0]));
     HWM_FUN(f);
@@ -1048,12 +1072,12 @@ static int hwmsen_delete_attr(struct device *dev)
 	{
 		return -EINVAL;
 	}
-	
+
 
 	for (idx = 0; idx < num; idx++)
 	{
 		device_remove_file(dev, hwmsen_attr_list[idx]);
-	}	
+	}
 
 	return err;
 }
@@ -1063,13 +1087,13 @@ static int init_static_data(void)
 {
 	int i = 0;
 //	memset(&obj_data, 0, sizeof(struct hwmsen_data));
-//	obj_data.lock = __MUTEX_INITIALIZER(obj_data.lock);	
+//	obj_data.lock = __MUTEX_INITIALIZER(obj_data.lock);
 	for(i=0; i < MAX_ANDROID_SENSOR_NUM; i++)
 	{
-		dev_cxt.cxt[i] = NULL;		
+		//dev_cxt.cxt[i] = NULL;
 		memset(&obj_data.sensors_data[i], SENSOR_INVALID_VALUE, sizeof(hwm_sensor_data));
 		obj_data.sensors_data[i].sensor = i;
-		
+
 	}
 	return 0;
 }
@@ -1336,14 +1360,18 @@ static int hwmsen_probe(struct platform_device *pdev)
 		HWM_ERR("unable to create attributes!!\n");
 		goto exit_hwmsen_create_attr_failed;
 	}
-#if defined(CONFIG_HAS_EARLYSUSPEND)
+#if defined(CONFIG_HAS_EARLYSUSPEND) && defined(CONFIG_EARLYSUSPEND)
 	// add for fix resume bug
     atomic_set(&(hwm_obj->early_suspend), 0);
 	hwm_obj->early_drv.level    = EARLY_SUSPEND_LEVEL_STOP_DRAWING - 1,
 	hwm_obj->early_drv.suspend  = hwmsen_early_suspend,
 	hwm_obj->early_drv.resume   = hwmsen_late_resume,    
 	register_early_suspend(&hwm_obj->early_drv);
+	#ifdef CONFIG_PM_WAKELOCKS
+	wakeup_source_init(&(hwm_obj->read_data_wake_lock),"read_data_wake_lock");
+	#else
 	wake_lock_init(&(hwm_obj->read_data_wake_lock),WAKE_LOCK_SUSPEND,"read_data_wake_lock");
+	#endif
 	// add for fix resume bug end
 #endif //#if defined(CONFIG_HAS_EARLYSUSPEND)
 	return 0;
@@ -1737,8 +1765,9 @@ static void __exit hwmsen_exit(void)
 	platform_driver_unregister(&hwmsen_driver);    
 }
 /*----------------------------------------------------------------------------*/
-module_init(hwmsen_init);
-module_exit(hwmsen_exit);
+late_initcall(hwmsen_init);
+//module_init(hwmsen_init);
+//module_exit(hwmsen_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("sensor device driver");
 MODULE_AUTHOR("Chunlei Wang<chunlei.wang@mediatek.com");

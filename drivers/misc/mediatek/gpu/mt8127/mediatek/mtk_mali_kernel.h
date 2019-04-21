@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef __MTK_MALI_KERNEL_H__
 #define __MTK_MALI_KERNEL_H__
 
@@ -22,7 +35,7 @@
 
 #define REG_MFG_CG_CON      ( G3D_CONFIG_BASE + 0x0 )
 #define REG_MFG_RESET       ( G3D_CONFIG_BASE + 0xC )
-#define REG_MFG_DEBUG_SEL   ( G3D_CONFIG_BASE + 0xF0 )
+#define REG_MFG_DEBUG_SEL   ( G3D_CONFIG_BASE + 0x180 )
 
 #define REG_SMI_CG_TEMP     ( 0xF4000000 + 0x100 )
 

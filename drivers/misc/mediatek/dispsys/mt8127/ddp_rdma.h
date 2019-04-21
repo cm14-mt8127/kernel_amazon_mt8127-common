@@ -34,6 +34,9 @@ int RDMAStop(unsigned idx);
 // reset module
 int RDMAReset(unsigned idx);
 
+/* porting from abc123; disable module */
+int RDMADisable(unsigned idx);
+
 // configu module
 int RDMAConfig(unsigned idx,
                     enum RDMA_MODE mode,

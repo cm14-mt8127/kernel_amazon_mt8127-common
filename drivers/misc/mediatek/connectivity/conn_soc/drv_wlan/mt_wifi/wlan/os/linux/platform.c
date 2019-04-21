@@ -105,6 +105,8 @@
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/platform_device.h>
+#include <linux/device.h>
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 12)
     #include <linux/uaccess.h>
@@ -117,6 +119,11 @@
     #include <linux/earlysuspend.h>
 #endif
 #endif
+#ifdef CONFIG_IP_WOW
+#include <linux/skbuff.h>
+#include <net/wow.h>
+#endif
+#include <mach/mt_spm_sleep.h>
 
 
 extern BOOLEAN fgIsUnderSuspend;
@@ -143,6 +150,41 @@ extern BOOLEAN fgIsUnderSuspend;
 *                           P R I V A T E   D A T A
 ********************************************************************************
 */
+#if CONFIG_PM
+#define SPM_WAKEUP_EVENT_READY 0
+#define DEV_NAME "wlan_ad_die"
+
+static atomic_t fgSuspendFlag = ATOMIC_INIT(0);
+static atomic_t fgIndicateWoW = ATOMIC_INIT(0);
+static int wlan_probe(struct platform_device *pdev);
+static int wlan_remove(struct platform_device *pdev);
+static int wlan_suspend(struct platform_device *pdev, pm_message_t state);
+static int wlan_resume(struct platform_device *pdev);
+static void wlan_release(struct device *dev);
+static void wlan_shutdown(struct platform_device *pdev);
+
+static struct platform_device mtk_wlan_dev = {
+	.name		= DEV_NAME,
+	.id			= -1,
+	.dev = {
+		.release = wlan_release,
+	}
+};
+
+static struct platform_driver mtk_wlan_drv = {
+	.probe = wlan_probe,
+	.remove = wlan_remove,
+#ifdef CONFIG_PM
+	.shutdown = wlan_shutdown,
+	.suspend = wlan_suspend,
+	.resume = wlan_resume,
+#endif
+	.driver = {
+		.name = DEV_NAME,
+		.owner = THIS_MODULE,
+	}
+};
+#endif
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -165,10 +207,11 @@ static int netdev_event(struct notifier_block *nb, unsigned long notification, v
 {
     UINT_8  ip[4] = { 0 };
     UINT_32 u4NumIPv4 = 0;
-//#ifdef  CONFIG_IPV6
-#if 0
+
+#ifdef  CONFIG_IPV6
     UINT_8  ip6[16] = { 0 };     // FIX ME: avoid to allocate large memory in stack
     UINT_32 u4NumIPv6 = 0;
+	P_PARAM_NETWORK_ADDRESS_IPV6 prParamIpv6Addr;
 #endif
     struct in_ifaddr *ifa = (struct in_ifaddr *) ptr;
     struct net_device *prDev = ifa->ifa_dev->dev;
@@ -223,33 +266,34 @@ static int netdev_event(struct notifier_block *nb, unsigned long notification, v
          (ip[3] == 0))) {
         u4NumIPv4++;
     }
-
-//#ifdef  CONFIG_IPV6
-#if 0
-    if(!prDev || !(prDev->ip6_ptr)||\
-        !((struct in_device *)(prDev->ip6_ptr))->ifa_list||\
-        !(&(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local))){
-        printk(KERN_INFO "ipv6 is not avaliable.\n");
-        return NOTIFY_DONE;
-    }
-
-    kalMemCopy(ip6, &(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local), sizeof(ip6));
-    printk(KERN_INFO"ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
-            ip6[0],ip6[1],ip6[2],ip6[3],
-            ip6[4],ip6[5],ip6[6],ip6[7],
-            ip6[8],ip6[9],ip6[10],ip6[11],
-            ip6[12],ip6[13],ip6[14],ip6[15]
-            );
-
-    // todo: traverse between list to find whole sets of IPv6 addresses
-    if (!((ip6[0] == 0) &&
-         (ip6[1] == 0) &&
-         (ip6[2] == 0) &&
-         (ip6[3] == 0) &&
-         (ip6[4] == 0) &&
-         (ip6[5] == 0))) {
-        //u4NumIPv6++;
-    }
+#ifdef  CONFIG_IPV6
+		// <5> get the IPv6 address
+		if(!prDev || !(prDev->ip6_ptr)||\
+			!((struct inet6_dev *)(prDev->ip6_ptr))->addr_list.next){
+			DBGLOG(INIT, WARN, ("ipv6 is not avaliable.\n"));
+			u4NumIPv6 = 0;
+		} else {
+			struct inet6_ifaddr *ifa;
+			struct list_head *addr_list;
+			addr_list = &(((struct inet6_dev *)(prDev->ip6_ptr))->addr_list);
+			ifa = list_entry(addr_list->next, typeof (*ifa), if_list);
+			// <6> copy the IPv6 address
+			kalMemCopy(ip6,&(ifa->addr.s6_addr[0]), sizeof (ip6));
+			DBGLOG(INIT, INFO, ("ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
+					ip6[0],ip6[1],ip6[2],ip6[3],
+					ip6[4],ip6[5],ip6[6],ip6[7],
+					ip6[8],ip6[9],ip6[10],ip6[11],
+					ip6[12],ip6[13],ip6[14],ip6[15]
+					));
+			// todo: traverse between list to find whole sets of IPv6 addresses
+			for (i = 0; i < sizeof (ip6); i++) {
+				if (ip6[i] != 0)
+				{
+					u4NumIPv6 = 1;
+					break;
+				}
+			}
+		}
 #endif
 
     // here we can compare the dev with other network's netdev to
@@ -262,46 +306,41 @@ static int netdev_event(struct notifier_block *nb, unsigned long notification, v
     {
         WLAN_STATUS rStatus = WLAN_STATUS_FAILURE;
         UINT_32 u4SetInfoLen = 0;
-        UINT_8 aucBuf[32] = {0};
+        UINT_8 aucBuf[64] = {0};
         UINT_32 u4Len = OFFSET_OF(PARAM_NETWORK_ADDRESS_LIST, arAddress);
         P_PARAM_NETWORK_ADDRESS_LIST prParamNetAddrList = (P_PARAM_NETWORK_ADDRESS_LIST)aucBuf;
         P_PARAM_NETWORK_ADDRESS prParamNetAddr = prParamNetAddrList->arAddress;
 
-//#ifdef  CONFIG_IPV6
-#if 0
-        prParamNetAddrList->u4AddressCount = u4NumIPv4 + u4NumIPv6;
+#ifdef  CONFIG_IPV6
+		prParamNetAddrList->u4AddressCount = u4NumIPv4 + u4NumIPv6;
+		DBGLOG(INIT, INFO, ("u4NumIPv4:%d, u4NumIPv6:%d", u4NumIPv4, u4NumIPv6));
 #else
-        prParamNetAddrList->u4AddressCount = u4NumIPv4;
+		prParamNetAddrList->u4AddressCount = u4NumIPv4;
+		DBGLOG(INIT, INFO, ("u4NumIPv4:%d", u4NumIPv4));
 #endif
         prParamNetAddrList->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;
         for (i = 0; i < u4NumIPv4; i++) {
             prParamNetAddr->u2AddressLength = sizeof(PARAM_NETWORK_ADDRESS_IP);//4;;
             prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;;
-#if 0
-            kalMemCopy(prParamNetAddr->aucAddress, ip, sizeof(ip));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((PUINT_8)prParamNetAddr + sizeof(ip));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(ip);
-#else
             prParamIpAddr = (P_PARAM_NETWORK_ADDRESS_IP)prParamNetAddr->aucAddress;
             kalMemCopy(&prParamIpAddr->in_addr, ip, sizeof(ip));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((PUINT_8)prParamNetAddr + sizeof(PARAM_NETWORK_ADDRESS));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(PARAM_NETWORK_ADDRESS);
-#endif
+			prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress));
+            u4Len += prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress);
         }
-//#ifdef  CONFIG_IPV6
-#if 0
-        for (i = 0; i < u4NumIPv6; i++) {
-            prParamNetAddr->u2AddressLength = 6;;
-            prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;;
-            kalMemCopy(prParamNetAddr->aucAddress, ip6, sizeof(ip6));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((PUINT_8)prParamNetAddr + sizeof(ip6));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(ip6);
-       }
+#ifdef  CONFIG_IPV6
+		if (u4NumIPv6 > 0) {
+			prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;
+			prParamNetAddr->u2AddressLength = sizeof (PARAM_NETWORK_ADDRESS_IPV6);
+			prParamIpv6Addr = (P_PARAM_NETWORK_ADDRESS_IPV6)prParamNetAddr->aucAddress;
+			kalMemCopy(prParamIpv6Addr->addr, ip6, sizeof (ip6));
+			prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress));
+			u4Len += prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress);
+		}
 #endif
+
         ASSERT(u4Len <= sizeof(aucBuf));
 
-        DBGLOG(REQ, INFO, ("kalIoctl (0x%p, 0x%p)\n", prGlueInfo, prParamNetAddrList));
-
+		DBGLOG(REQ, LOUD, ("kalIoctl (0x%p, 0x%p)\n", prGlueInfo, prParamNetAddrList));
         rStatus = kalIoctl(prGlueInfo,
                 wlanoidSetNetworkAddress,
                 (PVOID)prParamNetAddrList,
@@ -313,8 +352,25 @@ static int netdev_event(struct notifier_block *nb, unsigned long notification, v
                 &u4SetInfoLen);
 
         if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(REQ, INFO, ("set HW pattern filter fail 0x%x\n", rStatus));
+            DBGLOG(REQ, ERROR, ("set HW pattern filter fail 0x%x\n", rStatus));
         }
+		
+#ifdef CONFIG_IPV6
+		DBGLOG(REQ, LOUD, ("kalIoctl (0x%p, 0x%p)\n", prGlueInfo, prParamNetAddrList));
+		rStatus = kalIoctl(prGlueInfo,
+                wlanoidSetIPv6NetworkAddress,
+                (PVOID)prParamNetAddrList,
+                u4Len,
+                FALSE,
+                FALSE,
+                TRUE,
+                FALSE,
+                &u4SetInfoLen);
+
+        if (rStatus != WLAN_STATUS_SUCCESS) {
+            DBGLOG(REQ, WARN, ("set IPv6 HW pattern filter fail 0x%x\n", rStatus));
+        }
+#endif
     }
 
     return NOTIFY_DONE;
@@ -388,6 +444,149 @@ void wlanUnregisterNotifier(void)
     //unregister_inetaddr_notifier(&inet6addr_notifier);
 #endif
 }
+
+#ifdef CONFIG_PM
+/*-----------platform bus related operation APIs----------------*/
+static int wlan_probe(struct platform_device *pdev)
+{
+	platform_set_drvdata(pdev, NULL);
+	DBGLOG(INIT, INFO, ("wlan platform driver probe\n"));
+	return 0;
+}
+
+static int wlan_remove(struct platform_device *pdev)
+{
+	platform_set_drvdata(pdev, NULL);
+	DBGLOG(INIT, INFO, ("wlan platform driver remove\n"));
+	return 0;
+}
+
+static void wlan_shutdown(struct platform_device *pdev)
+{
+
+	return;
+}
+
+static int wlan_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	glWlanSetSuspendFlag();
+	return 0;
+}
+
+static int wlan_resume(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static void wlan_release(struct device *dev)
+{
+	return;
+}
+
+int glRegisterPlatformDev(void)
+{
+	int retval;
+	/* Register platform device */
+	retval = platform_device_register(&mtk_wlan_dev);
+	if (retval) {
+		DBGLOG(INIT, ERROR,
+			("wlan platform device register failed, ret(%d)\n",
+				retval));
+		return retval;
+	}
+
+	/* Register platform driver */
+	retval = platform_driver_register(&mtk_wlan_drv);
+	if (retval) {
+		DBGLOG(INIT, ERROR,
+			("wlan platform driver register failed, ret(%d)\n",
+				retval));
+	}
+
+	return retval;
+}
+
+int glUnregisterPlatformDev(void)
+{
+	platform_device_unregister(&mtk_wlan_dev);
+	platform_driver_unregister(&mtk_wlan_drv);
+	return 0;
+}
+
+int glWlanSetSuspendFlag(void)
+{
+	return atomic_set(&fgSuspendFlag, 1);
+}
+
+int glWlanGetSuspendFlag(void)
+{
+#if SPM_WAKEUP_EVENT_READY
+	if (atomic_read(&fgSuspendFlag) != 0) {
+		int irq_num = 0;
+		wakeup_event_t wake_event;
+		wake_event = spm_read_wakeup_event_and_irq(&irq_num);
+		if (wake_event != 1)
+			atomic_set(&fgSuspendFlag, 0);
+	}
+#endif
+	return atomic_read(&fgSuspendFlag);
+}
+
+int glWlanSetIndicateWoWFlag(void)
+{
+	return atomic_set(&fgIndicateWoW, 1);
+}
+
+int glWlanClearSuspendFlag(void)
+{
+	return atomic_set(&fgSuspendFlag, 0);
+}
+
+int glIndicateWoWPacket(void *data)
+{
+#if (defined(CONFIG_IP_WOW) && defined(CONFIG_PM_SLEEP))
+	if (0 != atomic_read(&fgIndicateWoW)) {
+		/*check wakeup event*/
+		atomic_set(&fgIndicateWoW, 0);
+		DBGLOG(RX, INFO, ("tagging wow skb..\n"));
+		tag_wow_skb(data);
+	}
+#endif
+	return 0;
+}
+
+#else
+int glRegisterPlatformDev(void)
+{
+	return 0;
+}
+
+int glUnregisterPlatformDev(void)
+{
+	return 0;
+}
+
+int glWlanSetSuspendFlag(void)
+{
+	return 0;
+}
+
+int glWlanGetSuspendFlag(void)
+{
+	return 0;
+}
+
+int glWlanClearSuspendFlag(void)
+{
+	return 0;
+}
+
+int glIndicateWoWPacket(void *data)
+{
+	return 0;
+}
+#endif
+
 
 //EXPORT_SYMBOL(wlanUnregisterNotifier);
 

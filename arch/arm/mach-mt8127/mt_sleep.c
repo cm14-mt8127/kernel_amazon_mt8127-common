@@ -153,6 +153,8 @@ static int slp_suspend_ops_prepare(void)
 
 static int slp_suspend_ops_enter(suspend_state_t state)
 {
+    int ret = 0;
+
     /* legacy log */
     slp_notice("@@@@@@@@@@@@@@@@@@@@\n");
     slp_crit2("Chip_pm_enter\n");
@@ -166,12 +168,12 @@ static int slp_suspend_ops_enter(suspend_state_t state)
 
     if (!spm_cpusys_can_power_down()) {
         slp_error("CANNOT SLEEP DUE TO CPU1/2/3 PON\n");
-        return -EPERM;
+        ret = -EPERM;
     }
 
     if (slp_infra_pdn && !slp_cpu_pdn) {
         slp_error("CANNOT SLEEP DUE TO INFRA PDN BUT CPU PON\n");
-        return -EPERM;
+        ret = -EPERM;
     }
 
 #if SLP_SLEEP_DPIDLE_EN
@@ -181,7 +183,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
 #endif
         slp_wake_reason = spm_go_to_sleep(slp_cpu_pdn, slp_infra_pdn, slp_pwake_time);
 
-    return 0;
+    return ret;
 }
 
 static void slp_suspend_ops_finish(void)

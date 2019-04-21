@@ -667,6 +667,13 @@
 #include <tc1_partition.h>
 #endif
 
+#ifdef CONFIG_IDME
+#include <linux/ctype.h>
+#ifdef CONFIG_OF
+#include <linux/of.h>
+#endif
+#endif
+
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************
@@ -683,6 +690,20 @@ spinlock_t g_p2p_lock;
 int g_u4P2PEnding = 0;
 int g_u4P2POnOffing = 0;
 #endif
+
+#ifdef CONFIG_OF
+#define IDME_OF_MAC_ADDR        "/idme/mac_addr"
+#define IDME_OF_WIFI_MFG        "/idme/wifi_mfg"
+#define IDME_OF_BOARD_ID	"/idme/board_id"
+#else
+#define IDME_OF_MAC_ADDR        "/proc/idme/mac_addr"
+#define IDME_OF_WIFI_MFG        "/proc/idme/wifi_mfg"
+#define IDME_OF_BOARD_ID	"/proc/idme/board_id"
+#endif
+#define BOARD_ID_abf123_STR "0031"
+#define BOARD_ID_BISCUIT_STR "0110"
+#define BOARD_ID_AUSTIN_STR "0037"
+char idme_board_id[16];
 
 
 /*******************************************************************************
@@ -708,7 +729,7 @@ MODULE_SUPPORTED_DEVICE(NIC_NAME);
 MODULE_LICENSE("GPL");
 
 #define NIC_INF_NAME    "wlan%d" /* interface name */
-#if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+#if CFG_TC1_FEATURE
 #define NIC_INF_NAME_IN_AP_MODE  "legacy%d"
 extern volatile int wlan_if_changed;
 #endif
@@ -938,6 +959,211 @@ mtk_cfg80211_ais_default_mgmt_stypes[NUM_NL80211_IFTYPES] = {
     }
 };
 
+#if AMZN_PWR_TABLE_ENABLE
+#define COUNTRY_PWR_TBL(_alpha2, \
+			_cck, \
+			_ofdm_bpsk, _ofdm_qpsk, _ofdm_16qam, _ofdm_48m, _ofdm_54m, \
+			_ht20_bpsk, _ht20_qpsk, _ht20_16qam, _ht20_mcs5, _ht20_mcs6, _ht20_mcs7, \
+			_ht40_bpsk, _ht40_qpsk, _ht40_16qam, _ht40_mcs5, _ht40_mcs6, _ht40_mcs7, \
+			_ofdm_bpsk_5g, _ofdm_qpsk_5g, _ofdm_16qam_5g, _ofdm_48m_5g, _ofdm_54m_5g, \
+			_ht20_bpsk_5g, _ht20_qpsk_5g, _ht20_16qam_5g, _ht20_mcs5_5g, _ht20_mcs6_5g, _ht20_mcs7_5g, \
+			_ht40_bpsk_5g, _ht40_qpsk_5g, _ht40_16qam_5g, _ht40_mcs5_5g, _ht40_mcs6_5g, _ht40_mcs7_5g, \
+			_edge_enabled, _edge_cck, _edge_ofdm_20m, _edge_ofdm_40m, \
+			_support_5g, \
+			_edge_enabled_5g, _edge_ofdm_20m_5g, _edge_ofdm_40m_5g) { \
+	.auCountryCode = (_alpha2), \
+	.rTxPwr.cTxPwr2G4Cck = (_cck), \
+	.rTxPwr.cTxPwr2G4OFDM_BPSK = (_ofdm_bpsk), \
+	.rTxPwr.cTxPwr2G4OFDM_QPSK = (_ofdm_qpsk), \
+	.rTxPwr.cTxPwr2G4OFDM_16QAM = (_ofdm_16qam), \
+	.rTxPwr.cTxPwr2G4OFDM_48Mbps = (_ofdm_48m), \
+	.rTxPwr.cTxPwr2G4OFDM_54Mbps = (_ofdm_54m), \
+	.rTxPwr.cTxPwr2G4HT20_BPSK = (_ht20_bpsk), \
+	.rTxPwr.cTxPwr2G4HT20_QPSK = (_ht20_qpsk), \
+	.rTxPwr.cTxPwr2G4HT20_16QAM = (_ht20_16qam), \
+	.rTxPwr.cTxPwr2G4HT20_MCS5 = (_ht20_mcs5), \
+	.rTxPwr.cTxPwr2G4HT20_MCS6 = (_ht20_mcs6), \
+	.rTxPwr.cTxPwr2G4HT20_MCS7 = (_ht20_mcs7), \
+	.rTxPwr.cTxPwr2G4HT40_BPSK = (_ht40_bpsk), \
+	.rTxPwr.cTxPwr2G4HT40_QPSK = (_ht40_qpsk), \
+	.rTxPwr.cTxPwr2G4HT40_16QAM = (_ht40_16qam), \
+	.rTxPwr.cTxPwr2G4HT40_MCS5 = (_ht40_mcs5), \
+	.rTxPwr.cTxPwr2G4HT40_MCS6 = (_ht40_mcs6), \
+	.rTxPwr.cTxPwr2G4HT40_MCS7 = (_ht40_mcs7), \
+	.rTxPwr.cTxPwr5GOFDM_BPSK = (_ofdm_bpsk_5g), \
+	.rTxPwr.cTxPwr5GOFDM_QPSK = (_ofdm_qpsk_5g), \
+	.rTxPwr.cTxPwr5GOFDM_16QAM = (_ofdm_16qam_5g), \
+	.rTxPwr.cTxPwr5GOFDM_48Mbps = (_ofdm_48m_5g), \
+	.rTxPwr.cTxPwr5GOFDM_54Mbps = (_ofdm_54m_5g), \
+	.rTxPwr.cTxPwr5GHT20_BPSK = (_ht20_bpsk_5g), \
+	.rTxPwr.cTxPwr5GHT20_QPSK = (_ht20_qpsk_5g), \
+	.rTxPwr.cTxPwr5GHT20_16QAM = (_ht20_16qam_5g), \
+	.rTxPwr.cTxPwr5GHT20_MCS5 = (_ht20_mcs5_5g), \
+	.rTxPwr.cTxPwr5GHT20_MCS6 = (_ht20_mcs6_5g), \
+	.rTxPwr.cTxPwr5GHT20_MCS7 = (_ht20_mcs7_5g), \
+	.rTxPwr.cTxPwr5GHT40_BPSK = (_ht40_bpsk_5g), \
+	.rTxPwr.cTxPwr5GHT40_QPSK = (_ht40_qpsk_5g), \
+	.rTxPwr.cTxPwr5GHT40_16QAM = (_ht40_16qam_5g), \
+	.rTxPwr.cTxPwr5GHT40_MCS5 = (_ht40_mcs5_5g), \
+	.rTxPwr.cTxPwr5GHT40_MCS6 = (_ht40_mcs6_5g), \
+	.rTxPwr.cTxPwr5GHT40_MCS7 = (_ht40_mcs7_5g), \
+	.ucTxPwrValid = 1, \
+	.r2GBandEdgePwr.fg2G4BandEdgePwrUsed = (_edge_enabled), \
+	.r2GBandEdgePwr.cBandEdgeMaxPwrCCK = (_edge_cck), \
+	.r2GBandEdgePwr.cBandEdgeMaxPwrOFDM20 = (_edge_ofdm_20m), \
+	.r2GBandEdgePwr.cBandEdgeMaxPwrOFDM40 = (_edge_ofdm_40m), \
+	.ucSupport5GBand = (_support_5g), \
+	.r5GBandEdgePwr.uc5GBandEdgePwrUsed = (_edge_enabled_5g), \
+	.r5GBandEdgePwr.c5GBandEdgeMaxPwrOFDM20 = (_edge_ofdm_20m_5g), \
+	.r5GBandEdgePwr.c5GBandEdgeMaxPwrOFDM40 = (_edge_ofdm_40m_5g), \
+}
+
+static COUNTRY_POWER_TABLE asCountryPwrTbl[] = {
+	COUNTRY_PWR_TBL("WW", /* country code */
+			0x1D, /* CCK */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* OFDM */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT40 */
+			0x1, 0x1C, 0x1D, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x1E, 0x1E), /* 5G band edge */
+	COUNTRY_PWR_TBL("US", /* country code */
+			0x1D, /* CCK */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* OFDM */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT40 */
+			0x1, 0x1C, 0x1D, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x1E, 0x1E), /* 5G band edge */
+	COUNTRY_PWR_TBL("EU", /* country code */
+			0x1F, /* CCK */
+			0x23, 0x23, 0x23, 0x23, 0x23, /* OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x1B, 0x1B, 0x1B, 0x1B, 0x1B, /* 5G_OFDM */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* 5G_HT20 */
+			0x21, 0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_HT40 */
+			0x1, 0x1F, 0x1E, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x1B, 0x21), /* 5G band edge */
+	COUNTRY_PWR_TBL("JP", /* country code */
+			0x24, /* CCK */
+			0x23, 0x23, 0x23, 0x23, 0x23, /* OFDM */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_OFDM */
+			0x21, 0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_HT20 */
+			0x21, 0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_HT40 */
+			0x1, 0x24, 0x1F, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x21, 0x21), /* 5G band edge */
+};
+
+static COUNTRY_POWER_TABLE power_table_abf123[] = {
+	COUNTRY_PWR_TBL("WW", /* country code */
+			0x1C, /* CCK */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* OFDM */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, /* 5G_OFDM */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, 0x1B, /* 5G_HT20 */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, 0x1D, /* 5G_HT40 */
+			0x1, 0x26, 0x22, 0x1A, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x22, 0x18), /* 5G band edge */
+	COUNTRY_PWR_TBL("US", /* country code */
+			0x1C, /* CCK */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* OFDM */
+			0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, /* 5G_OFDM */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, 0x1B, /* 5G_HT20 */
+			0x1D, 0x1D, 0x1D, 0x1D, 0x1D, 0x1D, /* 5G_HT40 */
+			0x1, 0x26, 0x22, 0x1A, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x22, 0x18), /* 5G band edge */
+	COUNTRY_PWR_TBL("EU", /* country code */
+			0x20, /* CCK */
+			0x24, 0x24, 0x24, 0x24, 0x24, /* OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_HT40 */
+			0x1, 0x24, 0x24, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x20, 0x20), /* 5G band edge */
+	COUNTRY_PWR_TBL("JP", /* country code */
+			0x24, /* CCK */
+			0x24, 0x24, 0x24, 0x24, 0x24, /* OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_HT40 */
+			0x1, 0x24, 0x24, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x20, 0x20), /* 5G band edge */
+};
+
+static COUNTRY_POWER_TABLE power_table_biscuit[] = {
+	COUNTRY_PWR_TBL("WW", /* country code */
+			0x24, /* CCK */
+			0x26, 0x26, 0x26, 0x26, 0x26, /* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x24, 0x24, 0x24, 0x24, 0x20, /* 5G_OFDM */
+			0x24, 0x24, 0x24, 0x1C, 0x1C, 0x1C, /* 5G_HT20 */
+			0x22, 0x22, 0x22, 0x1C, 0x1C, 0x1C, /* 5G_HT40 */
+			0x1, 0x24, 0x26, 0x0, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x24, 0x1E), /* 5G band edge */
+	COUNTRY_PWR_TBL("US", /* country code */
+			0x2A, /* CCK */
+			0x26, 0x26, 0x26, 0x26, 0x26, /* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x24, 0x24, 0x24, 0x24, 0x20, /* 5G_OFDM */
+			0x24, 0x24, 0x24, 0x1C, 0x1C, 0x1C, /* 5G_HT20 */
+			0x22, 0x22, 0x22, 0x1C, 0x1C, 0x1C, /* 5G_HT40 */
+			0x1, 0x2A, 0x26, 0x0, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1, 0x24, 0x1E), /* 5G band edge */
+	COUNTRY_PWR_TBL("EU", /* country code */
+			0x24, /* CCK */
+			0x26, 0x26, 0x26, 0x26, 0x26, /* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x24, 0x24, 0x24, 0x24, 0x20, /* 5G_OFDM */
+			0x24, 0x24, 0x24, 0x1C, 0x1C, 0x1C, /* 5G_HT20 */
+			0x22, 0x22, 0x22, 0x1C, 0x1C, 0x1C, /* 5G_HT40 */
+			0x1, 0x24, 0x26, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x0, 0x24, 0x0), /* 5G band edge */
+	COUNTRY_PWR_TBL("JP", /* country code */
+			0x24, /* CCK */
+			0x26, 0x26, 0x26, 0x26, 0x26, /* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* HT40 */
+			0x24, 0x24, 0x24, 0x24, 0x20, /* 5G_OFDM */
+			0x24, 0x24, 0x24, 0x1C, 0x1C, 0x1C, /* 5G_HT20 */
+			0x22, 0x22, 0x22, 0x1C, 0x1C, 0x1C, /* 5G_HT40 */
+			0x1, 0x24, 0x26, 0x00, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x0, 0x24, 0x0), /* 5G band edge */
+};
+
+struct board_id_power_table_map board_id_power_table_list[] = {
+	{BOARD_ID_abf123_STR, power_table_abf123, ARRAY_SIZE(power_table_abf123)},
+	{BOARD_ID_BISCUIT_STR, power_table_biscuit, ARRAY_SIZE(power_table_biscuit)},
+};
+#endif
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -1048,6 +1274,11 @@ glLoadNvram (
                 OFFSET_OF(WIFI_CFG_PARAM_STRUCT, aucCountryCode[0]),
                     (PUINT_16)aucTmp);
 
+		/* cast to wide characters */
+		if (('X' == aucTmp[0] && 'X' == aucTmp[1]) ||
+			(0 == aucTmp[0] && 0 == aucTmp[1]))
+			aucTmp[0] = aucTmp[1] = 'W';
+
         // cast to wide characters
         prRegInfo->au2CountryCode[0] = (UINT_16) aucTmp[0];
         prRegInfo->au2CountryCode[1] = (UINT_16) aucTmp[1];
@@ -1140,6 +1371,50 @@ glLoadNvram (
     return;
 }
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Update Channel table for cfg80211 for Wi-Fi Direct based on current country code
+ *
+ * \param[in] prGlueInfo      Pointer to glue info
+ *
+ * \return   none
+ */
+/*----------------------------------------------------------------------------*/
+P_COUNTRY_POWER_TABLE wlanGetUpdatedPowerTable(P_UINT_8 paucCountry)
+{
+#if AMZN_PWR_TABLE_ENABLE
+	UINT_8 i = 0;
+	COUNTRY_POWER_TABLE *country_pwr_tbl = asCountryPwrTbl;
+	int pwr_tbl_size = ARRAY_SIZE(asCountryPwrTbl);
+
+	if (NULL == paucCountry)
+		return NULL;
+
+	DBGLOG(INIT, INFO, ("aucCountry:%c%c\n", paucCountry[0], paucCountry[1]));
+
+	for (i = 0; i < ARRAY_SIZE(board_id_power_table_list); i++) {
+		if (!strncmp(idme_board_id, board_id_power_table_list[i].board_id,
+			     strlen(board_id_power_table_list[i].board_id))) {
+			country_pwr_tbl = board_id_power_table_list[i].power_table;
+			pwr_tbl_size = board_id_power_table_list[i].tbl_size;
+			DBGLOG(INIT, INFO,
+			       ("board_id:%s\n",
+				board_id_power_table_list[i].board_id));
+			break;
+		}
+	}
+
+	for (i = 0; i < pwr_tbl_size; i++) {
+		if (paucCountry[0] == country_pwr_tbl[i].auCountryCode[0] &&
+		    paucCountry[1] == country_pwr_tbl[i].auCountryCode[1])
+			return &country_pwr_tbl[i];
+	}
+
+	return NULL;
+#else
+	return NULL;
+#endif
+}
 
 #if CFG_ENABLE_WIFI_DIRECT
 /*----------------------------------------------------------------------------*/
@@ -1200,7 +1475,7 @@ wlanSubModInit(
     )
 {
     //4  Mark HALT, notify main thread to finish current job
-    prGlueInfo->ulFlag |= GLUE_FLAG_SUB_MOD_INIT;
+    set_bit(GLUE_FLAG_SUB_MOD_INIT, &prGlueInfo->ulFlag);
     /* wake up main thread */
     wake_up_interruptible(&prGlueInfo->waitq);
     /* wait main thread  finish sub module INIT*/
@@ -1236,7 +1511,7 @@ wlanSubModExit(
 #endif
 
     //4  Mark HALT, notify main thread to finish current job
-    prGlueInfo->ulFlag |= GLUE_FLAG_SUB_MOD_EXIT;
+    set_bit(GLUE_FLAG_SUB_MOD_EXIT, &prGlueInfo->ulFlag);
     /* wake up main thread */
     wake_up_interruptible(&prGlueInfo->waitq);
     /* wait main thread finish sub module EXIT */
@@ -1480,7 +1755,7 @@ wlanDoIOCTL(
         ret = priv_support_ioctl(prDev, prIFReq, i4Cmd);
     }
     else {
-        DBGLOG(INIT, WARN, ("Unexpected ioctl command: 0x%04x\n", i4Cmd));
+        DBGLOG(INIT, INFO, ("Unexpected ioctl command: 0x%04x\n", i4Cmd));
         /* return 0 for safe? */
     }
 
@@ -1501,6 +1776,7 @@ static struct delayed_work workq;
 static struct net_device *gPrDev;
 static BOOLEAN fgIsWorkMcStart = FALSE;
 static BOOLEAN fgIsWorkMcEverInit = FALSE;
+static struct wireless_dev *gprWdev;
 
 static void
 wlanSetMulticastList (struct net_device *prDev)
@@ -2250,7 +2526,7 @@ wlanNetCreate(
 
     //4 <1.1> Create wireless_dev
     prWdev = kzalloc(sizeof(struct wireless_dev), GFP_KERNEL);
-    DBGLOG(INIT, INFO, ("wireless_dev prWdev(0x%p) allocated\n", prWdev));
+    DBGLOG(INIT, TRACE, ("wireless_dev prWdev(0x%p) allocated\n", prWdev));
     if (!prWdev) {
         DBGLOG(INIT, ERROR, ("Allocating memory to wireless_dev context failed\n"));
         return NULL;
@@ -2258,7 +2534,7 @@ wlanNetCreate(
 
     //4 <1.2> Create wiphy
     prWdev->wiphy = wiphy_new(&mtk_wlan_ops, sizeof(GLUE_INFO_T));
-    DBGLOG(INIT, INFO, ("wiphy (0x%p) allocated\n", prWdev->wiphy));
+    DBGLOG(INIT, TRACE, ("wiphy (0x%p) allocated\n", prWdev->wiphy));
     if (!prWdev->wiphy) {
         DBGLOG(INIT, ERROR, ("Allocating memory to wiphy device failed\n"));
         kfree(prWdev);
@@ -2279,7 +2555,7 @@ wlanNetCreate(
 
     //4 <1.4> configure wireless_dev & wiphy
     prWdev->iftype = NL80211_IFTYPE_STATION;
-    prWdev->wiphy->max_scan_ssids   = 1;    /* FIXME: for combo scan */
+    prWdev->wiphy->max_scan_ssids   = 4;    /* FIXME: for combo scan */
     prWdev->wiphy->max_scan_ie_len = 512;
     prWdev->wiphy->interface_modes  = BIT(NL80211_IFTYPE_STATION) | BIT(NL80211_IFTYPE_ADHOC);
     prWdev->wiphy->bands[IEEE80211_BAND_2GHZ] = &mtk_band_2ghz;
@@ -2308,7 +2584,7 @@ wlanNetCreate(
 
     //4 <3> Initial Glue structure
     //4 <3.1> Create net device
-#if CFG_TC1_FEATURE || defined(CONFIG_MTK_COMBO_AOSP_TETHERING_SUPPORT)
+#if CFG_TC1_FEATURE
     if (wlan_if_changed) {
         prGlueInfo->prDevHandler = alloc_netdev_mq(sizeof(P_GLUE_INFO_T), NIC_INF_NAME_IN_AP_MODE, ether_setup, CFG_MAX_TXQ_NUM);
     } else {
@@ -2318,7 +2594,7 @@ wlanNetCreate(
     prGlueInfo->prDevHandler = alloc_netdev_mq(sizeof(P_GLUE_INFO_T), NIC_INF_NAME, ether_setup, CFG_MAX_TXQ_NUM);
 #endif
 
-    DBGLOG(INIT, INFO, ("net_device prDev(0x%p) allocated\n", prGlueInfo->prDevHandler));
+    DBGLOG(INIT, TRACE, ("net_device prDev(0x%p) allocated\n", prGlueInfo->prDevHandler));
     if (!prGlueInfo->prDevHandler) {
         DBGLOG(INIT, ERROR, ("Allocating memory to net_device context failed\n"));
         goto netcreate_err;
@@ -2336,6 +2612,7 @@ wlanNetCreate(
 
     //4 <3.1.2> co-relate with wiphy bi-directionally
     prGlueInfo->prDevHandler->ieee80211_ptr = prWdev;
+	gprWdev = prWdev;
 #if CFG_TCP_IP_CHKSUM_OFFLOAD
     prGlueInfo->prDevHandler->features = NETIF_F_HW_CSUM;
 #endif
@@ -2474,10 +2751,28 @@ wlanNetDestroy(
 } /* end of wlanNetDestroy() */
 
 #ifndef CONFIG_X86
-UINT_8 g_aucBufIpAddr[32] = {0};
+UINT_8 g_aucBufIpAddr[64] = {0};
+static void wlanNotifyFwSuspend(P_GLUE_INFO_T prGlueInfo, BOOLEAN fgSuspend)
+{
+	WLAN_STATUS rStatus = WLAN_STATUS_FAILURE;
+	UINT_32 u4SetInfoLen;
+
+	rStatus = kalIoctl(prGlueInfo,
+			wlanoidNotifyFwSuspend,
+			(PVOID)&fgSuspend,
+			sizeof(fgSuspend),
+			FALSE,
+			FALSE,
+			TRUE,
+			FALSE,
+			&u4SetInfoLen);
+	if (rStatus != WLAN_STATUS_SUCCESS)
+		DBGLOG(INIT, INFO, ("wlanNotifyFwSuspend fail\n"));
+}
 
 void wlanHandleSystemSuspend(void)
 {
+        WLAN_STATUS rStatus = WLAN_STATUS_FAILURE;
     struct net_device *prDev = NULL;
     P_GLUE_INFO_T prGlueInfo = NULL;
     UINT_8  ip[4] = { 0 };
@@ -2485,6 +2780,7 @@ void wlanHandleSystemSuspend(void)
 #ifdef  CONFIG_IPV6
     UINT_8  ip6[16] = { 0 };     // FIX ME: avoid to allocate large memory in stack
     UINT_32 u4NumIPv6 = 0;
+	P_PARAM_NETWORK_ADDRESS_IPV6 prParamIpv6Addr;
 #endif
     UINT_32 i;
     P_PARAM_NETWORK_ADDRESS_IP prParamIpAddr;
@@ -2501,13 +2797,16 @@ void wlanHandleSystemSuspend(void)
 //    ASSERT(prDev);
 
 	fgIsUnderSuspend = true;
+	/* <2> acquire the prGlueInfo */
+	prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
+	ASSERT(prGlueInfo);
 
-    // <2> get the IPv4 address
+	/* <3> get the IPv4 address */
     if(!prDev || !(prDev->ip_ptr)||\
         !((struct in_device *)(prDev->ip_ptr))->ifa_list||\
         !(&(((struct in_device *)(prDev->ip_ptr))->ifa_list->ifa_local))){
         DBGLOG(INIT, INFO, ("ip is not avaliable.\n"));
-        return;
+		goto notify_suspend;
     }
 
     // <3> acquire the prGlueInfo
@@ -2528,37 +2827,39 @@ void wlanHandleSystemSuspend(void)
     }
 
 #ifdef  CONFIG_IPV6
-    // <5> get the IPv6 address
-    if(!prDev || !(prDev->ip6_ptr)||\
-        !((struct in_device *)(prDev->ip6_ptr))->ifa_list||\
-        !(&(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local))){
-        DBGLOG(INIT, INFO, ("ipv6 is not avaliable.\n"));
-        return;
-    }
-    // <6> copy the IPv6 address
-    kalMemCopy(ip6, &(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local), sizeof(ip6));
-    DBGLOG(INIT, INFO, ("ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
-            ip6[0],ip6[1],ip6[2],ip6[3],
-            ip6[4],ip6[5],ip6[6],ip6[7],
-            ip6[8],ip6[9],ip6[10],ip6[11],
-            ip6[12],ip6[13],ip6[14],ip6[15]
-            ));
+// <5> get the IPv6 address
+	if(!prDev || !(prDev->ip6_ptr)||\
+		!((struct inet6_dev *)(prDev->ip6_ptr))->addr_list.next){
+		DBGLOG(INIT, WARN, ("ipv6 is not avaliable.\n"));
+		u4NumIPv6 = 0;
+	} else {
+			struct inet6_ifaddr *ifa;
+		struct list_head *addr_list;
+		addr_list = &(((struct inet6_dev *)(prDev->ip6_ptr))->addr_list);
+		ifa = list_entry(addr_list->next, typeof (*ifa), if_list);
 
-    // todo: traverse between list to find whole sets of IPv6 addresses
-    if (!((ip6[0] == 0) &&
-         (ip6[1] == 0) &&
-         (ip6[2] == 0) &&
-         (ip6[3] == 0) &&
-         (ip6[4] == 0) &&
-         (ip6[5] == 0))) {
-        //u4NumIPv6++;
-    }
+		// <6> copy the IPv6 address
+		kalMemCopy(ip6,&(ifa->addr.s6_addr[0]), sizeof (ip6));
+		DBGLOG(INIT, INFO, ("ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
+	            ip6[0],ip6[1],ip6[2],ip6[3],
+	            ip6[4],ip6[5],ip6[6],ip6[7],
+	            ip6[8],ip6[9],ip6[10],ip6[11],
+	            ip6[12],ip6[13],ip6[14],ip6[15]
+	            ));
 
+		// todo: traverse between list to find whole sets of IPv6 addresses
+		for (i = 0; i < sizeof (ip6); i++) {
+			if (ip6[i] != 0)
+			{
+				u4NumIPv6 = 1;
+				break;
+			}
+		}
+	}
 #endif
 
     // <7> set up the ARP filter
     {
-        WLAN_STATUS rStatus = WLAN_STATUS_FAILURE;
         UINT_32 u4SetInfoLen = 0;
 //        UINT_8 aucBuf[32] = {0};
         UINT_32 u4Len = OFFSET_OF(PARAM_NETWORK_ADDRESS_LIST, arAddress);
@@ -2567,33 +2868,39 @@ void wlanHandleSystemSuspend(void)
 
         kalMemZero(g_aucBufIpAddr, sizeof(g_aucBufIpAddr));
 
-        prParamNetAddrList->u4AddressCount = u4NumIPv4 + u4NumIPv6;
+#ifdef  CONFIG_IPV6
+		prParamNetAddrList->u4AddressCount = u4NumIPv4 + u4NumIPv6;
+		DBGLOG(INIT, INFO, ("u4NumIPv4:%d, u4NumIPv6:%d\n", u4NumIPv4, u4NumIPv6));
+#else
+		prParamNetAddrList->u4AddressCount = u4NumIPv4;
+		DBGLOG(INIT, INFO, ("u4NumIPv4:%d\n", u4NumIPv4));
+#endif
         prParamNetAddrList->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;
-        for (i = 0; i < u4NumIPv4; i++) {
+        if (u4NumIPv4 > 0){
+			DBGLOG(INIT, LOUD, ("prParamNetAddr:%p\n", prParamNetAddr));
             prParamNetAddr->u2AddressLength = sizeof(PARAM_NETWORK_ADDRESS_IP);//4;;
             prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;;
-#if 0
-            kalMemCopy(prParamNetAddr->aucAddress, ip, sizeof(ip));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((UINT_32)prParamNetAddr + sizeof(ip));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(ip);
-#else
             prParamIpAddr = (P_PARAM_NETWORK_ADDRESS_IP)prParamNetAddr->aucAddress;
             kalMemCopy(&prParamIpAddr->in_addr, ip, sizeof(ip));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + sizeof(PARAM_NETWORK_ADDRESS));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(PARAM_NETWORK_ADDRESS);
-#endif
+            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress));
+            u4Len += prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress);
+			DBGLOG(INIT, LOUD, ("prParamNetAddr:%p\n", prParamNetAddr));
         }
 #ifdef  CONFIG_IPV6
-        for (i = 0; i < u4NumIPv6; i++) {
-            prParamNetAddr->u2AddressLength = 6;;
-            prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;;
-            kalMemCopy(prParamNetAddr->aucAddress, ip6, sizeof(ip6));
-            prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + sizeof(ip6));
-            u4Len += OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress) + sizeof(ip6);
-       }
+		if (u4NumIPv6 > 0) {
+			DBGLOG(INIT, LOUD, ("prParamNetAddr:%p\n", prParamNetAddr));
+			prParamNetAddr->u2AddressType = PARAM_PROTOCOL_ID_TCP_IP;
+			prParamNetAddr->u2AddressLength = sizeof (PARAM_NETWORK_ADDRESS_IPV6);
+			prParamIpv6Addr = (P_PARAM_NETWORK_ADDRESS_IPV6)prParamNetAddr->aucAddress;
+			kalMemCopy(prParamIpv6Addr->addr, ip6, sizeof (ip6));
+			prParamNetAddr = (P_PARAM_NETWORK_ADDRESS)((ULONG)prParamNetAddr + prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress));
+            u4Len += prParamNetAddr->u2AddressLength + OFFSET_OF(PARAM_NETWORK_ADDRESS, aucAddress);
+			DBGLOG(INIT, LOUD, ("prParamIpv6Addr:%p\n", prParamIpv6Addr));
+		}
 #endif
         ASSERT(u4Len <= sizeof(g_aucBufIpAddr/*aucBuf*/));
 
+		DBGLOG(REQ, LOUD, ("kalIoctl (0x%p, 0x%p)\n", prGlueInfo, prParamNetAddrList));
         rStatus = kalIoctl(prGlueInfo,
                 wlanoidSetNetworkAddress,
                 (PVOID)prParamNetAddrList,
@@ -2605,9 +2912,33 @@ void wlanHandleSystemSuspend(void)
                 &u4SetInfoLen);
 
         if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(INIT, INFO, ("set HW pattern filter fail 0x%x\n", rStatus));
+            DBGLOG(REQ, ERROR, ("set HW pattern filter fail 0x%x\n", rStatus));
         }
+		
+#ifdef  CONFIG_IPV6
+		DBGLOG(REQ, LOUD, ("kalIoctl (0x%p, 0x%p)\n", prGlueInfo, prParamNetAddrList));
+		rStatus = kalIoctl(prGlueInfo,
+                wlanoidSetIPv6NetworkAddress,
+                (PVOID)prParamNetAddrList,
+                u4Len,
+                FALSE,
+                FALSE,
+                TRUE,
+                FALSE,
+                &u4SetInfoLen);
+
+        if (rStatus != WLAN_STATUS_SUCCESS) {
+            DBGLOG(REQ, WARN, ("set IPv6 HW pattern filter fail 0x%x\n", rStatus));
+        }
+#endif
+
     }
+
+notify_suspend:
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, WARN, ("[Suspend Error] set HW pattern filter fail 0x%x\n", rStatus));
+		wlanNotifyFwSuspend(prGlueInfo, TRUE);
+	}
 }
 
 void wlanHandleSystemResume(void)
@@ -2673,7 +3004,7 @@ void wlanHandleSystemResume(void)
         !((struct in_device *)(prDev->ip_ptr))->ifa_list||\
         !(&(((struct in_device *)(prDev->ip_ptr))->ifa_list->ifa_local))){
         DBGLOG(INIT, INFO, ("ip is not avaliable.\n"));
-        return;
+		goto notify_resume;
     }
 
     // <4> copy the IPv4 address
@@ -2682,27 +3013,31 @@ void wlanHandleSystemResume(void)
             ip[0],ip[1],ip[2],ip[3]));
 
 #ifdef  CONFIG_IPV6
-    // <5> get the IPv6 address
-    if(!prDev || !(prDev->ip6_ptr)||\
-        !((struct in_device *)(prDev->ip6_ptr))->ifa_list||\
-        !(&(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local))){
-        DBGLOG(INIT, INFO, ("ipv6 is not avaliable.\n"));
-        return;
-    }
-    // <6> copy the IPv6 address
-    kalMemCopy(ip6, &(((struct in_device *)(prDev->ip6_ptr))->ifa_list->ifa_local), sizeof(ip6));
-    DBGLOG(INIT, INFO, ("ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
-            ip6[0],ip6[1],ip6[2],ip6[3],
-            ip6[4],ip6[5],ip6[6],ip6[7],
-            ip6[8],ip6[9],ip6[10],ip6[11],
-            ip6[12],ip6[13],ip6[14],ip6[15]
-            ));
+// <5> get the IPv6 address
+	if(!prDev || !(prDev->ip6_ptr)||\
+		!((struct inet6_dev *)(prDev->ip6_ptr))->addr_list.next){
+		DBGLOG(INIT, WARN, ("ipv6 is not avaliable.\n"));
+	} else {
+		struct inet6_ifaddr *ifa;
+		struct list_head *addr_list;
+		addr_list = &(((struct inet6_dev *)(prDev->ip6_ptr))->addr_list);
+		ifa = list_entry(addr_list->next, typeof (*ifa), if_list);
+
+		// <6> copy the IPv6 address
+		kalMemCopy(ip6,&(ifa->addr.s6_addr[0]), sizeof (ip6));
+		DBGLOG(INIT, INFO, ("ipv6 is %d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d\n",
+	            ip6[0],ip6[1],ip6[2],ip6[3],
+	            ip6[4],ip6[5],ip6[6],ip6[7],
+	            ip6[8],ip6[9],ip6[10],ip6[11],
+	            ip6[12],ip6[13],ip6[14],ip6[15]
+	            ));
+	}
+
 #endif
     // <7> clear the ARP filter
     {
         WLAN_STATUS rStatus = WLAN_STATUS_FAILURE;
         UINT_32 u4SetInfoLen = 0;
-//        UINT_8 aucBuf[32] = {0};
         UINT_32 u4Len = sizeof(PARAM_NETWORK_ADDRESS_LIST);
         P_PARAM_NETWORK_ADDRESS_LIST prParamNetAddrList = (P_PARAM_NETWORK_ADDRESS_LIST)g_aucBufIpAddr;//aucBuf;
 
@@ -2723,9 +3058,31 @@ void wlanHandleSystemResume(void)
                 &u4SetInfoLen);
 
         if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(INIT, INFO, ("set HW pattern filter fail 0x%x\n", rStatus));
+            DBGLOG(INIT, WARN, ("clear HW pattern filter fail 0x%x\n", rStatus));
         }
+		
+#ifdef  CONFIG_IPV6
+		rStatus = kalIoctl(prGlueInfo,
+                wlanoidSetIPv6NetworkAddress,
+                (PVOID)prParamNetAddrList,
+                u4Len,
+                FALSE,
+                FALSE,
+                TRUE,
+                FALSE,
+                &u4SetInfoLen);
+
+        if (rStatus != WLAN_STATUS_SUCCESS) {
+            DBGLOG(INIT, WARN, ("clear IPv6 HW pattern filter fail 0x%x\n", rStatus));
+        }
+#endif
     }
+
+notify_resume:
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, WARN, ("set HW pattern filter fail 0x%x\n", rStatus));
+		wlanNotifyFwSuspend(prGlueInfo, FALSE);
+	}
 }
 #endif //! CONFIG_X86
 
@@ -2864,6 +3221,93 @@ set_dbg_level_handler(
     kalPrint("[wlan] change debug level");
 }
 
+#ifdef CONFIG_IDME
+static int idme_get_mac_addr(UINT_8 *mac_addr)
+{
+	UINT_8 buf[PARAM_MAC_ADDR_LEN * 2 + 1] = {""}, str[3] = {""};
+	int i, mac[PARAM_MAC_ADDR_LEN];
+	mm_segment_t fs;
+	struct file *f;
+	size_t len;
+
+	f = filp_open(IDME_OF_MAC_ADDR, O_RDONLY, 0);
+	if (IS_ERR(f)) {
+		DBGLOG(INIT, ERROR, ("(IDME) cannot read %s\n", IDME_OF_MAC_ADDR));
+		return -1;
+	}
+
+	fs = get_fs();
+	set_fs(get_ds());
+	f->f_op->read(f, buf, PARAM_MAC_ADDR_LEN * 2, &f->f_pos);
+	set_fs(fs);
+
+	if (strlen(buf) != PARAM_MAC_ADDR_LEN * 2)
+		goto bailout;
+
+	for (i = 0; i < PARAM_MAC_ADDR_LEN; i++) {
+		str[0] = buf[i * 2];
+		str[1] = buf[i * 2 + 1];
+		if (!isxdigit(str[0]) || !isxdigit(str[1]))
+			goto bailout;
+		len = sscanf(str, "%02x", &mac[i]);
+		if (len != 1)
+			goto bailout;
+	}
+	for (i = 0; i < PARAM_MAC_ADDR_LEN; i++)
+		mac_addr[i] = (UINT_8)mac[i];
+
+	DBGLOG(INIT, INFO, ("(IDME) mac_addr: xx:xx:xx:%02x:%02x:%02x\n",
+			    mac_addr[3], mac_addr[4], mac_addr[5]));
+	return 0;
+bailout:
+	DBGLOG(INIT, ERROR, ("(IDME) wrong mac_addr '%s', expected format 10AE60112233\n", buf));
+	return -1;
+}
+
+static void idme_get_board_id(P_REG_INFO_T prRegInfo)
+{
+#ifdef CONFIG_OF
+	struct device_node *ap;
+	int len;
+
+	ap = of_find_node_by_path(IDME_OF_BOARD_ID);
+	if (likely(ap)) {
+		const char *board_id = of_get_property(ap, "value", &len);
+		if (likely(len >= 16))
+			memcpy(idme_board_id, board_id, sizeof(idme_board_id));
+	}
+#else
+	char board_id[17] = {""};
+	mm_segment_t fs;
+	struct file *f;
+
+	f = filp_open(IDME_OF_BOARD_ID, O_RDONLY, 0);
+	if (IS_ERR(f)) {
+		DBGLOG(INIT, ERROR, ("(IDME) cannot read %s\n", IDME_OF_BOARD_ID));
+		return;
+	}
+
+	fs = get_fs();
+	set_fs(get_ds());
+	f->f_op->read(f, board_id, 16, &f->f_pos);
+	set_fs(fs);
+
+	if (strlen(board_id) == sizeof(idme_board_id))
+		memcpy(idme_board_id, board_id, sizeof(idme_board_id));
+#endif
+}
+#endif
+
+INT_32 wlanRegulatoryHint(PUINT_8 pauCountryCode)
+{
+	if (NULL == gprWdev || NULL == pauCountryCode) {
+		DBGLOG(INIT, WARN, ("gprWdev:0x%p, pauCountryCode:0x%p\n",
+				    gprWdev, pauCountryCode));
+		return -1;
+	}
+	return regulatory_hint(gprWdev->wiphy, pauCountryCode);
+}
+
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief Wlan probe function. This function probes and initializes the device.
@@ -2887,18 +3331,19 @@ wlanProbe(
     P_GLUE_INFO_T prGlueInfo = NULL;
     P_ADAPTER_T prAdapter = NULL;
     INT_32 i4Status = 0;
+    WLAN_STATUS u4SAStatus = WLAN_STATUS_SUCCESS; /* Start Adapter status */
     BOOLEAN bRet = FALSE;
-	enum probe_fail_reason {
-		BUS_INIT_FAIL,
-		NET_CREATE_FAIL,
-		BUS_SET_IRQ_FAIL,
-		ADAPTER_START_FAIL,
-		NET_REGISTER_FAIL,
-		PROC_INIT_FAIL,
-		FAIL_REASON_NUM
-	} eFailReason;
+    enum probe_fail_reason {
+        BUS_INIT_FAIL,
+        NET_CREATE_FAIL,
+        BUS_SET_IRQ_FAIL,
+        ADAPTER_START_FAIL,
+        NET_REGISTER_FAIL,
+        PROC_INIT_FAIL,
 
-	eFailReason = FAIL_REASON_NUM;
+        FAIL_REASON_NUM
+    } eFailReason;
+
     do {
         //4 <1> Initialize the IO port of the interface
         /*  GeorgeKuo: pData has different meaning for _HIF_XXX:
@@ -2913,7 +3358,7 @@ wlanProbe(
         if (FALSE == bRet) {
             DBGLOG(INIT, ERROR, (KERN_ALERT "wlanProbe: glBusInit() fail\n"));
             i4Status = -EIO;
-			eFailReason = BUS_INIT_FAIL;
+            eFailReason = BUS_INIT_FAIL;
             break;
         }
 
@@ -2921,7 +3366,7 @@ wlanProbe(
         if ((prWdev = wlanNetCreate(pvData)) == NULL) {
             DBGLOG(INIT, ERROR, ("wlanProbe: No memory for dev and its private\n"));
             i4Status = -ENOMEM;
-			eFailReason = NET_CREATE_FAIL;
+            eFailReason = NET_CREATE_FAIL;
             break;
         }
 
@@ -2949,7 +3394,7 @@ wlanProbe(
 
         if (i4Status != WLAN_STATUS_SUCCESS) {
             DBGLOG(INIT, ERROR, ("wlanProbe: Set IRQ error\n"));
-			eFailReason = BUS_SET_IRQ_FAIL;
+            eFailReason = BUS_SET_IRQ_FAIL;
             break;
         }
 
@@ -3009,8 +3454,14 @@ wlanProbe(
             prRegInfo->u4StartAddress = CFG_FW_START_ADDRESS;
             prRegInfo->u4LoadAddress =  CFG_FW_LOAD_ADDRESS;
 
+#ifdef CONFIG_IDME
+			idme_get_board_id(prRegInfo);
+#endif
             // Load NVRAM content to REG_INFO_T
             glLoadNvram(prGlueInfo, prRegInfo);
+#ifdef CONFIG_IDME
+			idme_get_mac_addr(&(prRegInfo->aucMacAddr[0]));
+#endif
 #if CFG_SUPPORT_CFG_FILE
 			wlanCfgApply(prAdapter);
 #endif
@@ -3026,8 +3477,11 @@ wlanProbe(
                 goto bailout;
             } else {
 
-                if (wlanAdapterStart(prAdapter, prRegInfo,  prFwBuffer, u4FwSize) != WLAN_STATUS_SUCCESS) {
-                    i4Status = -EIO;
+                if ((u4SAStatus = wlanAdapterStart(prAdapter, prRegInfo,  prFwBuffer, u4FwSize)) != WLAN_STATUS_SUCCESS) {
+                    if (u4SAStatus == 0xFDEAD)
+                        i4Status = -0xFDEAD;
+                    else
+                        i4Status = -EIO;
                 }
             }
 
@@ -3059,7 +3513,7 @@ bailout:
 
         if (wlanAdapterStart(prAdapter, prRegInfo, NULL, 0) != WLAN_STATUS_SUCCESS) {
             i4Status = -EIO;
-			eFailReason = ADAPTER_START_FAIL;
+            eFailReason = ADAPTER_START_FAIL;
             break;
         }
 #endif
@@ -3158,19 +3612,27 @@ bailout:
         if ((i4DevIdx = wlanNetRegister(prWdev)) < 0){
             i4Status = -ENXIO;
             DBGLOG(INIT, ERROR, ("wlanProbe: Cannot register the net_device context to the kernel\n"));
-			eFailReason = NET_REGISTER_FAIL;
+            eFailReason = NET_REGISTER_FAIL;
             break;
         }
 		
 		wlanRegisterNotifier();
         //4 <6> Initialize /proc filesystem
 #ifdef WLAN_INCLUDE_PROC
-        DBGLOG(INIT, TRACE, ("init procfs...\n"));
-        if ( (i4Status = procInitProcfs(prDev, NIC_DEVICE_ID_LOW)) < 0) {
+	DBGLOG(INIT, TRACE, ("init procfs...\n"));
+#if 0
+	if ( (i4Status = procInitProcfs(prDev, NIC_DEVICE_ID_LOW)) < 0) {
             DBGLOG(INIT, ERROR, ("wlanProbe: init procfs failed\n"));
-			eFailReason = PROC_INIT_FAIL;
+            eFailReason = PROC_INIT_FAIL;
             break;
-        }
+	}
+#endif	
+	i4Status = procCreateFsEntry(prGlueInfo);
+	if (i4Status < 0) {
+		DBGLOG(INIT, ERROR, ("wlanProbe: Creat procfs failed\n"));
+		eFailReason = PROC_INIT_FAIL;
+		break;
+	}
 #endif /* WLAN_INCLUDE_PROC */
 
 #if CFG_ENABLE_BT_OVER_WIFI
@@ -3199,30 +3661,29 @@ bailout:
     while (FALSE);
 
     if (i4Status != WLAN_STATUS_SUCCESS)
-	{
-		switch (eFailReason)
-		{
-		case PROC_INIT_FAIL:
-			wlanNetUnregister(prWdev);
-		case NET_REGISTER_FAIL:
-			set_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag);
-			/* wake up main thread */
-		    wake_up_interruptible(&prGlueInfo->waitq);
-			/* wait main thread stops */
-		    wait_for_completion_interruptible(&prGlueInfo->rHaltComp);
-        	KAL_WAKE_LOCK_DESTROY(prGlueInfo->prAdapter, &prGlueInfo->rAhbIsrWakeLock);
-			wlanAdapterStop(prAdapter);
-		case ADAPTER_START_FAIL:
-        	if (prWdev != NULL)
-            	glBusFreeIrq(prWdev->netdev, *((P_GLUE_INFO_T *) netdev_priv(prWdev->netdev)));
-		case BUS_SET_IRQ_FAIL:
-			KAL_WAKE_LOCK_DESTROY(prAdapter, &prGlueInfo->rAhbIsrWakeLock);
-			wlanNetDestroy(prWdev);
-		case NET_CREATE_FAIL:
-		case BUS_INIT_FAIL:
-		default:
-			break;
-		}
+    {
+        switch (eFailReason) {
+        case PROC_INIT_FAIL:
+            wlanNetUnregister(prWdev);
+        case NET_REGISTER_FAIL:
+            set_bit(GLUE_FLAG_HALT_BIT, &prGlueInfo->ulFlag);
+            /* wake up main thread */
+            wake_up_interruptible(&prGlueInfo->waitq);
+             /* wait main thread stops */
+             wait_for_completion_interruptible(&prGlueInfo->rHaltComp);
+             KAL_WAKE_LOCK_DESTROY(prAdapter, &prAdapter->rTxThreadWakeLock);
+             wlanAdapterStop(prAdapter);
+        case ADAPTER_START_FAIL:
+             glBusFreeIrq(prWdev->netdev, *((P_GLUE_INFO_T *) netdev_priv(prWdev->netdev)));
+        case BUS_SET_IRQ_FAIL:
+             KAL_WAKE_LOCK_DESTROY(prAdapter, &prGlueInfo->rAhbIsrWakeLock);
+             wlanNetDestroy(prWdev);
+        case NET_CREATE_FAIL:
+        case BUS_INIT_FAIL:
+            break;
+        }
+        DBGLOG(INIT, ERROR, ("wlanProbe %d\n", i4Status));
+        return i4Status;
     }
 
 #if CFG_ENABLE_WIFI_DIRECT
@@ -3239,28 +3700,14 @@ bailout:
         kalIndicateAgpsNotify(prAdapter, AGPS_EVENT_WLAN_ON, NULL, 0);
 #endif
 #if (CFG_SUPPORT_MET_PROFILING == 1)
-	{
-		int iMetInitRet = WLAN_STATUS_FAILURE;
-		if (i4Status == WLAN_STATUS_SUCCESS)
-		{
-    		DBGLOG(INIT, TRACE, ("init MET procfs...\n"));
-			iMetInitRet = kalMetInitProcfs(prGlueInfo);
-    		if (iMetInitRet < 0)
-			{
-        		DBGLOG(INIT, ERROR, ("wlanProbe: init MET procfs failed\n"));
-			}
-    	}
-	}
+    DBGLOG(INIT, TRACE, ("init MET procfs...\n"));
+    printk("MET_PROF: MET PROCFS init....\n");
+    if ( (i4Status = kalInitProcfs(prGlueInfo)) < 0) {
+        DBGLOG(INIT, ERROR, ("wlanProbe: init MET procfs failed\n"));
+    }
 #endif
-	if (i4Status == WLAN_STATUS_SUCCESS) {
-		/* probe ok */
-		DBGLOG(INIT, TRACE, ("wlanProbe ok\n"));
-	} else {
-		/* probe failed */
-		DBGLOG(INIT, ERROR, ("wlanProbe failed\n"));
-	}
-
-	return i4Status;
+    DBGLOG(INIT, INFO, ("wlanProbe ok\n"));
+    return i4Status;
 } /* end of wlanProbe() */
 
 
@@ -3395,11 +3842,11 @@ wlanRemove(
 
     //4 <3> Remove /proc filesystem.
 #ifdef WLAN_INCLUDE_PROC
-    procRemoveProcfs(prDev, NIC_DEVICE_ID_LOW);
+    procRemoveProcfs();
 #endif /* WLAN_INCLUDE_PROC */
 
 #if (CFG_SUPPORT_MET_PROFILING == 1)
-    kalMetRemoveProcfs();
+    kalRemoveProcfs();
 #endif 
 
     /* Force to do DMA reset */
@@ -3464,6 +3911,7 @@ static int initWlan(void)
 
     /* memory pre-allocation */
     kalInitIOBuffer();
+    procInitFs();
 
     ret = ((glRegisterBus(wlanProbe, wlanRemove) == WLAN_STATUS_SUCCESS) ? 0: -EIO);
 
@@ -3491,21 +3939,24 @@ static int initWlan(void)
             DBG_CLASS_WARN | \
             DBG_CLASS_STATE | \
             DBG_CLASS_EVENT | \
-            DBG_CLASS_TRACE | \
             DBG_CLASS_INFO;
     }
+	aucDebugModule[DBG_INIT_IDX] &= ~(DBG_CLASS_TRACE);
+	aucDebugModule[DBG_P2P_IDX] &= ~(DBG_CLASS_TRACE);
     aucDebugModule[DBG_TX_IDX] &= ~(DBG_CLASS_EVENT | \
-        DBG_CLASS_TRACE | \
         DBG_CLASS_INFO);
     aucDebugModule[DBG_RX_IDX] &= ~(DBG_CLASS_EVENT | \
-        DBG_CLASS_TRACE | \
         DBG_CLASS_INFO);
     aucDebugModule[DBG_REQ_IDX] &= ~(DBG_CLASS_EVENT | \
-        DBG_CLASS_TRACE | \
+        DBG_CLASS_INFO);
+    aucDebugModule[DBG_SCN_IDX] &= ~(DBG_CLASS_EVENT | \
+        DBG_CLASS_INFO);
+    aucDebugModule[DBG_RLM_IDX] &= ~(DBG_CLASS_EVENT | \
         DBG_CLASS_INFO);
     aucDebugModule[DBG_INTR_IDX] = 0;
     aucDebugModule[DBG_MEM_IDX] = 0;
 #endif /* DBG */
+	glRegisterPlatformDev();
 
     return ret;
 } /* end of initWlan() */
@@ -3525,6 +3976,7 @@ static VOID exitWlan(void)
 {
     DBGLOG(INIT, INFO, ("exitWlan\n"));
 
+	glUnregisterPlatformDev();
     /* unregister set_dbg_level handler to mtk_wmt_wifi */
     register_set_dbg_level_handler(NULL);
 
@@ -3537,6 +3989,7 @@ static VOID exitWlan(void)
     /* free pre-allocated memory */
     kalUninitIOBuffer();
 
+    procUninitProcFs();
     DBGLOG(INIT, INFO, ("exitWlan\n"));
 
     return;

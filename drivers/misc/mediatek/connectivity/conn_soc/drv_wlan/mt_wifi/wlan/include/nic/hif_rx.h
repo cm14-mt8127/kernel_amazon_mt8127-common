@@ -89,8 +89,6 @@
 /*! HIF_RX_HEADER_T */
 // DW 0, Byte 1
 #define HIF_RX_HDR_PACKET_TYPE_MASK      BITS(0,1)
-#define HIF_RX_HDR_SEC_MODE_MASK		 BITS(2, 5)
-#define HIF_RX_HDR_SEC_MODE_OFFSET		 2
 
 // DW 1, Byte 0
 #define HIF_RX_HDR_HEADER_LEN            BITS(2,7)
@@ -102,8 +100,9 @@
 #define HIF_RX_HDR_DO_REORDER            BIT(1)
 #define HIF_RX_HDR_PAL                   BIT(2)
 #define HIF_RX_HDR_TCL                   BIT(3)
-#define HIF_RX_HDR_NETWORK_IDX_MASK      BITS(4,7)
+#define HIF_RX_HDR_NETWORK_IDX_MASK      BITS(4,6)
 #define HIF_RX_HDR_NETWORK_IDX_OFFSET    4
+#define HIF_RX_HDR_FLAG_RETRY		 BIT(7)
 
 // DW 1, Byte 2, 3
 #define HIF_RX_HDR_SEQ_NO_MASK           BITS(0,11)
@@ -147,6 +146,7 @@ typedef enum _ENUM_HIF_RX_PKT_TYPE_T {
     HIF_RX_PKT_TYPE_EVENT,
     HIF_RX_PKT_TYPE_TX_LOOPBACK,
     HIF_RX_PKT_TYPE_MANAGEMENT,
+    HIF_RX_PKT_TYPE_SW_DEFINED,
     HIF_RX_PKT_TYPE_NUM
 } ENUM_HIF_RX_PKT_TYPE_T, *P_ENUM_HIF_RX_PKT_TYPE_T;
 
@@ -177,9 +177,8 @@ typedef enum _ENUM_HIF_RX_PKT_TYPE_T {
 #define HIF_RX_HDR_GET_NETWORK_IDX(_prHifRxHdr) \
     ((((_prHifRxHdr)->uc80211_Reorder_PAL_TCL) & HIF_RX_HDR_NETWORK_IDX_MASK)\
     >> HIF_RX_HDR_NETWORK_IDX_OFFSET)
-
-#define HIF_RX_HDR_GET_SEC_MODE(_prHifRxHdr) \
-		((((_prHifRxHdr)->u2PacketType) & HIF_RX_HDR_SEC_MODE_MASK) >> HIF_RX_HDR_SEC_MODE_OFFSET)
+#define HIF_RX_HDR_GET_RETRY_FLAG(_prHifRxHdr) \
+	(((((_prHifRxHdr)->uc80211_Reorder_PAL_TCL) & HIF_RX_HDR_FLAG_RETRY) ? TRUE : FALSE))
 
 #define HIF_RX_HDR_GET_TID(_prHifRxHdr) \
     ((((_prHifRxHdr)->u2SeqNoTid) & HIF_RX_HDR_TID_MASK)\

@@ -58,7 +58,7 @@ TZ_RESULT KREE_ServRequestIrq(u32 op, u8 uparam[REE_SERVICE_BUFFER_SIZE])
             if (!token)
                 return TZ_RESULT_ERROR_OUT_OF_MEMORY;
             *token = param->irq;
-            param->token = (unsigned int)token;
+            param->token = token;
         }
         rret = request_irq(param->irq, KREE_IrqHandler, flags, "TEE IRQ", (void*)param->token);
         if (rret)
@@ -243,4 +243,19 @@ void kree_irq_mask_restore(unsigned int *pmask, unsigned int size)
     {
         printk("%s error: %s\n", __FUNCTION__, TZ_GetErrorString(ret));
     }
+}
+
+int kree_set_fiq_affinity(int irq, int cpuid)
+{
+       MTEEC_PARAM param[4];
+       TZ_RESULT ret;
+
+       param[0].value.a = irq;
+       param[1].value.a = cpuid;
+       ret = KREE_TeeServiceCall(irq_session, TZCMD_IRQ_SET_FIQ_AFFINITY,
+               TZ_ParamTypes2(TZPT_VALUE_INPUT, TZPT_VALUE_INPUT), param);
+       if (ret != TZ_RESULT_SUCCESS)
+               pr_info("%s error: %s\n", __func__, TZ_GetErrorString(ret));
+
+       return ret;
 }

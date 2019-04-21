@@ -266,6 +266,24 @@ typedef enum _ENUM_IE_UPD_METHOD_T {
     IE_UPD_METHOD_DELETE_ALL,
 } ENUM_IE_UPD_METHOD_T, *P_ENUM_IE_UPD_METHOD_T;
 
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+typedef enum _WAKEUP_TYPE {
+	ABNORMAL_INT,
+	SOFTWARE_INT,
+	TX_INT,
+	RX_DATA_INT,
+	RX_EVENT_INT,
+	RX_MGMT_INT,
+	RX_OTHERS_INT,
+	WAKEUP_TYPE_NUM
+} WAKEUP_TYPE;
+
+typedef struct _WAKEUP_STATISTIC {
+	UINT_16 u2Count;
+	OS_SYSTIME rStartTime;
+	UINT_16 u2TimePerHundred;
+} WAKEUP_STATISTIC, P_WAKEUP_STATISTIC;
+#endif
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -483,7 +501,8 @@ nicDeactivateNetwork(
 WLAN_STATUS
 nicUpdateBss(
     IN P_ADAPTER_T prAdapter,
-    IN ENUM_NETWORK_TYPE_INDEX_T eNetworkTypeIdx
+    IN ENUM_NETWORK_TYPE_INDEX_T eNetworkTypeIdx,
+    IN UINT_8 ucStaNoClear
     );
 
     /* BSS-INFO Indication (PM) */
@@ -726,5 +745,8 @@ nicUpdateRddTestMode(
     );
 #endif
 
-#endif /* _NIC_H */
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+INT_32 nicUpdateWakeupStatistics(P_ADAPTER_T prAdapter, WAKEUP_TYPE intType);
+#endif
 
+#endif /* _NIC_H */

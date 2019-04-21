@@ -5,9 +5,6 @@ vcodec_kernel_driver-objs :=        \
     common/val/src/val.o			\
     common/drv/src/drv_base.o
 
-ifeq ($(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT),y)
-  ccflags-y += -DMTK_SEC_VIDEO_PATH_SUPPORT
-endif
 
 obj-$(CONFIG_MTK_VIDEOCODEC_DRIVER) += vcodec_kernel_driver.o
 

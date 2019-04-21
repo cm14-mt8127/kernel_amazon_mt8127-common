@@ -19,30 +19,22 @@
 #include <linux/aee.h>
 #include <linux/mrdump.h>
 #include "aee-common.h"
+#include <mach/mtk_rtc.h>
+#include <mach/mt_boot_reason.h>
+#include <mach/mt_boot_common.h>
 
 #define RR_PROC_NAME "reboot-reason"
 extern int aee_rr_last_fiq_step(void);
 
 static struct proc_dir_entry *aee_rr_file;
 
-#define WDT_NORMAL_BOOT 0
-#define WDT_HW_REBOOT 1
-#define WDT_SW_REBOOT 2
-
-typedef enum {
-	BR_POWER_KEY = 0,
-	BR_USB,
-	BR_RTC,
-	BR_WDT,
-	BR_WDT_BY_PASS_PWK,
-	BR_TOOL_BY_PASS_PWK,
-	BR_2SEC_REBOOT,
-	BR_UNKNOWN,
-	BR_KE_REBOOT
-} boot_reason_t;
-
-char boot_reason[][16] =
-    { "keypad", "usb_chg", "rtc", "wdt", "reboot", "tool reboot", "smpl", "others", "kpanic" };
+#define BR_REBOOT_START	(BR_UNKNOWN + 1)
+#define BR_REBOOT_WARM		(BR_REBOOT_START + RTC_REBOOT_REASON_WARM)
+#define BR_REBOOT_PANIC	(BR_REBOOT_START + RTC_REBOOT_REASON_PANIC)
+#define BR_REBOOT_SW_WDT	(BR_REBOOT_START + RTC_REBOOT_REASON_SW_WDT)
+#define BR_REBOOT_FROM_POC	(BR_REBOOT_START + RTC_REBOOT_REASON_FROM_POC)
+#define BR_REBOOT_INTO_POC	(BR_REBOOT_START + RTC_REBOOT_REASON_FROM_POC+1)
+#define BR_MAXIMUM		(BR_REBOOT_START + 5)
 
 extern int aee_rr_reboot_reason_show(struct seq_file *m, void *v);
 int __weak aee_rr_reboot_reason_show(struct seq_file *m, void *v)
@@ -50,6 +42,56 @@ int __weak aee_rr_reboot_reason_show(struct seq_file *m, void *v)
 	seq_printf(m, "mtk_ram_console not enabled.");
 	return 0;
 }
+
+static const char * const boot_reason_messages[] = {
+	"ColdBoot From Power Key",
+	"ColdBoot From Charger",
+	"rtc",
+	"Hardware Watchdog Reboot",
+	"reboot",
+	"tool reboot",
+	"smpl",
+	"others",
+	"Warm Reboot",
+	"Kernel Panic Reboot",
+	"SW Watchdog Reboot",
+	"Reboot From Power-Off-Charging",
+	"Reboot Into Power-Off-Charging"
+};
+
+static const char * const boot_reason_values[] = {
+	"keypad",
+	"usb_chg",
+	"rtc",
+	"wdt",
+	"reboot",
+	"tool reboot",
+	"smpl",
+	"others",
+	"warm reboot",
+	"panic reboot",
+	"swwdt reboot",
+	"poc reboot",
+	"reboot into poc"
+};
+
+typedef enum {
+	SR_NORMAL = 0,
+	SR_LONG_KEY_PRESS
+} shutdown_reason_t;
+
+static int s_boot_reason;
+static shutdown_reason_t g_shutdown_reason = SR_NORMAL;
+
+static const char * const shutdown_reason_messages[] = {
+	"Normal Shutdown",
+	"Long Key Press Shutdown",
+};
+
+static const char * const shutdown_reason_values[] = {
+	"normal",
+	"long key press",
+};
 
 static int aee_rr_reboot_reason_proc_open(struct inode *inode, struct file *file)
 {
@@ -83,29 +125,29 @@ EXPORT_SYMBOL(aee_rr_proc_done);
 /* define /sys/bootinfo/powerup_reason */
 static ssize_t powerup_reason_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	int g_boot_reason = 0;
-	char *br_ptr;
-	if ((br_ptr = strstr(saved_command_line, "boot_reason=")) != 0) {
-		/* get boot reason */
-		g_boot_reason = br_ptr[12] - '0';
-		LOGE("g_boot_reason=%d\n", g_boot_reason);
-#ifdef CONFIG_MTK_RAM_CONSOLE
-		if (aee_rr_last_fiq_step() != 0)
-			g_boot_reason = BR_KE_REBOOT;
-#endif
-		return sprintf(buf, "%s\n", boot_reason[g_boot_reason]);
-	} else
-		return 0;
-
+	return sprintf(buf, "%s\n", boot_reason_values[s_boot_reason]);
 }
 
 static struct kobj_attribute powerup_reason_attr = __ATTR_RO(powerup_reason);
+
+/* define /sys/bootinfo/shutdown_reason */
+static ssize_t shutdown_reason_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	/*
+	 * Check whether last shutdown is due to long power key press.
+	 */
+
+	return sprintf(buf, "%s\n", shutdown_reason_values[g_shutdown_reason]);
+}
+
+static struct kobj_attribute shutdown_reason_attr = __ATTR_RO(shutdown_reason);
 
 struct kobject *bootinfo_kobj;
 EXPORT_SYMBOL(bootinfo_kobj);
 
 static struct attribute *bootinfo_attrs[] = {
 	&powerup_reason_attr.attr,
+	&shutdown_reason_attr.attr,
 	NULL
 };
 
@@ -113,9 +155,55 @@ static struct attribute_group bootinfo_attr_group = {
 	.attrs = bootinfo_attrs,
 };
 
+/* Print boot reason and shutdown reason into kernel log */
+static void print_boot_shutdown_reason(void)
+{
+	/* Print boot reason. Copy from powerup_reason_show() */
+	char *br_ptr;
+	br_ptr = strstr(saved_command_line, "boot_reason=");
+
+	s_boot_reason = BR_UNKNOWN;
+	if (br_ptr == NULL)
+		pr_err("Fail to read boot reason: boot_reason not found!\n");
+	else {
+		/* get boot reason */
+		s_boot_reason = br_ptr[12] - '0';
+		if (s_boot_reason == BR_WDT_BY_PASS_PWK)
+			s_boot_reason = BR_REBOOT_WARM + rtc_get_reboot_reason();
+		if ((s_boot_reason < BR_POWER_KEY)
+				|| (s_boot_reason >= BR_MAXIMUM)) {
+			pr_err("Fail to read boot reason: Undefined = %d!\n",
+					s_boot_reason);
+			s_boot_reason = BR_UNKNOWN;
+		}
+#ifdef CONFIG_MTK_KERNEL_POWER_OFF_CHARGING
+		if (s_boot_reason == BR_WDT && (g_boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT
+			|| g_boot_mode == LOW_POWER_OFF_CHARGING_BOOT))
+			s_boot_reason = BR_REBOOT_INTO_POC;
+		if ((g_boot_mode != KERNEL_POWER_OFF_CHARGING_BOOT)
+				&& (g_boot_mode != LOW_POWER_OFF_CHARGING_BOOT))
+			rtc_mark_reboot_reason(RTC_REBOOT_REASON_WARM);
+		else
+			rtc_mark_reboot_reason(RTC_REBOOT_REASON_FROM_POC);
+#else
+		rtc_mark_reboot_reason(RTC_REBOOT_REASON_WARM);
+#endif
+	}
+	pr_notice("Boot reason: %s\n", boot_reason_messages[s_boot_reason]);
+
+	/* Print shutdown reason. */
+	if (rtc_lprst_detected()) {
+		g_shutdown_reason = SR_LONG_KEY_PRESS;
+		rtc_mark_clear_lprst();
+	}
+	pr_notice("Shutdown reason: %s\n", shutdown_reason_messages[g_shutdown_reason]);
+}
+
 int ksysfs_bootinfo_init(void)
 {
 	int error;
+
+	print_boot_shutdown_reason();
 
 	bootinfo_kobj = kobject_create_and_add("bootinfo", NULL);
 	if (!bootinfo_kobj) {

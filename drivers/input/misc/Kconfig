@@ -653,4 +653,9 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_TEMPERATURE_TMP103
+        bool "TMP103 temperature sensor support"
+        help
+          Support for TI Digital Temperature Sensor TMP103
+
 endif

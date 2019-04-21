@@ -98,7 +98,8 @@ static int disp_ovl_engine_release(struct inode *inode, struct file *file)
 static long disp_ovl_engine_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int i;
-	DISP_OVL_ENGINE_INSTANCE_HANDLE handle = 0;
+
+	DISP_OVL_ENGINE_INSTANCE_HANDLE handle = 1;
 
     // Find match mapping
     for(i=0; i<DISP_OVL_ENGINE_INODE_NUM; i++)
@@ -113,7 +114,11 @@ static long disp_ovl_engine_unlocked_ioctl(struct file *file, unsigned int cmd, 
 		DISP_OVL_ENGINE_ERR("[disp_ovl_engine_unlocked_ioctl] is_early_suspended,cmd=0x%x\n", cmd);
 		return -1;
 	}
-    
+	/* porting from abc123*/
+	if (i >= DISP_OVL_ENGINE_INODE_NUM) {
+		DISP_OVL_ENGINE_ERR("[disp_ovl_engine_unlocked_ioctl] invalid file handle 0x%x\n", (unsigned int)file);
+	}
+
     MMProfileLogEx(MTKFB_MMP_Events.OVLEngine_IOCTL, MMProfileFlagPulse, cmd, 0);
     switch(cmd)
     {

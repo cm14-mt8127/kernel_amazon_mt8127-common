@@ -115,18 +115,18 @@ static struct early_suspend mt_cpufreq_early_suspend_handler =
 #define DVFS_F4     ( 598000)   // KHz
 
 #if defined(HQA_LV_1_09V)
-    #define DVFS_V0     (1250)  // mV
+    #define DVFS_V0     (1200)  // mV
     #define DVFS_V1     (1150)  // mV
     #define DVFS_V2     (1090)  // mV
     #define DVFS_V3     (1090)  // mV
 #elif defined(HQA_NV_1_15V)
     #define DVFS_V0     (1260)  // mV
-    #define DVFS_V1     (1250)  // mV
+    #define DVFS_V1     (1200)  // mV
     #define DVFS_V2     (1150)  // mV
     #define DVFS_V3     (1050)  // mV /*Not used */
 #elif defined(HQA_HV_1_21V)
     #define DVFS_V0     (1320)  // mV
-    #define DVFS_V1     (1250)  // mV
+    #define DVFS_V1     (1210)  // mV
     #define DVFS_V2     (1150)  // mV /*Not used */
     #define DVFS_V3     (1050)  // mV /*Not used */
 #else /* Normal case */
@@ -186,6 +186,7 @@ static unsigned int g_cpu_power_table_num = 0;
 
 static int g_ramp_down_count = 0;
 
+static bool mt_cpufreq_boost = false;
 static bool mt_cpufreq_debug = false;
 static bool mt_cpufreq_ready = false;
 static bool mt_cpufreq_pause = false;
@@ -386,7 +387,6 @@ static void mt_cpufreq_volt_set(unsigned int target_volt);
 * Extern Function Declaration
 *******************************/
 extern int spm_dvfs_ctrl_volt(u32 value);
-extern int mtk_cpufreq_register(struct mt_cpu_power_info *freqs, int num);
 extern void hp_limited_cpu_num(int num);
 extern u32 PTP_get_ptp_level(void);
 
@@ -825,10 +825,6 @@ static void mt_setup_power_table(int num)
         dprintk("mt_cpu_power[%d].cpufreq_ncpu = %d, ", i, mt_cpu_power[i].cpufreq_ncpu);
         dprintk("mt_cpu_power[%d].cpufreq_power = %d\n", i, mt_cpu_power[i].cpufreq_power);
     }
-
-    #ifdef CONFIG_THERMAL
-        mtk_cpufreq_register(mt_cpu_power, g_cpu_power_table_num);
-    #endif
 }
 
 /***********************************************
@@ -1207,7 +1203,7 @@ static void mt_cpufreq_set(unsigned int freq_old, unsigned int freq_new, unsigne
         #ifdef MT_CPUFREQ_FHCTL
         if(((freq_new > FHCTL_CHANGE_FREQ) && (freq_old > FHCTL_CHANGE_FREQ)) || ((freq_new < FHCTL_CHANGE_FREQ) && (freq_old < FHCTL_CHANGE_FREQ)))
         {
-            dprintk("Before === FHCTL: freq_new = %d < freq_old = %d ===\n", freq_new, freq_old);            
+            dprintk("Before === FHCTL: freq_new = %d < freq_old = %d ===\n", freq_new, freq_old);
             mt_dfs_armpll(freq_old, freq_new);
             dprintk("=== FHCTL: freq_new = %d > freq_old = %d ===\n", freq_new, freq_old);
 
@@ -1451,7 +1447,15 @@ static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_
         freqs.new = DVFS_F2;
         dprintk("mt_cpufreq_limit_max_freq_early_suspend, freqs.new = %d\n", freqs.new);
     }
-	
+
+    /************************************************
+    * DVFS keep max freq when boost is enable.
+    *************************************************/
+    if(mt_cpufreq_boost == true)
+    {
+        freqs.new = g_max_freq_by_ptp;
+        dprintk("set max freq for boost, freqs.new = %d\n", freqs.new);
+    }
 
     freqs.new = mt_thermal_limited_verify(freqs.new);
 
@@ -1551,7 +1555,7 @@ static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_
     *******************************/
     /* Get current frequency */
     freqs.old = g_cur_freq;
-    
+ 
     if (freqs.old != freqs.new)
         mt_cpufreq_set(freqs.old, freqs.new, next.cpufreq_volt);
     else
@@ -2526,6 +2530,91 @@ static int mt_cpufreq_ptpod_freq_volt_open(struct inode *inode, struct file *fil
 }
 
 
+void mt_cpufreq_enable_boost(void)
+{
+	struct cpufreq_policy *policy;
+
+	mt_cpufreq_boost = true;
+	dprintk("enable freq boost, mt_cpufreq_boost:%d\n", mt_cpufreq_boost);
+
+	policy = cpufreq_cpu_get(0);
+
+	if (!policy) {
+		dprintk("no available policy\n");
+		goto no_policy;
+	}
+	cpufreq_driver_target(policy, g_max_freq_by_ptp, CPUFREQ_RELATION_L);
+
+	cpufreq_cpu_put(policy);
+
+no_policy:
+	return;
+}
+
+void mt_cpufreq_disable_boost(void)
+{
+	mt_cpufreq_boost = false;
+	dprintk("disable freq boost: mt_cpufreq_boost:%d\n", mt_cpufreq_boost);
+}
+
+bool mt_cpufreq_get_boost(void)
+{
+	return mt_cpufreq_boost;
+}
+
+
+/***************************
+* show current debug status
+****************************/
+static int mt_cpufreq_boost_show(struct seq_file* s, void* v)
+{
+    if (mt_cpufreq_get_boost())
+        seq_printf(s, "cpufreq boost enabled\n");
+    else
+        seq_printf(s, "cpufreq boost disabled\n");
+
+    return 0;
+}
+
+static int mt_cpufreq_boost_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, mt_cpufreq_boost_show, NULL);
+}
+
+
+/***********************
+* enable debug message
+************************/
+static ssize_t mt_cpufreq_boost_write(struct file *file, const char *buffer, size_t count, loff_t *data)
+{
+    int boost = 0;
+
+    if (sscanf(buffer, "%d", &boost) == 1)
+    {
+        if (boost == 0)
+        {
+            mt_cpufreq_disable_boost();
+            return count;
+        }
+        else if (boost == 1)
+        {
+	    mt_cpufreq_enable_boost();
+            return count;
+        }
+        else
+        {
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "bad argument!! should be 0 or 1 [0: disable, 1: enable]\n");
+        }
+    }
+    else
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "bad argument!! should be 0 or 1 [0: disable, 1: enable]\n");
+    }
+
+    return -EINVAL;
+}
+
+
 /*******************************************
 * cpufrqe platform driver callback function
 ********************************************/
@@ -3164,6 +3253,15 @@ static const struct file_operations mt_cpufreq_ptpod_freq_volt_fops = {
     .release    = single_release,
 };
 
+static const struct file_operations mt_cpufreq_boost_fops = {
+    .owner      = THIS_MODULE,
+    .write      = mt_cpufreq_boost_write,
+    .open       = mt_cpufreq_boost_open,
+    .read       = seq_read,
+    .llseek     = seq_lseek,
+    .release    = single_release,
+};
+
 /***********************************************************
 * cpufreq initialization to register cpufreq platform driver
 ************************************************************/
@@ -3234,6 +3332,12 @@ static int __init mt_cpufreq_pdrv_init(void)
             pr_err("[%s]: mkdir /proc/cpufreq/cpufreq_sdio_info failed\n", __FUNCTION__);
         }
         #endif
+
+        mt_entry = proc_create("cpufreq_boost", S_IRUGO | S_IWUSR | S_IWGRP, mt_cpufreq_dir, &mt_cpufreq_boost_fops);
+        if (!mt_entry)
+        {
+            pr_err("[%s]: mkdir /proc/cpufreq/cpufreq_boost failed\n", __FUNCTION__);
+        }
     }
 
     ret = platform_driver_register(&mt_cpufreq_pdrv);

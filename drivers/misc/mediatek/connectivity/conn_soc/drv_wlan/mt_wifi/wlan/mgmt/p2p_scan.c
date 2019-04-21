@@ -674,8 +674,6 @@ scanP2pProcessBeaconAndProbeResp(
                             prP2pConnSettings->ucSSIDLen))) {// SSID Match
             prP2pBssInfo->ucDTIMPeriod = prBssDesc->ucDTIMPeriod;
             nicPmIndicateBssConnected(prAdapter, NETWORK_TYPE_P2P_INDEX);
-            DBGLOG(P2P, INFO, ("P2P: Indicate BSS connect, DTIMPeriod %d\n", prBssDesc->ucDTIMPeriod));
-            prP2pBssInfo->fgIsIndicatedPMBssConn = TRUE;
         }
 
         do {
@@ -696,7 +694,7 @@ scanP2pProcessBeaconAndProbeResp(
             rChannelInfo.eBand = prBssDesc->eBand;
 			prBssDesc->fgIsP2PReport = TRUE;
 
-			DBGLOG(P2P, INFO, ("indicate %s [%d]\n", prBssDesc->aucSSID,prBssDesc->ucChannelNum));
+			DBGLOG(P2P, TRACE, ("indicate %s [%d]\n", prBssDesc->aucSSID,prBssDesc->ucChannelNum));
 
             kalP2PIndicateBssInfo(prAdapter->prGlueInfo,
                             (PUINT_8)prSwRfb->pvHeader,

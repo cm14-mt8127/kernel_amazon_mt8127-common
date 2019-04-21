@@ -197,6 +197,17 @@
 #define RTC_SPAR0_PWRON_SEC_SHIFT 	0
 #define RTC_SPAR0_32K_LESS 				(1U << 6)
 #define RTC_SPAR0_LP_DET					(1U << 7)
+#define RTC_SPAR0_ENTER_KPOC				(1U << 8)
+#define RTC_SPAR0_RPMB_PROGRAM_FLAG			(1U << 9)
+#define RTC_SPAR0_LONG_PRESS_RST			(1U << 10)	/* mask for long press reset metrics */
+#define RTC_SPAR0_SW_LONG_PRESS_RST			(1U << 11)	/* mask for sw long press reset */
+
+#define RTC_SPAR0_REBOOT_REASON_BIT0		(1U << 14)
+#define RTC_SPAR0_REBOOT_REASON_BIT1		(1U << 15)
+#define RTC_SPAR0_REBOOT_REASON_MASK		(0x3)
+#define RTC_SPAR0_REBOOT_REASON_SHIFT		(14)
+#define RTC_SPAR0_CLEAR_REBOOT_REASON	\
+	(~(RTC_SPAR0_REBOOT_REASON_MASK << RTC_SPAR0_REBOOT_REASON_SHIFT))
 
 /*
  * RTC_SPAR1:

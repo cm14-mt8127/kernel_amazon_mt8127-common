@@ -75,6 +75,7 @@ typedef struct
     bool bCouple; // overlay mode
     bool bModeSwitch; // switch between couple mode & de-couple mode
     unsigned int Ovlmva;
+    unsigned int PreservedSecOvlBuf[OVL_ENGINE_OVL_BUFFER_NUMBER];
     unsigned int OvlWrIdx;
     unsigned int RdmaRdIdx;
     bool OvlBufSecurity[OVL_ENGINE_OVL_BUFFER_NUMBER];
@@ -98,6 +99,11 @@ void disp_ovl_engine_wake_up_rdma0_update_thread(void);
 int Disp_Ovl_Engine_Set_Request(struct disp_ovl_engine_request_struct *overlayRequest,int timeout);
 int Disp_Ovl_Engine_Get_Request(struct disp_ovl_engine_request_struct *overlayRequest);
 int Disp_Ovl_Engine_Ack_Request(struct disp_ovl_engine_request_struct *overlayRequest);
+#endif
+
+#if 1 //def monica_porting
+void Disp_Ovl_Engine_clock_on(void);
+void Disp_Ovl_Engine_clock_off(void);
 #endif
 
 #endif

@@ -40,13 +40,10 @@
 #include <asm/uaccess.h>
 
 #ifdef CONFIG_MTK_EMMC_SUPPORT
-#include "partition_define.h"
-
-//extern struct excel_info PartInfoEmmc[PART_NUM];
-
 extern u32 g_emmc_mode_switch;
 #endif
 
+#define PARTITION_NAME_LENGTH    (64)
 #define DRV_NAME_MISC            "misc-sd"
 
 #define DEBUG_MMC_IOCTL   0
@@ -107,8 +104,12 @@ extern int msdc_reinit(struct msdc_host *host);
 
 static int sd_ioctl_reinit(struct msdc_ioctl* msdc_ctl)
 {
-	struct msdc_host *host = msdc_get_host(MSDC_SD,0,0);
-	return msdc_reinit(host);
+    struct msdc_host *host = msdc_get_host(MSDC_SD,0,0);
+    if (NULL != host) {
+        return msdc_reinit(host);
+    } else {
+        return -EINVAL;
+    }
 }
 //#endif
 
@@ -132,7 +133,12 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl* msdc_ctl)
     struct mmc_command msdc_cmd;
     struct mmc_request msdc_mrq;
     struct msdc_host *host_ctl;
-   
+
+    if(!msdc_ctl)
+        return -EINVAL;
+    if(msdc_ctl->total_size <= 0)
+        return -EINVAL;
+
     host_ctl = mtk_msdc_host[msdc_ctl->host_num];
     BUG_ON(!host_ctl);
     BUG_ON(!host_ctl->mmc);
@@ -248,6 +254,9 @@ static int simple_sd_ioctl_single_rw(struct msdc_ioctl* msdc_ctl)
         }
     }
 
+    /* clear the global buffer of R/W IOCTL */
+    memset(sg_msdc_multi_buffer, 0 , 512);
+
     if (msdc_ctl->partition){
         mmc_send_ext_csd(host_ctl->mmc->card,l_buf);
 
@@ -282,7 +291,12 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl* msdc_ctl)
     struct mmc_command msdc_stop;
     struct mmc_request  msdc_mrq;
     struct msdc_host *host_ctl;
-   
+
+    if(!msdc_ctl)
+        return -EINVAL;
+    if(msdc_ctl->total_size <= 0)
+        return -EINVAL;
+
     host_ctl = mtk_msdc_host[msdc_ctl->host_num];
     BUG_ON(!host_ctl);
     BUG_ON(!host_ctl->mmc);
@@ -397,6 +411,9 @@ static int simple_sd_ioctl_multi_rw(struct msdc_ioctl* msdc_ctl)
         }
     }
 
+    /* clear the global buffer of R/W IOCTL */
+    memset(sg_msdc_multi_buffer, 0 , msdc_ctl->total_size);
+
     if (msdc_ctl->partition){
         mmc_send_ext_csd(host_ctl->mmc->card,l_buf);
 
@@ -434,9 +451,11 @@ int simple_sd_ioctl_rw(struct msdc_ioctl* msdc_ctl)
 static int simple_sd_ioctl_get_cid(struct msdc_ioctl* msdc_ctl)
 {
     struct msdc_host *host_ctl;
-   
-    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
 
+    if(!msdc_ctl)
+        return -EINVAL;
+
+    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
     BUG_ON(!host_ctl);
     BUG_ON(!host_ctl->mmc);
     BUG_ON(!host_ctl->mmc->card);
@@ -461,9 +480,11 @@ static int simple_sd_ioctl_get_cid(struct msdc_ioctl* msdc_ctl)
 static int simple_sd_ioctl_get_csd(struct msdc_ioctl* msdc_ctl)
 {
     struct msdc_host *host_ctl;
-   
-    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
 
+    if(!msdc_ctl)
+        return -EINVAL;
+
+    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
     BUG_ON(!host_ctl);
     BUG_ON(!host_ctl->mmc);
     BUG_ON(!host_ctl->mmc->card);
@@ -489,13 +510,14 @@ static int simple_sd_ioctl_get_excsd(struct msdc_ioctl* msdc_ctl)
 {
     char l_buf[512];
     struct msdc_host *host_ctl;
-
 #if DEBUG_MMC_IOCTL
     int i;
 #endif
-   
-    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
 
+    if(!msdc_ctl)
+        return -EINVAL;
+
+    host_ctl = mtk_msdc_host[msdc_ctl->host_num];
     BUG_ON(!host_ctl);
     BUG_ON(!host_ctl->mmc);
     BUG_ON(!host_ctl->mmc->card);
@@ -540,39 +562,52 @@ extern u32 msdc_host_mode2[HOST_MAX_NUM];
 #ifdef CONFIG_MTK_EMMC_SUPPORT
 static int simple_sd_ioctl_set_driving(struct msdc_ioctl* msdc_ctl)
 {
-    u32 base;
+	u32 base;
 	struct msdc_host *host;
 #if DEBUG_MMC_IOCTL
-    unsigned int l_value;
+	unsigned int l_value;
 #endif
 
-    if (msdc_ctl->host_num == 0){
+	if(!msdc_ctl)
+		return -EINVAL;
+
+	if((msdc_ctl->host_num < 0) || (msdc_ctl->host_num >= HOST_MAX_NUM)){
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
+	}else if (msdc_ctl->host_num == 0){
 #ifndef CFG_DEV_MSDC0
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 1) {
+	} else if (msdc_ctl->host_num == 1) {
 #ifndef CFG_DEV_MSDC1
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 2) {
+	} else if (msdc_ctl->host_num == 2) {
 #ifndef CFG_DEV_MSDC2
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 3) {
+	} else if (msdc_ctl->host_num == 3) {
 #ifndef CFG_DEV_MSDC3
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
 	} else if (msdc_ctl->host_num == 4) {
 #ifndef CFG_DEV_MSDC4
-			printk("host%d is not config\n", msdc_ctl->host_num);
-			return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
+	}else {
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
 	}
-    base = mtk_msdc_host[msdc_ctl->host_num]->base;
+
+	host = mtk_msdc_host[msdc_ctl->host_num];
+	BUG_ON(!host);
+
+	base = host->base;
 #ifndef FPGA_PLATFORM
    enable_clock(MT_CG_PERI_MSDC30_0 + mtk_msdc_host[msdc_ctl->host_num]->id, "SD"); 
 #endif
@@ -627,37 +662,50 @@ static int simple_sd_ioctl_set_driving(struct msdc_ioctl* msdc_ctl)
 
 static int simple_sd_ioctl_get_driving(struct msdc_ioctl* msdc_ctl)
 {
-    u32 base;
-//    unsigned int l_value;
+	u32 base;
+//	unsigned int l_value;
+	struct msdc_host *host;
 
-    
-    if (msdc_ctl->host_num == 0){
+	if(!msdc_ctl)
+		return -EINVAL;
+
+	if((msdc_ctl->host_num < 0) || (msdc_ctl->host_num >= HOST_MAX_NUM)){
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
+	}else if (msdc_ctl->host_num == 0){
 #ifndef CFG_DEV_MSDC0
-          printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 1) {
+	} else if (msdc_ctl->host_num == 1) {
 #ifndef CFG_DEV_MSDC1
-          printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 2) {
+	} else if (msdc_ctl->host_num == 2) {
 #ifndef CFG_DEV_MSDC2
-          printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 3) {
+	} else if (msdc_ctl->host_num == 3) {
 #ifndef CFG_DEV_MSDC3
-          printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
 	} else if (msdc_ctl->host_num == 4) {
 #ifndef CFG_DEV_MSDC4
-			printk("host%d is not config\n", msdc_ctl->host_num);
-			return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
+	}else {
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
 	}
-    base = mtk_msdc_host[msdc_ctl->host_num]->base;
+
+	host = mtk_msdc_host[msdc_ctl->host_num];
+	BUG_ON(!host);
+
+	base = host->base;
 #ifndef FPGA_PLATFORM   
     enable_clock(MT_CG_PERI_MSDC30_0 + mtk_msdc_host[msdc_ctl->host_num]->id, "SD"); 
 #endif
@@ -694,38 +742,48 @@ static int simple_sd_ioctl_get_driving(struct msdc_ioctl* msdc_ctl)
 #endif
 static int simple_sd_ioctl_sd30_mode_switch(struct msdc_ioctl* msdc_ctl)
 {
-//    u32 base;
+//	u32 base;
 //	struct msdc_hw hw;
-	int id = msdc_ctl->host_num;
+	int id;
 #if DEBUG_MMC_IOCTL
-    unsigned int l_value;
+	unsigned int l_value;
 #endif
 
-    if (msdc_ctl->host_num == 0){
+	if(!msdc_ctl)
+		return -EINVAL;
+    id = msdc_ctl->host_num;
+
+	if((msdc_ctl->host_num < 0) || (msdc_ctl->host_num >= HOST_MAX_NUM)){
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
+	}else if (msdc_ctl->host_num == 0){
 #ifndef CFG_DEV_MSDC0
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 1) {
+	} else if (msdc_ctl->host_num == 1) {
 #ifndef CFG_DEV_MSDC1
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 2) {
+	} else if (msdc_ctl->host_num == 2) {
 #ifndef CFG_DEV_MSDC2
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
-    } else if (msdc_ctl->host_num == 3) {
+	} else if (msdc_ctl->host_num == 3) {
 #ifndef CFG_DEV_MSDC3
-        printk("host%d is not config\n", msdc_ctl->host_num);
-        return -1;
+		printk("host%d is not config\n", msdc_ctl->host_num);
+		return -EINVAL;
 #endif
 	} else if (msdc_ctl->host_num == 4) {
 #ifndef CFG_DEV_MSDC4
 		printk("host%d is not config\n", msdc_ctl->host_num);
-		return -1;
+		return -EINVAL;
 #endif
+	}else {
+		printk("invalid host num: %d\n", msdc_ctl->host_num);
+		return -EINVAL;
 	}
 
 	switch(msdc_ctl->sd30_mode){
@@ -833,6 +891,7 @@ typedef struct mbr_part_info {
 #define MBR_PART_NUM  6
 #define __MMC_ERASE_ARG        0x00000000
 #define __MMC_TRIM_ARG         0x00000001
+#define __MMC_DISCARD_ARG      0x00000003
 
 struct __mmc_blk_data {
     spinlock_t    lock;
@@ -851,6 +910,10 @@ int msdc_get_info(STORAGE_TPYE storage_type,GET_STORAGE_INFO info_type,struct st
 	struct msdc_host *host = NULL;
 	int host_function  = 0;
 	bool boot = 0;
+
+	if(!info)
+		return -EINVAL;
+
 	switch (storage_type){
 		case EMMC_CARD_BOOT :
 			host_function = MSDC_EMMC;
@@ -872,6 +935,9 @@ int msdc_get_info(STORAGE_TPYE storage_type,GET_STORAGE_INFO info_type,struct st
 			break;
 		}
 	host = msdc_get_host(host_function,boot,0);
+	BUG_ON(!host);
+	BUG_ON(!host->mmc);
+	BUG_ON(!host->mmc->card);
 	switch (info_type){
 		case CARD_INFO :
 			if(host->mmc && host->mmc->card)
@@ -907,7 +973,7 @@ int msdc_get_info(STORAGE_TPYE storage_type,GET_STORAGE_INFO info_type,struct st
 	return 1;
 }
 
-#ifdef CONFIG_MTK_EMMC_SUPPORT
+#if 0
 static int simple_mmc_get_disk_info(struct mbr_part_info* mpi, unsigned char* name)
 {
     int i = 0;
@@ -918,6 +984,9 @@ static int simple_mmc_get_disk_info(struct mbr_part_info* mpi, unsigned char* na
     struct gendisk *disk;
     struct __mmc_blk_data *md;
     
+    if(!name || !mpi)
+        return -EINVAL;
+
     /* emmc always in slot0 */
     host = msdc_get_host(MSDC_EMMC,MSDC_BOOT_EN,0);
     BUG_ON(!host);
@@ -939,7 +1008,7 @@ static int simple_mmc_get_disk_info(struct mbr_part_info* mpi, unsigned char* na
 #if DEBUG_MMC_IOCTL
                 printk("part_name = %s    name = %s\n", PartInfo[i].name, name);
 #endif                
-                if (!strncmp(PartInfo[i].name, name, 25)){
+                if (!strncmp(PartInfo[i].name, name, PARTITION_NAME_LENGTH)){
                     mpi->start_sector = part->start_sect;           
                     mpi->nr_sects = part->nr_sects;           
                     mpi->part_no = part->partno; 
@@ -966,6 +1035,7 @@ static int simple_mmc_get_disk_info(struct mbr_part_info* mpi, unsigned char* na
 static int simple_mmc_erase_func(unsigned int start, unsigned int size)
 {
     struct msdc_host *host;
+    unsigned int arg;
     
     /* emmc always in slot0 */
     host = msdc_get_host(MSDC_EMMC,MSDC_BOOT_EN,0);
@@ -975,18 +1045,30 @@ static int simple_mmc_erase_func(unsigned int start, unsigned int size)
     
     mmc_claim_host(host->mmc);
 
-    if (!mmc_can_trim(host->mmc->card)){
-        printk("emmc card can't support trim\n");
-        return 0;
+    if(mmc_can_discard(host->mmc->card))
+    {
+        arg = __MMC_DISCARD_ARG;
+    }else if (host->mmc->card->ext_csd.sec_feature_support & EXT_CSD_SEC_GB_CL_EN){
+        /* for Hynix eMMC chip\A3\ACdo trim even if it is  MMC_QUIRK_TRIM_UNSTABLE */
+        arg = __MMC_TRIM_ARG;
+    }else if(mmc_can_erase(host->mmc->card)){
+        /* mmc_erase() will remove the erase group un-aligned part,
+         * msdc_command_start() will do trim for old combo erase un-aligned issue
+         */
+        arg = __MMC_ERASE_ARG;
+    }else {
+        printk("[%s]: emmc card can't support trim / discard / erase\n", __func__);
+        goto end;
     }
     
-    mmc_erase(host->mmc->card, start, size,
-             __MMC_TRIM_ARG);
+    printk("[%s]: start=0x%x, size=%d, arg=0x%x, can_trim=(0x%x),EXT_CSD_SEC_GB_CL_EN=0x%lx\n",
+                    __func__, start, size, arg, host->mmc->card->ext_csd.sec_feature_support, EXT_CSD_SEC_GB_CL_EN);
+    mmc_erase(host->mmc->card, start, size, arg);
 
 #if DEBUG_MMC_IOCTL
-    printk("erase done....\n");
+    printk("[%s]: erase done....arg=0x%x\n", __func__, arg);
 #endif
-
+end:
     mmc_release_host(host->mmc);
     
     return 0;
@@ -995,7 +1077,7 @@ static int simple_mmc_erase_func(unsigned int start, unsigned int size)
 
 static int simple_mmc_erase_partition(unsigned char* name)
 {
-#ifdef CONFIG_MTK_EMMC_SUPPORT
+#if 0
     struct mbr_part_info mbr_part;
     int l_ret = -1;
 
@@ -1025,8 +1107,13 @@ static int simple_mmc_erase_partition(unsigned char* name)
 #ifdef CONFIG_MTK_EMMC_SUPPORT
 static int simple_mmc_erase_partition_wrap(struct msdc_ioctl* msdc_ctl)
 {
-    unsigned char name[25];
+    unsigned char name[PARTITION_NAME_LENGTH];
 
+    if(!msdc_ctl)
+        return -EINVAL;
+
+    if(msdc_ctl->total_size > PARTITION_NAME_LENGTH)
+        return -EFAULT;
     if (copy_from_user(name, (unsigned char*)msdc_ctl->buffer, msdc_ctl->total_size))
         return -EFAULT;
 

@@ -124,6 +124,7 @@ static struct i2c_driver tps65132_iic_driver = {
     .id_table	= tps65132_id,
     .probe		= tps65132_probe,
     .remove		= tps65132_remove,
+    //.detect		= mt6605_detect,
     .driver		= {
     .owner	= THIS_MODULE,
     .name	= "tps65132",

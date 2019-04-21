@@ -22,14 +22,21 @@ void arch_reset(char mode, const char *cmd)
 		rtc_mark_recovery();
 	} else if (cmd && !strcmp(cmd, "bootloader")) {
 		rtc_mark_fast();
+	} else if (cmd && !strcmp(cmd, "rpmbp")) {
+		rtc_mark_rpmbp();
 	}
 #ifdef CONFIG_MTK_KERNEL_POWER_OFF_CHARGING
 	else if (cmd && !strcmp(cmd, "kpoc")) {
 		rtc_mark_kpoc();
+	} else if (cmd && !strcmp(cmd, "enter_kpoc")) {
+		rtc_mark_enter_kpoc();
 	}
 #endif
 	else {
-		reboot = 1;
+		if (rtc_enter_kpoc_detected())
+			reboot = 0;
+		else
+			reboot = 1;
 	}
 
 	if (res) {

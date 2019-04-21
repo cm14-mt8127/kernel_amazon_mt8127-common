@@ -1,4 +1,4 @@
-#ifdef CONFIG_MTK_IN_HOUSE_TEE_SUPPORT
+#ifdef MTK_IN_HOUSE_TEE_SUPPORT
 #include <linux/interrupt.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>

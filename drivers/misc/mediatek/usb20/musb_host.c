@@ -98,6 +98,160 @@
  * of transfers between endpoints, or anything clever.
  */
 
+static u8 dynamic_fifo_total_slot = 15;
+int musb_host_alloc_ep_fifo(struct musb *musb, struct musb_qh *qh, u8 is_in)
+{
+	void __iomem *mbase = musb->mregs;
+	int epnum = qh->hw_ep->epnum;
+	u16 maxpacket;
+	u16 request_fifo_sz = 0, fifo_unit_nr = 0;
+	u16 idx_start = 0;
+	u8 index, i;
+	u16 c_off = 0;
+	u8 c_size = 0;
+	u16 free_uint = 0;
+	u8 found = 0;
+
+	if (qh->hb_mult)
+		maxpacket = qh->maxpacket * qh->hb_mult;
+	else
+		maxpacket = qh->maxpacket;
+
+	if (maxpacket <= 512) {
+		request_fifo_sz = 512;
+		fifo_unit_nr = 1;
+		c_size = 6;
+	} else if (maxpacket <= 1024) {
+		request_fifo_sz = 1024;
+		fifo_unit_nr = 2;
+		c_size = 7;
+	} else if (maxpacket <= 2048) {
+		request_fifo_sz = 2048;
+		fifo_unit_nr = 4;
+		c_size = 8;
+	} else if (maxpacket <= 4096) {
+		request_fifo_sz = 4096;
+		fifo_unit_nr = 8;
+		c_size = 9;
+	} else {
+		DBG(0, "should not be here qh maxp:%d maxp:%d\n",
+			qh->maxpacket, maxpacket);
+		request_fifo_sz = 0;
+		fifo_unit_nr = 0;
+		musb_bug();
+		return -ENOSPC;
+	}
+
+	for (i = 0; i < dynamic_fifo_total_slot; i++) {
+		if (!(musb_host_dynamic_fifo_usage_msk & (1 << i)))
+			free_uint++;
+		else
+			free_uint = 0;
+
+		if (free_uint == fifo_unit_nr) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (found == 0) {
+		DBG(0, "!enough, dynamic_fifo_usage_msk:0x%x,maxp:%d\n",
+				musb_host_dynamic_fifo_usage_msk, maxpacket);
+		DBG(0, "req_len:%d,ep%d-%s\n",
+				request_fifo_sz, epnum, is_in ? "in":"out");
+		return -1;
+	}
+
+	idx_start = i - (fifo_unit_nr - 1);
+	c_off = (64 >> 3) + idx_start * (512 >> 3);
+
+	for (i = 0; i < fifo_unit_nr; i++)
+		musb_host_dynamic_fifo_usage_msk |= (1 << (idx_start + i));
+
+	index = musb_readb(mbase, MUSB_INDEX);
+	musb_writeb(musb->mregs, MUSB_INDEX, epnum);
+	if (is_in) {
+		musb_write_rxfifosz(mbase, c_size);
+		musb_write_rxfifoadd(mbase, c_off);
+
+		DBG(1, "addr:0x%x, size:0x%x\n",
+			musb_read_rxfifoadd(mbase), musb_read_rxfifosz(mbase));
+	} else {
+		musb_write_txfifosz(mbase, c_size);
+		musb_write_txfifoadd(mbase, c_off);
+		DBG(1, "addr:0x%x, size:0x%x\n",
+			musb_read_txfifoadd(mbase), musb_read_txfifosz(mbase));
+	}
+	musb_writeb(mbase, MUSB_INDEX, index);
+
+	DBG(1, "maxp:%d, req_len:%d, dynamic_fifo_usage_msk:0x%x\n",
+	    maxpacket, request_fifo_sz, musb_host_dynamic_fifo_usage_msk);
+	DBG(1, "ep%d-%s, qh->type:%d\n",
+	    epnum, is_in ? "in":"out", qh->type);
+	return 0;
+}
+
+void musb_host_free_ep_fifo(struct musb *musb, struct musb_qh *qh, u8 is_in)
+{
+	void __iomem *mbase = musb->mregs;
+	int epnum = qh->hw_ep->epnum;
+	u16 maxpacket = qh->maxpacket;
+	u16 request_fifo_sz, fifo_unit_nr;
+	u16 idx_start = 0;
+	u8 index, i;
+	u16 c_off = 0;
+
+	if (qh->hb_mult)
+		maxpacket = qh->maxpacket * qh->hb_mult;
+	else
+		maxpacket = qh->maxpacket;
+
+	if (maxpacket <= 512) {
+		request_fifo_sz = 512;
+		fifo_unit_nr = 1;
+	} else if (maxpacket <= 1024) {
+		request_fifo_sz = 1024;
+		fifo_unit_nr = 2;
+	} else if (maxpacket <= 2048) {
+		request_fifo_sz = 2048;
+		fifo_unit_nr = 4;
+	} else if (maxpacket <= 4096) {
+		request_fifo_sz = 4096;
+		fifo_unit_nr = 8;
+	} else {
+		DBG(0, "should not be here qh maxp:%d maxp:%d\n",
+			qh->maxpacket, maxpacket);
+		request_fifo_sz = 0;
+		fifo_unit_nr = 0;
+		musb_bug();
+	}
+
+	index = musb_readb(mbase, MUSB_INDEX);
+	musb_writeb(mbase, MUSB_INDEX, epnum);
+
+	if (is_in)
+		c_off =  musb_read_rxfifoadd(mbase);
+	else
+		c_off = musb_read_txfifoadd(mbase);
+
+	idx_start = (c_off - (64 >> 3)) / (512 >> 3);
+
+	for (i = 0; i < fifo_unit_nr; i++)
+		musb_host_dynamic_fifo_usage_msk &= ~(1 << (idx_start + i));
+
+	if (is_in) {
+		musb_write_rxfifosz(mbase, 0);
+		musb_write_rxfifoadd(mbase, 0);
+	} else {
+		musb_write_txfifosz(mbase, 0);
+		musb_write_txfifoadd(mbase, 0);
+	}
+	musb_writeb(mbase, MUSB_INDEX, index);
+
+	DBG(1, "maxp:%d, req_len:%d, dynamic_fifo_usage_msk:0x%x\n",
+	    maxpacket, request_fifo_sz, musb_host_dynamic_fifo_usage_msk);
+	DBG(1, "ep%d-%s, qh->type:%d\n", epnum, is_in ? "in":"out", qh->type);
+}
 
 static void musb_ep_program(struct musb *musb, u8 epnum,
 			struct urb *urb, int is_out,
@@ -167,7 +321,7 @@ static inline void musb_h_tx_start(struct musb_hw_ep *ep)
 		txcsr |= MUSB_TXCSR_TXPKTRDY | MUSB_TXCSR_H_WZC_BITS;
 		musb_writew(ep->regs, MUSB_TXCSR, txcsr);
 	} else {
-		txcsr = MUSB_CSR0_H_SETUPPKT | MUSB_CSR0_TXPKTRDY;
+		txcsr = MUSB_CSR0_H_DIS_PING | MUSB_CSR0_H_SETUPPKT | MUSB_CSR0_TXPKTRDY;
 		musb_writew(ep->regs, MUSB_CSR0, txcsr);
 	}
 
@@ -449,6 +603,10 @@ static void musb_advance_schedule(struct musb *musb, struct urb *urb,
 		musb_ep_set_qh(ep, is_in, NULL);
 		qh->hep->hcpriv = NULL;
 
+		if (musb_host_dynamic_fifo &&
+			qh->type != USB_ENDPOINT_XFER_CONTROL)
+			musb_host_free_ep_fifo(musb, qh, is_in);
+
 		switch (qh->type) {
 
 		case USB_ENDPOINT_XFER_CONTROL:
@@ -669,13 +827,10 @@ musb_rx_reinit(struct musb *musb, struct musb_qh *qh, struct musb_hw_ep *ep)
 	/* Set RXMAXP with the FIFO size of the endpoint
 	 * to disable double buffer mode.
 	 */
-	//ALPS00798316, Enable DMA RxMode1
-	if (musb->double_buffer_not_ok)
-		musb_writew(ep->regs, MUSB_RXMAXP, ep->max_packet_sz_rx);
-	else
-		musb_writew(ep->regs, MUSB_RXMAXP,
-				qh->maxpacket); //qh->maxpacket | ((qh->hb_mult - 1) << 11));
-	//ALPS00798316, Enable DMA RxMode1
+	/* ALPS00798316, Enable DMA RxMode1*/
+	/*not request now, for enable dynamic EP FIFO*/
+	/* qh->maxpacket | ((qh->hb_mult - 1) << 11)); */
+	musb_writew(ep->regs, MUSB_RXMAXP, qh->maxpacket);
 
 	ep->rx_reinit = 0;
 }
@@ -2154,7 +2309,7 @@ static int musb_schedule(
 #endif
 	}
 
-	if(!hw_ep){
+	if(!hw_ep  || epnum >= musb->nr_endpoints){
         DBG(0,"musb::error!not find a ep for the urb\r\n");
         return -1;
         }
@@ -2196,6 +2351,19 @@ success:
 	}
 	qh->hw_ep = hw_ep;
 	qh->hep->hcpriv = qh;
+
+	if (musb_host_dynamic_fifo && qh->type != USB_ENDPOINT_XFER_CONTROL) {
+		int ret;
+
+		/* take this after qh->hw_ep is set */
+		ret = musb_host_alloc_ep_fifo(musb, qh, is_in);
+		if (ret) {
+			qh->hw_ep = NULL;
+			qh->hep->hcpriv = NULL;
+			DBG(0, "NOT ENOUGH FIFO\n");
+			return -ENOSPC;
+		}
+	}
 	if (idle)
 		musb_start_urb(musb, is_in, qh);
 	return 0;
@@ -2521,6 +2689,10 @@ static int musb_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		if (ready && list_empty(&qh->hep->urb_list)) {
 			qh->hep->hcpriv = NULL;
 			list_del(&qh->ring);
+
+			if (musb_host_dynamic_fifo &&
+				qh->type != USB_ENDPOINT_XFER_CONTROL)
+				musb_host_free_ep_fifo(musb, qh, is_in);
 			kfree(qh);
 		}
 	} else
@@ -2578,6 +2750,10 @@ musb_h_disable(struct usb_hcd *hcd, struct usb_host_endpoint *hep)
 
 		hep->hcpriv = NULL;
 		list_del(&qh->ring);
+		if (musb_host_dynamic_fifo &&
+			qh->type != USB_ENDPOINT_XFER_CONTROL)
+			musb_host_free_ep_fifo(musb, qh, is_in);
+
 		kfree(qh);
 	}
 exit:

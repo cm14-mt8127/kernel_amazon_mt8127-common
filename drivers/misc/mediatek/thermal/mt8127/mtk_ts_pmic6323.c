@@ -1,10 +1,10 @@
 /*
 * Copyright (C) 2011-2014 MediaTek Inc.
-* 
-* This program is free software: you can redistribute it and/or modify it under the terms of the 
+*
+* This program is free software: you can redistribute it and/or modify it under the terms of the
 * GNU General Public License version 2 as published by the Free Software Foundation.
-* 
-* This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 * See the GNU General Public License for more details.
 *
@@ -12,82 +12,54 @@
 * If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <linux/version.h>
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/dmi.h>
-#include <linux/acpi.h>
+#include <linux/atomic.h>
+#include <linux/uaccess.h>
 #include <linux/thermal.h>
 #include <linux/platform_device.h>
-#include <linux/aee.h>
-#include <linux/xlog.h>
-#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/device.h>
+#include <linux/string.h>
+#include <linux/slab.h>
 #include <linux/delay.h>
-#include <linux/proc_fs.h>
-#include <linux/seq_file.h>
+#include <linux/kobject.h>
+#include <linux/err.h>
 
 #include <mach/system.h>
-#include "mach/mtk_thermal_monitor.h"
 #include "mach/mt_typedefs.h"
-#include "mach/mt_thermal.h"
-
-//#include <mach/pmic_mt6329_hw_bank1.h>
-//#include <mach/pmic_mt6329_sw_bank1.h>
-//#include <mach/pmic_mt6329_hw.h>
-//#include <mach/pmic_mt6329_sw.h>
 #include <mach/upmu_common_sw.h>
 #include <mach/upmu_hw.h>
 #include <mach/mt_pmic_wrap.h>
+#include "mach/mt_thermal.h"
 
-extern struct proc_dir_entry * mtk_thermal_get_proc_drv_therm_dir_entry(void);
+#include <linux/thermal_framework.h>
+#include <linux/platform_data/mtk_thermal.h>
 
-static unsigned int interval = 0; /* seconds, 0 : no auto polling */
-static unsigned int trip_temp[10] = {120000,110000,100000,90000,80000,70000,65000,60000,55000,50000};
+#define MTKTSPMIC_TEMP_CRIT 148000      /* 150.000 degree Celsius */
+static DEFINE_MUTEX(therm_lock);
 
-static unsigned int cl_dev_sysrst_state = 0;
-static struct thermal_zone_device *thz_dev;
-
-static struct thermal_cooling_device *cl_dev_sysrst;
-static int mtktspmic_debug_log = 0;
-static int kernelmode = 0;
-
-static int g_THERMAL_TRIP[10] = {0,0,0,0,0,0,0,0,0,0};
-static int num_trip=0;
-static char g_bind0[20]={0};
-static char g_bind1[20]={0};
-static char g_bind2[20]={0};
-static char g_bind3[20]={0};
-static char g_bind4[20]={0};
-static char g_bind5[20]={0};
-static char g_bind6[20]={0};
-static char g_bind7[20]={0};
-static char g_bind8[20]={0};
-static char g_bind9[20]={0};
-
-#define mtktspmic_TEMP_CRIT 150000 /* 150.000 degree Celsius */
-
-#define mtktspmic_dprintk(fmt, args...)   \
-do {									\
-	if (mtktspmic_debug_log) {				\
-		xlog_printk(ANDROID_LOG_INFO, "Power/PMIC_Thermal", fmt, ##args); \
-	}								   \
-} while(0)
+struct mtktspmic_thermal_zone {
+	struct thermal_zone_device *tz;
+	struct work_struct therm_work;
+	struct mtk_thermal_platform_data *pdata;
+	struct thermal_dev *therm_fw;
+};
 
 /* Cali */
-static kal_int32 g_o_vts = 0;
-static kal_int32 g_degc_cali = 0;
-static kal_int32 g_adc_cali_en = 0;
-static kal_int32 g_o_slope = 0;
-static kal_int32 g_o_slope_sign = 0;
-static kal_int32 g_id = 0;
+static kal_int32 g_o_vts;
+static kal_int32 g_degc_cali;
+static kal_int32 g_adc_cali_en;
+static kal_int32 g_o_slope;
+static kal_int32 g_o_slope_sign;
+static kal_int32 g_id;
 static kal_int32 g_slope1;
 static kal_int32 g_slope2;
 static kal_int32 g_intercept;
-extern int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd);
+
 #define y_pmic_repeat_times	1
+
 static u16 pmic_read(u16 addr)
 {
-	u32 rdata=0;
+	u32 rdata = 0;
 	pwrap_read((u32)addr, &rdata);
 	return (u16)rdata;
 }
@@ -99,7 +71,7 @@ static void pmic_cali_prepare(void)
 	temp0 = pmic_read(0x63A);
 	temp1 = pmic_read(0x63C);
 
-	printk("Power/PMIC_Thermal: Reg(0x63a)=0x%x, Reg(0x63c)=0x%x\n", temp0, temp1);
+	pr_info("Power/PMIC_Thermal: Reg(0x63a)=0x%x, Reg(0x63c)=0x%x\n", temp0, temp1);
 
 	g_o_vts = ((temp1&0x001F) << 8) + ((temp0>>8) & 0x00FF);
 	g_degc_cali = (temp0>>2) & 0x003f;
@@ -107,70 +79,58 @@ static void pmic_cali_prepare(void)
 	g_o_slope_sign = (temp1>>5) & 0x0001;
 
 	/*
-	CHIP ID
-	E1 : 16'h1023
-	E2 : 16'h2023
-	E3 : 16'h3023
+	  CHIP ID
+	  E1 : 16'h1023
+	  E2 : 16'h2023
+	  E3 : 16'h3023
 	*/
-	if(upmu_get_cid() == 0x1023)
-	{
-		g_id= (temp1>>12) & 0x0001;
-    	g_o_slope = (temp1>>6) & 0x003f;
-	}
-	else
-	{
-		g_id= (temp1>>14) & 0x0001;
-    	g_o_slope = (((temp1>>11) & 0x0007) << 3) + ((temp1>>6) & 0x007);
+	if (upmu_get_cid() == 0x1023) {
+		g_id = (temp1>>12) & 0x0001;
+		g_o_slope = (temp1>>6) & 0x003f;
+	} else {
+		g_id = (temp1>>14) & 0x0001;
+		g_o_slope = (((temp1>>11) & 0x0007) << 3) + ((temp1>>6) & 0x007);
 	}
 
-	if(g_id==0)
-	{
-	   g_o_slope=0;
-	}
+	if (g_id == 0)
+		g_o_slope = 0;
 
-	if(g_adc_cali_en == 0) //no calibration
-	{
+	if (g_adc_cali_en == 0) {
 		g_o_vts = 3698;
 		g_degc_cali = 50;
 		g_o_slope = 0;
 		g_o_slope_sign = 0;
 	}
-	printk("Power/PMIC_Thermal: g_ver= 0x%x, g_o_vts = 0x%x, g_degc_cali = 0x%x, g_adc_cali_en = 0x%x, g_o_slope = 0x%x, g_o_slope_sign = 0x%x, g_id = 0x%x\n",
-		 upmu_get_cid(),g_o_vts, g_degc_cali, g_adc_cali_en, g_o_slope, g_o_slope_sign, g_id);
-    mtktspmic_dprintk("Power/PMIC_Thermal: chip ver       = 0x%x\n", upmu_get_cid());
-	mtktspmic_dprintk("Power/PMIC_Thermal: g_o_vts        = 0x%x\n", g_o_vts);
-    mtktspmic_dprintk("Power/PMIC_Thermal: g_degc_cali    = 0x%x\n", g_degc_cali);
-    mtktspmic_dprintk("Power/PMIC_Thermal: g_adc_cali_en  = 0x%x\n", g_adc_cali_en);
-    mtktspmic_dprintk("Power/PMIC_Thermal: g_o_slope      = 0x%x\n", g_o_slope);
-    mtktspmic_dprintk("Power/PMIC_Thermal: g_o_slope_sign = 0x%x\n", g_o_slope_sign);
-    mtktspmic_dprintk("Power/PMIC_Thermal: g_id           = 0x%x\n", g_id);
+	pr_info("Power/PMIC_Thermal: g_ver= 0x%x, g_o_vts = 0x%x, g_degc_cali = 0x%x, g_adc_cali_en = 0x%x, g_o_slope = 0x%x, g_o_slope_sign = 0x%x, g_id = 0x%x\n",
+		upmu_get_cid(), g_o_vts, g_degc_cali, g_adc_cali_en, g_o_slope, g_o_slope_sign, g_id);
+	pr_info("Power/PMIC_Thermal: chip ver       = 0x%x\n", upmu_get_cid());
+	pr_info("Power/PMIC_Thermal: g_o_vts        = 0x%x\n", g_o_vts);
+	pr_info("Power/PMIC_Thermal: g_degc_cali    = 0x%x\n", g_degc_cali);
+	pr_info("Power/PMIC_Thermal: g_adc_cali_en  = 0x%x\n", g_adc_cali_en);
+	pr_info("Power/PMIC_Thermal: g_o_slope      = 0x%x\n", g_o_slope);
+	pr_info("Power/PMIC_Thermal: g_o_slope_sign = 0x%x\n", g_o_slope_sign);
+	pr_info("Power/PMIC_Thermal: g_id           = 0x%x\n", g_id);
 }
 
 
 static void pmic_cali_prepare2(void)
 {
 	kal_int32 vbe_t;
-	g_slope1 = (100 * 1000);	//1000 is for 0.001 degree
-	if(g_o_slope_sign==0)
-	{
+	g_slope1 = (100 * 1000);	/*1000 is for 0.001 degree*/
+
+	if (g_o_slope_sign == 0)
 		g_slope2 = -(171+g_o_slope);
-	}
 	else
-	{
 		g_slope2 = -(171-g_o_slope);
-	}
-	vbe_t= (-1) * (((g_o_vts + 9102)*1800)/32768) * 1000;
-	if(g_o_slope_sign==0)
-	{
-		g_intercept = (vbe_t * 100) / (-(171+g_o_slope)); 	//0.001 degree
-	}
+
+	vbe_t = (-1) * (((g_o_vts + 9102)*1800)/32768) * 1000;
+	if (g_o_slope_sign == 0)
+		g_intercept = (vbe_t * 100) / (-(171+g_o_slope));       /*0.001 degree*/
 	else
-	{
-		g_intercept = (vbe_t * 100) / (-(171-g_o_slope));  //0.001 degree
-	}
-	g_intercept = g_intercept + (g_degc_cali*(1000/2)); // 1000 is for 0.1 degree
-	printk("[Power/PMIC_Thermal] [Thermal calibration] SLOPE1=%d SLOPE2=%d INTERCEPT=%d, Vbe = %d\n",
-		g_slope1, g_slope2, g_intercept,vbe_t);
+		g_intercept = (vbe_t * 100) / (-(171-g_o_slope));  /*0.001 degree*/
+	g_intercept = g_intercept + (g_degc_cali*(1000/2)); /*1000 is for 0.1 degree*/
+	pr_info("[Power/PMIC_Thermal] [Thermal calibration] SLOPE1=%d SLOPE2=%d INTERCEPT=%d, Vbe = %d\n",
+	       g_slope1, g_slope2, g_intercept, vbe_t);
 
 }
 
@@ -179,478 +139,352 @@ static kal_int32 pmic_raw_to_temp(kal_uint32 ret)
 	kal_int32 y_curr = ret;
 	kal_int32 t_current;
 	t_current = g_intercept + ((g_slope1 * y_curr) / (g_slope2));
-    //mtktspmic_dprintk("[pmic_raw_to_temp] t_current=%d\n",t_current);
 	return t_current;
 }
-//Jerry 2013.3.24extern void pmic_thermal_dump_reg(void);
 
-//int ts_pmic_at_boot_time=0;
 static DEFINE_MUTEX(TSPMIC_lock);
-static int pre_temp1=0, PMIC_counter=0;
+static int pre_temp1, PMIC_counter;
 static int mtktspmic_get_hw_temp(void)
 {
-	int temp=0, temp1=0;
-	//int temp3=0;
+	int temp = 0, temp1 = 0;
 	mutex_lock(&TSPMIC_lock);
 
-
-
 	temp = PMIC_IMM_GetOneChannelValue(3, y_pmic_repeat_times , 2);
-    temp1 = pmic_raw_to_temp(temp);
-    //temp2 = pmic_raw_to_temp(675);
+	temp1 = pmic_raw_to_temp(temp);
 
-	mtktspmic_dprintk("[mtktspmic_get_hw_temp] PMIC_IMM_GetOneChannel 3=%d, T=%d\n",temp, temp1);
+	pr_debug("[mtktspmic_get_hw_temp] PMIC_IMM_GetOneChannel 3=%d, T=%d\n", temp, temp1);
 
-//	pmic_thermal_dump_reg(); // test
+	if ((temp1 > 100000) || (temp1 < -30000))
+		pr_info("[Power/PMIC_Thermal] raw=%d, PMIC T=%d", temp, temp1);
 
-	if((temp1>100000) || (temp1<-30000))
-	{
-		printk("[Power/PMIC_Thermal] raw=%d, PMIC T=%d", temp, temp1);
-//Jerry 2013.3.24		pmic_thermal_dump_reg();
-	}
-
-	if((temp1>150000) || (temp1<-50000))
-	{
-		printk("[Power/PMIC_Thermal] drop this data\n");
+	if ((temp1 > 150000) || (temp1 < -50000)) {
+		pr_info("[Power/PMIC_Thermal] drop this data\n");
 		temp1 = pre_temp1;
-	}
-	else if( (PMIC_counter!=0) && (((pre_temp1-temp1)>30000) || ((temp1-pre_temp1)>30000)) )
-	{
-		printk("[Power/PMIC_Thermal] drop this data 2\n");
+	} else if ((PMIC_counter != 0) && (((pre_temp1-temp1) > 30000) || ((temp1-pre_temp1) > 30000))) {
+		pr_info("[Power/PMIC_Thermal] drop this data 2\n");
 		temp1 = pre_temp1;
-	}
-	else
-	{
-		//update previous temp
+	} else {
 		pre_temp1 = temp1;
-		mtktspmic_dprintk("[Power/PMIC_Thermal] pre_temp1=%d\n", pre_temp1);
+		pr_debug("[Power/PMIC_Thermal] pre_temp1=%d\n", pre_temp1);
 
-		if(PMIC_counter==0)
+		if (PMIC_counter == 0)
 			PMIC_counter++;
 	}
-
-
 
 	mutex_unlock(&TSPMIC_lock);
 	return temp1;
 }
 
-static int mtktspmic_get_temp(struct thermal_zone_device *thermal,
-				   unsigned long *t)
+static int mtktspmic_get_temp(struct thermal_zone_device *thermal, unsigned long *t)
 {
 	*t = mtktspmic_get_hw_temp();
 	return 0;
 }
 
-static int mtktspmic_bind(struct thermal_zone_device *thermal,
-			struct thermal_cooling_device *cdev)
+static int mtktspmic_get_mode(struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
 {
-	int table_val=0;
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
 
-	if(!strcmp(cdev->type, g_bind0))
-	{
-		table_val = 0;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind1))
-	{
-		table_val = 1;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind2))
-	{
-		table_val = 2;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind3))
-	{
-		table_val = 3;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind4))
-	{
-		table_val = 4;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind5))
-	{
-		table_val = 5;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind6))
-	{
-		table_val = 6;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind7))
-	{
-		table_val = 7;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind8))
-	{
-		table_val = 8;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind9))
-	{
-		table_val = 9;
-		mtktspmic_dprintk("[mtktspmic_bind] %s\n", cdev->type);
-	}
-	else
-	{
-		return 0;
-	}
-
-	if (mtk_thermal_zone_bind_cooling_device(thermal, table_val, cdev)) {
-		mtktspmic_dprintk("[mtktspmic_bind] error binding cooling dev\n");
+	if (!pdata)
 		return -EINVAL;
-	} else {
-		mtktspmic_dprintk("[mtktspmic_bind] binding OK, %d\n", table_val);
-	}
-
+	*mode = pdata->mode;
 	return 0;
 }
 
-static int mtktspmic_unbind(struct thermal_zone_device *thermal,
-			  struct thermal_cooling_device *cdev)
+static int mtktspmic_set_mode(struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
-	int table_val=0;
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
 
-	if(!strcmp(cdev->type, g_bind0))
-	{
-		table_val = 0;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind1))
-	{
-		table_val = 1;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind2))
-	{
-		table_val = 2;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind3))
-	{
-		table_val = 3;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind4))
-	{
-		table_val = 4;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind5))
-	{
-		table_val = 5;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind6))
-	{
-		table_val = 6;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind7))
-	{
-		table_val = 7;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind8))
-	{
-		table_val = 8;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else if(!strcmp(cdev->type, g_bind9))
-	{
-		table_val = 9;
-		mtktspmic_dprintk("[mtktspmic_unbind] %s\n", cdev->type);
-	}
-	else
-		return 0;
-
-	if (thermal_zone_unbind_cooling_device(thermal, table_val, cdev)) {
-		mtktspmic_dprintk("[mtktspmic_unbind] error unbinding cooling dev\n");
+	if (!pdata)
 		return -EINVAL;
-	} else {
-		mtktspmic_dprintk("[mtktspmic_unbind] unbinding OK\n");
+
+	pdata->mode = mode;
+	schedule_work(&tzone->therm_work);
+	return 0;
+}
+
+static int mtktspmic_get_trip_type(struct thermal_zone_device *thermal,
+				   int trip,
+				   enum thermal_trip_type *type)
+{
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
+
+	if (!pdata)
+		return -EINVAL;
+	if (trip >= pdata->num_trips)
+		return -EINVAL;
+
+	*type = pdata->trips[trip].type;
+	return 0;
+}
+
+static int mtktspmic_get_trip_temp(struct thermal_zone_device *thermal,
+				   int trip,
+				   unsigned long *t)
+{
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
+
+	if (!pdata)
+		return -EINVAL;
+	if (trip >= pdata->num_trips)
+		return -EINVAL;
+
+	*t = pdata->trips[trip].temp;
+	return 0;
+}
+
+static int mtktspmic_set_trip_temp(struct thermal_zone_device *thermal,
+				   int trip,
+				   unsigned long t)
+{
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
+
+	if (!pdata)
+		return -EINVAL;
+	if (trip >= pdata->num_trips)
+		return -EINVAL;
+
+	pdata->trips[trip].temp = t;
+	return 0;
+}
+
+static int mtktspmic_get_crit_temp(struct thermal_zone_device *thermal, unsigned long *t)
+{
+	int i;
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
+	struct mtk_thermal_platform_data *pdata = tzone->pdata;
+
+	if (!pdata)
+		return -EINVAL;
+
+	for (i = 0; i < pdata->num_trips; i++) {
+		if (pdata->trips[i].type == THERMAL_TRIP_CRITICAL) {
+			*t = pdata->trips[i].temp;
+			return 0;
+		}
 	}
-
-	return 0;
+	return -EINVAL;
 }
 
-static int mtktspmic_get_mode(struct thermal_zone_device *thermal,
-				enum thermal_device_mode *mode)
+#ifdef CONFIG_AUSTIN_PROJECT
+static int mtktspmic_thermal_notify(struct thermal_zone_device *thermal,
+				int trip, enum thermal_trip_type type)
 {
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED
-				 : THERMAL_DEVICE_DISABLED;
+	pr_err("%s: thermal_shutdown notify\n", __func__);
+	last_kmsg_thermal_shutdown();
+	pr_err("%s: thermal_shutdown notify end\n", __func__);
+
 	return 0;
 }
+#endif
 
-static int mtktspmic_set_mode(struct thermal_zone_device *thermal,
-				enum thermal_device_mode mode)
-{
-	kernelmode = mode;
-	return 0;
-}
-
-static int mtktspmic_get_trip_type(struct thermal_zone_device *thermal, int trip,
-				 enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtktspmic_get_trip_temp(struct thermal_zone_device *thermal, int trip,
-				 unsigned long *temp)
-{
-	*temp = trip_temp[trip];
-	return 0;
-}
-
-static int mtktspmic_get_crit_temp(struct thermal_zone_device *thermal,
-				 unsigned long *temperature)
-{
-	*temperature = mtktspmic_TEMP_CRIT;
-	return 0;
-}
-
-/* bind callback functions to thermalzone */
 static struct thermal_zone_device_ops mtktspmic_dev_ops = {
-	.bind = mtktspmic_bind,
-	.unbind = mtktspmic_unbind,
 	.get_temp = mtktspmic_get_temp,
 	.get_mode = mtktspmic_get_mode,
 	.set_mode = mtktspmic_set_mode,
 	.get_trip_type = mtktspmic_get_trip_type,
 	.get_trip_temp = mtktspmic_get_trip_temp,
+	.set_trip_temp = mtktspmic_set_trip_temp,
 	.get_crit_temp = mtktspmic_get_crit_temp,
+#ifdef CONFIG_AUSTIN_PROJECT
+	.notify = mtktspmic_thermal_notify,
+#endif
 };
 
-static int tspmic_sysrst_get_max_state(struct thermal_cooling_device *cdev,
-				 unsigned long *state)
+static void mtktspmic_work(struct work_struct *work)
 {
-	*state = 1;
-	return 0;
-}
-static int tspmic_sysrst_get_cur_state(struct thermal_cooling_device *cdev,
-				 unsigned long *state)
-{
-	*state = cl_dev_sysrst_state;
-	return 0;
-}
-static int tspmic_sysrst_set_cur_state(struct thermal_cooling_device *cdev,
-				 unsigned long state)
-{
-	cl_dev_sysrst_state = state;
-	if(cl_dev_sysrst_state == 1)
-	{
-		printk("Power/PMIC_Thermal: reset, reset, reset!!!");
-		printk("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-		printk("*****************************************");
-		printk("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+	struct mtktspmic_thermal_zone *tzone;
+	struct mtk_thermal_platform_data *pdata;
 
-		BUG();
-		//arch_reset(0,NULL);
-	}
-	return 0;
+	mutex_lock(&therm_lock);
+	tzone = container_of(work, struct mtktspmic_thermal_zone, therm_work);
+	if (!tzone)
+		return;
+	pdata = tzone->pdata;
+	if (!pdata)
+		return;
+	if (pdata->mode == THERMAL_DEVICE_ENABLED)
+		thermal_zone_device_update(tzone->tz);
+	mutex_unlock(&therm_lock);
 }
 
-static struct thermal_cooling_device_ops mtktspmic_cooling_sysrst_ops = {
-	.get_max_state = tspmic_sysrst_get_max_state,
-	.get_cur_state = tspmic_sysrst_get_cur_state,
-	.set_cur_state = tspmic_sysrst_set_cur_state,
+static int mtktspmic_read_temp(struct thermal_dev *tdev)
+{
+	return mtktspmic_get_hw_temp();
+}
+static struct thermal_dev_ops mtktspmic_fops = {
+	.get_temp = mtktspmic_read_temp,
 };
 
+#ifdef CONFIG_AUSTIN_PROJECT
+struct thermal_dev_params mtktspmic_tdp = {
+	.offset = 14500,
+	.alpha = 4,
+	.weight = 250
+};
+#else
+struct thermal_dev_params mtktspmic_tdp = {
+	.offset = 18000,
+	.alpha = 4,
+	.weight = 450
+};
+#endif
 
-static int mtktspmic_read(struct seq_file *m, void *v)
+static int mtktspmic_show_params(struct device *dev,
+				 struct device_attribute *devattr,
+				 char *buf)
 {
-	seq_printf(m, "[ mtktspmic_read] trip_0_temp=%d,trip_1_temp=%d,trip_2_temp=%d,trip_3_temp=%d,trip_4_temp=%d,\n\
-trip_5_temp=%d,trip_6_temp=%d,trip_7_temp=%d,trip_8_temp=%d,trip_9_temp=%d,\n\
-g_THERMAL_TRIP_0=%d,g_THERMAL_TRIP_1=%d,g_THERMAL_TRIP_2=%d,g_THERMAL_TRIP_3=%d,g_THERMAL_TRIP_4=%d,\n\
-g_THERMAL_TRIP_5=%d,g_THERMAL_TRIP_6=%d,g_THERMAL_TRIP_7=%d,g_THERMAL_TRIP_8=%d,g_THERMAL_TRIP_9=%d,\n\
-cooldev0=%s,cooldev1=%s,cooldev2=%s,cooldev3=%s,cooldev4=%s,\n\
-cooldev5=%s,cooldev6=%s,cooldev7=%s,cooldev8=%s,cooldev9=%s,time_ms=%d\n",
-		   trip_temp[0], trip_temp[1], trip_temp[2], trip_temp[3], trip_temp[4], trip_temp[5], trip_temp[6], trip_temp[7], trip_temp[8], trip_temp[9], g_THERMAL_TRIP[0], g_THERMAL_TRIP[1], g_THERMAL_TRIP[2], g_THERMAL_TRIP[3], g_THERMAL_TRIP[4], g_THERMAL_TRIP[5], g_THERMAL_TRIP[6], g_THERMAL_TRIP[7], g_THERMAL_TRIP[8], g_THERMAL_TRIP[9], g_bind0, g_bind1, g_bind2, g_bind3, g_bind4, g_bind5, g_bind6, g_bind7, g_bind8, g_bind9, interval * 1000);
+	struct thermal_zone_device *thermal = container_of(dev, struct thermal_zone_device, device);
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
 
-	return 0;
+	if (!tzone)
+		return -EINVAL;
+	return sprintf(buf, "offset=%d alpha=%d weight=%d\n",
+		       tzone->therm_fw->tdp->offset,
+		       tzone->therm_fw->tdp->alpha,
+		       tzone->therm_fw->tdp->weight);
 }
 
-int mtktspmic_register_thermal(void);
-void mtktspmic_unregister_thermal(void);
-
-static ssize_t mtktspmic_write(struct file *file, const char __user *buffer, size_t count,
-			       loff_t *data)
+static ssize_t mtktspmic_store_params(struct device *dev,
+				      struct device_attribute *devattr,
+				      const char *buf,
+				      size_t count)
 {
-	int len=0,time_msec=0;
-	int trip[10]={0};
-	int t_type[10]={0};
-	int i;
-	char bind0[20],bind1[20],bind2[20],bind3[20],bind4[20];
-	char bind5[20],bind6[20],bind7[20],bind8[20],bind9[20];
-	char desc[512];
+	char param[20];
+	int value = 0;
+	struct thermal_zone_device *thermal = container_of(dev, struct thermal_zone_device, device);
+	struct mtktspmic_thermal_zone *tzone = thermal->devdata;
 
-
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
-	if (copy_from_user(desc, buffer, len)) {
-		return 0;
-	}
-	desc[len] = '\0';
-
-	if (sscanf(desc, "%d %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d %d %s %d",
-							&num_trip, &trip[0],&t_type[0],bind0, &trip[1],&t_type[1],bind1,
-												 &trip[2],&t_type[2],bind2, &trip[3],&t_type[3],bind3,
-												 &trip[4],&t_type[4],bind4, &trip[5],&t_type[5],bind5,
-											   &trip[6],&t_type[6],bind6, &trip[7],&t_type[7],bind7,
-												 &trip[8],&t_type[8],bind8, &trip[9],&t_type[9],bind9,
-												 &time_msec) == 32)
-	{
-		mtktspmic_dprintk("[mtktspmic_write] mtktspmic_unregister_thermal\n");
-		mtktspmic_unregister_thermal();
-
-		for(i=0; i<num_trip; i++)
-			g_THERMAL_TRIP[i] = t_type[i];
-
-		g_bind0[0]=g_bind1[0]=g_bind2[0]=g_bind3[0]=g_bind4[0]=g_bind5[0]=g_bind6[0]=g_bind7[0]=g_bind8[0]=g_bind9[0]='\0';
-
-		for(i=0; i<20; i++)
-		{
-			g_bind0[i]=bind0[i];
-			g_bind1[i]=bind1[i];
-			g_bind2[i]=bind2[i];
-			g_bind3[i]=bind3[i];
-			g_bind4[i]=bind4[i];
-			g_bind5[i]=bind5[i];
-			g_bind6[i]=bind6[i];
-			g_bind7[i]=bind7[i];
-			g_bind8[i]=bind8[i];
-			g_bind9[i]=bind9[i];
-		}
-
-		mtktspmic_dprintk("[mtktspmic_write] g_THERMAL_TRIP_0=%d,g_THERMAL_TRIP_1=%d,g_THERMAL_TRIP_2=%d,g_THERMAL_TRIP_3=%d,g_THERMAL_TRIP_4=%d,\
-g_THERMAL_TRIP_5=%d,g_THERMAL_TRIP_6=%d,g_THERMAL_TRIP_7=%d,g_THERMAL_TRIP_8=%d,g_THERMAL_TRIP_9=%d,\n",
-													g_THERMAL_TRIP[0],g_THERMAL_TRIP[1],g_THERMAL_TRIP[2],g_THERMAL_TRIP[3],g_THERMAL_TRIP[4],
-													g_THERMAL_TRIP[5],g_THERMAL_TRIP[6],g_THERMAL_TRIP[7],g_THERMAL_TRIP[8],g_THERMAL_TRIP[9]);
-		mtktspmic_dprintk("[mtktspmic_write] cooldev0=%s,cooldev1=%s,cooldev2=%s,cooldev3=%s,cooldev4=%s,\
-cooldev5=%s,cooldev6=%s,cooldev7=%s,cooldev8=%s,cooldev9=%s\n",
-													g_bind0,g_bind1,g_bind2,g_bind3,g_bind4,g_bind5,g_bind6,g_bind7,g_bind8,g_bind9);
-
-		for(i=0; i<num_trip; i++)
-		{
-			trip_temp[i]=trip[i];
-		}
-
-		interval=time_msec / 1000;
-
-		mtktspmic_dprintk("[mtktspmic_write] trip_0_temp=%d,trip_1_temp=%d,trip_2_temp=%d,trip_3_temp=%d,trip_4_temp=%d,\
-trip_5_temp=%d,trip_6_temp=%d,trip_7_temp=%d,trip_8_temp=%d,trip_9_temp=%d,time_ms=%d\n",
-						trip_temp[0],trip_temp[1],trip_temp[2],trip_temp[3],trip_temp[4],
-						trip_temp[5],trip_temp[6],trip_temp[7],trip_temp[8],trip_temp[9],interval*1000);
-
-		mtktspmic_dprintk("[mtktspmic_write] mtktspmic_register_thermal\n");
-		mtktspmic_register_thermal();
-
+	if (!tzone)
+		return -EINVAL;
+	if (sscanf(buf, "%s %d", param, &value) == 2) {
+		if (!strcmp(param, "offset"))
+			tzone->therm_fw->tdp->offset = value;
+		if (!strcmp(param, "alpha"))
+			tzone->therm_fw->tdp->alpha = value;
+		if (!strcmp(param, "weight"))
+			tzone->therm_fw->tdp->weight = value;
 		return count;
-	} else {
-		mtktspmic_dprintk("[mtktspmic_write] bad argument\n");
 	}
-
 	return -EINVAL;
 }
 
-int mtktspmic_register_cooler(void)
+static DEVICE_ATTR(params, S_IRUGO | S_IWUSR, mtktspmic_show_params, mtktspmic_store_params);
+
+static int mtktspmic_probe(struct platform_device *pdev)
 {
-	cl_dev_sysrst = mtk_thermal_cooling_device_register("mtktspmic-sysrst", NULL,
-					   &mtktspmic_cooling_sysrst_ops);
-   	return 0;
-}
+	int ret = 0;
+	struct mtktspmic_thermal_zone *tzone;
+	struct mtk_thermal_platform_data *pdata = dev_get_platdata(&pdev->dev);
 
-int mtktspmic_register_thermal(void)
-{
-	mtktspmic_dprintk("[mtktspmic_register_thermal] \n");
+	if (!pdata)
+		return -EINVAL;
 
-	/* trips : trip 0~2 */
-	thz_dev = mtk_thermal_zone_device_register("mtktspmic", num_trip, NULL,
-					  &mtktspmic_dev_ops, 0, 0, 0, interval*1000);
+	pmic_cali_prepare();
+	pmic_cali_prepare2();
 
+	tzone = devm_kzalloc(&pdev->dev, sizeof(*tzone), GFP_KERNEL);
+	if (!tzone)
+		return -ENOMEM;
+
+	memset(tzone, 0, sizeof(*tzone));
+	tzone->pdata = pdata;
+	tzone->tz = thermal_zone_device_register("mtktspmic",
+							pdata->num_trips,
+							1,
+							tzone,
+							&mtktspmic_dev_ops,
+							NULL,
+							0,
+							pdata->polling_delay);
+	if (IS_ERR(tzone->tz)) {
+		pr_err("%s Failed to register mtktspmic thermal zone device\n", __func__);
+		return -EINVAL;
+	}
+	tzone->therm_fw = kzalloc(sizeof(struct thermal_dev), GFP_KERNEL);
+	if (!tzone->therm_fw)
+		return -ENOMEM;
+	tzone->therm_fw->name = "mtktspmic";
+	tzone->therm_fw->dev = &(pdev->dev);
+	tzone->therm_fw->dev_ops = &mtktspmic_fops;
+	tzone->therm_fw->tdp = &mtktspmic_tdp;
+
+	ret = thermal_dev_register(tzone->therm_fw);
+	if (ret) {
+		pr_err("Error registering therml mtktspmic device\n");
+		return -EINVAL;
+	}
+
+	INIT_WORK(&tzone->therm_work, mtktspmic_work);
+	ret = device_create_file(&tzone->tz->device, &dev_attr_params);
+	if (ret)
+		pr_err("%s Failed to create params attr\n", __func__);
+	pdata->mode = THERMAL_DEVICE_ENABLED;
+	platform_set_drvdata(pdev, tzone);
 	return 0;
 }
 
-void mtktspmic_unregister_cooler(void)
+static int mtktspmic_remove(struct platform_device *pdev)
 {
-	if (cl_dev_sysrst) {
-		mtk_thermal_cooling_device_unregister(cl_dev_sysrst);
-		cl_dev_sysrst = NULL;
+	struct mtktspmic_thermal_zone *tzone = platform_get_drvdata(pdev);
+	if (tzone) {
+		cancel_work_sync(&tzone->therm_work);
+		if (tzone->tz)
+			thermal_zone_device_unregister(tzone->tz);
+		kfree(tzone);
 	}
+	return 0;
 }
 
-void mtktspmic_unregister_thermal(void)
-{
-	mtktspmic_dprintk("[mtktspmic_unregister_thermal] \n");
+static struct platform_driver mtktspmic_driver = {
+	.probe = mtktspmic_probe,
+	.remove = mtktspmic_remove,
+	.driver     = {
+		.name  = "mtktspmic",
+		.owner = THIS_MODULE,
+	},
+};
 
-	if (thz_dev) {
-		mtk_thermal_zone_device_unregister(thz_dev);
-		thz_dev = NULL;
-	}
-}
+static struct mtk_thermal_platform_data mtktspmic_thermal_data = {
+	.num_trips = 1,
+	.mode = THERMAL_DEVICE_DISABLED,
+	.polling_delay = 1000,
+	.trips[0] = {.temp = MTKTSPMIC_TEMP_CRIT, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+};
 
-static int mtktspmic_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, mtktspmic_read, NULL);
-}
-
-static const struct file_operations mtktspmic_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktspmic_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktspmic_write,
-	.release = single_release,
+static struct platform_device mtktspmic_device = {
+	.name = "mtktspmic",
+	.id = -1,
+	.dev = {
+		.platform_data = &mtktspmic_thermal_data,
+	},
 };
 
 static int __init mtktspmic_init(void)
 {
-    int err = 0;
-    struct proc_dir_entry *entry = NULL;
-    struct proc_dir_entry *mtktspmic_dir = NULL;
-
-    mtktspmic_dprintk("[%s]\n", __func__);
-    pmic_cali_prepare();
-    pmic_cali_prepare2();
-
-    err = mtktspmic_register_cooler();
-    if(err)
-        return err;
-    err = mtktspmic_register_thermal();
-    if (err)
-        goto err_unreg;
-
-    mtktspmic_dir = mtk_thermal_get_proc_drv_therm_dir_entry();
-    if (!mtktspmic_dir) {
-    	mtktspmic_dprintk("[%s]: mkdir /proc/driver/thermal failed\n", __func__);
-    }
-    entry = proc_create("tzpmic", S_IRUGO | S_IWUSR | S_IWGRP, mtktspmic_dir, &mtktspmic_fops);
-    if (entry) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
-        proc_set_user(entry, 0, 1000);
-#else
-        entry->gid = 1000;
-#endif
-    }
-
-    return 0;
-
-err_unreg:
-    mtktspmic_unregister_cooler();
-    return err;
+	int ret;
+	ret = platform_driver_register(&mtktspmic_driver);
+	if (ret) {
+		pr_err("Unable to register mtktspmic thermal driver (%d)\n", ret);
+		return ret;
+	}
+	ret = platform_device_register(&mtktspmic_device);
+	if (ret) {
+		pr_err("Unable to register mtktspmic device (%d)\n", ret);
+		return ret;
+	}
+	return 0;
 }
 
 static void __exit mtktspmic_exit(void)
 {
-	mtktspmic_dprintk("[mtktspmic_exit] \n");
-	mtktspmic_unregister_thermal();
-	mtktspmic_unregister_cooler();
+	platform_driver_unregister(&mtktspmic_driver);
+	platform_device_unregister(&mtktspmic_device);
 }
 
 module_init(mtktspmic_init);

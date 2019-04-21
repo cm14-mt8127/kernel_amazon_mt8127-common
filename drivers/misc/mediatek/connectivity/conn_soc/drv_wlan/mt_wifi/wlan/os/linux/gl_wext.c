@@ -545,6 +545,10 @@ static const struct iw_priv_args rIwPrivTable[] = {
 	/* handle any command with many input parameters */
 	{PRIV_CMD_OTHER,			IW_PRIV_TYPE_CHAR | 256, 0,   "set_str_cmd"},
 	
+	{PRIV_CMD_DTIM_SKIP_COUNT, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
+		"set_dtim_skip"},
+	{PRIV_CMD_DTIM_SKIP_COUNT, 0, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+		"get_dtim_skip"},
 };
 
 static const iw_handler rIwPrivHandler[] = {
@@ -588,7 +592,6 @@ const struct iw_handler_def wext_handler_def = {
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-extern VOID wlanUpdateChannelTable(P_GLUE_INFO_T prGlueInfo);
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -1788,8 +1791,12 @@ wext_set_mlme (
 */
 /*----------------------------------------------------------------------------*/
 static int
-wext_set_scan(IN struct net_device *prNetDev,
-	      IN struct iw_request_info *prIwrInfo, IN struct iw_scan_req *prIwScanReq, IN char *pcExtra)
+wext_set_scan (
+    IN struct net_device *prNetDev,
+    IN struct iw_request_info *prIwrInfo,
+    IN union iwreq_data *prData,
+    IN char *pcExtra
+    )
 {
     P_GLUE_INFO_T prGlueInfo = NULL;
     WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
@@ -1804,8 +1811,9 @@ wext_set_scan(IN struct net_device *prNetDev,
 
 #if WIRELESS_EXT > 17
     /* retrieve SSID */
-	if (prIwScanReq)
-		essid_len = prIwScanReq->essid_len;
+    if(prData) {
+        essid_len = ((struct iw_scan_req *)(((struct iw_point*)prData)->pointer))->essid_len;
+    }
 #endif
 
     init_completion(&prGlueInfo->rScanComp);
@@ -2551,7 +2559,7 @@ wext_get_essid (
 
     kalMemFree(prSsid, VIR_MEM_TYPE, sizeof(PARAM_SSID_T));
 
-    return 0;
+    return rStatus;
 } /* wext_get_essid */
 
 
@@ -3927,16 +3935,40 @@ wext_set_country (
     aucCountry[0] = *((PUINT_8)iwr->u.data.pointer + 8);
     aucCountry[1] = *((PUINT_8)iwr->u.data.pointer + 9);
 
-    rStatus = kalIoctl(prGlueInfo,
-        wlanoidSetCountryCode,
-        &aucCountry[0],
-        2,
-        FALSE,
-        FALSE,
-        TRUE,
-        FALSE,
-        &u4BufLen);
-	wlanUpdateChannelTable(prGlueInfo);	
+	if ('X' == aucCountry[0] && 'X' == aucCountry[1])
+		aucCountry[0] = aucCountry[1] = 'W';
+
+	rStatus = kalIoctl(prGlueInfo,
+			   wlanoidSetCountryCode,
+			   &aucCountry[0],
+			   2,
+			   FALSE,
+			   FALSE,
+			   TRUE,
+			   FALSE,
+			   &u4BufLen);
+	if (rStatus != WLAN_STATUS_SUCCESS)
+		return -1;
+
+	rStatus = kalIoctl(prGlueInfo,
+			   wlanoidUpdatePowerTable,
+			   &aucCountry[0],
+			   2,
+			   FALSE,
+			   FALSE,
+			   TRUE,
+			   FALSE,
+			   &u4BufLen);
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("failed update power table: %c%c\n",
+				    aucCountry[0], aucCountry[1]));
+		return -EINVAL;
+	}
+	/*Indicate channel change notificaiton to wpa_supplicant via cfg80211*/
+	if ('W' == aucCountry[0] && 'W' == aucCountry[1])
+		aucCountry[0] = aucCountry[1] = 'X';
+	wlanRegulatoryHint(&aucCountry[0]);
+
     return 0;
 }
 
@@ -3969,7 +4001,6 @@ wext_support_ioctl (
     int ret = 0;
     char *prExtraBuf = NULL;
     UINT_32 u4ExtraSize = 0;
-    struct iw_scan_req * prIwScanReq = NULL;
 
     /* prDev is verified in the caller function wlanDoIOCTL() */
 
@@ -4116,23 +4147,21 @@ wext_support_ioctl (
         }
 #if WIRELESS_EXT > 17
 		else if (iwr->u.data.length == sizeof(struct iw_scan_req)) {
-			prIwScanReq = kalMemAlloc(iwr->u.data.length, VIR_MEM_TYPE);
-			if (!prIwScanReq) {
-				ret = -ENOMEM;
-				break;
-			}
+            prExtraBuf = kalMemAlloc(MAX_SSID_LEN, VIR_MEM_TYPE);
+            if (!prExtraBuf) {
+                ret = -ENOMEM;
+                break;
+            }
+            if (copy_from_user(prExtraBuf, ((struct iw_scan_req *) (iwr->u.data.pointer))->essid,
+                ((struct iw_scan_req *) (iwr->u.data.pointer))->essid_len)) {
+                ret = -EFAULT;
+            } else {
+                ret = wext_set_scan(prDev, NULL, (union iwreq_data *)  &(iwr->u.data), prExtraBuf);
+            }
 
-			if (copy_from_user(prIwScanReq, iwr->u.data.pointer, iwr->u.data.length)) {
-				ret = -EFAULT;
-			} else {
-				if (prIwScanReq->essid_len > IW_ESSID_MAX_SIZE)
-					prIwScanReq->essid_len = IW_ESSID_MAX_SIZE;
-				ret = wext_set_scan(prDev, NULL, prIwScanReq, &(prIwScanReq->essid[0]));
-			}
-
-			kalMemFree(prIwScanReq, VIR_MEM_TYPE, iwr->u.data.length);
-			prIwScanReq = NULL;
-		}
+            kalMemFree(prExtraBuf, VIR_MEM_TYPE, MAX_SSID_LEN);
+            prExtraBuf = NULL;
+        }
 #endif
 		else {
             ret = -EINVAL;
@@ -4220,19 +4249,19 @@ wext_support_ioctl (
 #endif
 
     case SIOCGIWESSID: /* 0x8B1B, get SSID */
+        u4ExtraSize = iwr->u.essid.length;
         if (!iwr->u.essid.pointer) {
             ret = -EINVAL;
             break;
         }
 
-        if (iwr->u.essid.length < IW_ESSID_MAX_SIZE) {
-        DBGLOG(INIT, INFO, ("[wifi] iwr->u.essid.length:%d too small\n",
-                iwr->u.essid.length));
+        if (u4ExtraSize != IW_ESSID_MAX_SIZE && u4ExtraSize != IW_ESSID_MAX_SIZE + 1) {
+            DBGLOG(INIT, ERROR, ("[wifi] iwr->u.essid.length: %d error\n", u4ExtraSize));
             ret = -E2BIG;   /* let caller try larger buffer */
             break;
         }
 
-        prExtraBuf = kalMemAlloc(IW_ESSID_MAX_SIZE, VIR_MEM_TYPE);
+        prExtraBuf = kalMemAlloc(IW_ESSID_MAX_SIZE + 1, VIR_MEM_TYPE);
         if (!prExtraBuf) {
             ret = -ENOMEM;
             break;
@@ -4242,12 +4271,12 @@ wext_support_ioctl (
 
         ret = wext_get_essid(prDev, NULL, &iwr->u.essid, prExtraBuf);
         if (ret == 0) {
-            if (copy_to_user(iwr->u.essid.pointer, prExtraBuf, iwr->u.essid.length)) {
+            if (copy_to_user(iwr->u.essid.pointer, prExtraBuf, IW_ESSID_MAX_SIZE)) {
                 ret = -EFAULT;
             }
         }
 
-        kalMemFree(prExtraBuf, VIR_MEM_TYPE, IW_ESSID_MAX_SIZE);
+        kalMemFree(prExtraBuf, VIR_MEM_TYPE, IW_ESSID_MAX_SIZE + 1);
         prExtraBuf = NULL;
 
         break;

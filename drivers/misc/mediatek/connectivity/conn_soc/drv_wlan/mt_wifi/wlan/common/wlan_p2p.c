@@ -1785,7 +1785,8 @@ wlanoidSetP2pWPSmode (
 
     status = nicUpdateBss(
         prAdapter,
-        NETWORK_TYPE_P2P_INDEX);
+        NETWORK_TYPE_P2P_INDEX,
+        STA_REC_INDEX_NOT_FOUND);
     
     return status;
 } /* end of wlanoidSetP2pWPSmode() */

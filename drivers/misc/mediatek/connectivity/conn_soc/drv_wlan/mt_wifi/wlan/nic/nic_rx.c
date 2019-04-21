@@ -1141,8 +1141,11 @@ nicRxFillChksumStatus(
     ASSERT(prSwRfb);
 
     if (prAdapter->u4CSUMFlags != CSUM_NOT_SUPPORTED){
-        if (u4TcpUdpIpCksStatus & RX_CS_TYPE_IPv4) { // IPv4 packet
-            prSwRfb->aeCSUM[CSUM_TYPE_IPV6] = CSUM_RES_NONE;
+		if (u4TcpUdpIpCksStatus & RX_LEN_MISMATCH) {
+			 prSwRfb->aeCSUM[CSUM_TYPE_IPV4] = CSUM_RES_NONE;
+			 prSwRfb->aeCSUM[CSUM_TYPE_IPV6] = CSUM_RES_NONE;
+			} else if (u4TcpUdpIpCksStatus & RX_CS_TYPE_IPv4) { /* IPv4 packet */
+				prSwRfb->aeCSUM[CSUM_TYPE_IPV6] = CSUM_RES_NONE;
             if(u4TcpUdpIpCksStatus & RX_CS_STATUS_IP) { //IP packet csum failed
                 prSwRfb->aeCSUM[CSUM_TYPE_IPV4] = CSUM_RES_FAILED;
             } else {
@@ -1617,18 +1620,6 @@ nicRxProcessEventPacket (
 
     // Event Handling
     switch(prEvent->ucEID) {
-		case EVENT_ID_WARNING_TO_DRIVER:
-		{
-		P_EVENT_LOG_TO_DRIVER_T prEventLog;
-		UINT_32 UpTimeSec, UpTimeMicroSec;
-
-		prEventLog = (P_EVENT_LOG_TO_DRIVER_T)(prEvent->aucBuffer);
-		UpTimeSec = prEventLog->WifiUpTime/1000000;
-		UpTimeMicroSec = prEventLog->WifiUpTime%1000000;
-		LOG_FUNC("[%d.%d] FW Warning!! %s: %d, %s\n", UpTimeSec, UpTimeMicroSec, prEventLog->fileName, prEventLog->lineNo, prEventLog->log);
-
-		break;
-		}
     case EVENT_ID_CMD_RESULT:
         prCmdInfo = nicGetPendingCmdInfo(prAdapter, prEvent->ucSeqNum);
 
@@ -2277,6 +2268,9 @@ nicRxProcessEventPacket (
 			(UINT32)(prEvent->u2PacketLen-8));
 		break;
 #endif /* CFG_SUPPORT_STATISTICS */
+	case EVENT_ID_CHECK_REORDER_BUBBLE:
+		qmHandleEventCheckReorderBubble(prAdapter, prEvent);
+		break;
 
     case EVENT_ID_ACCESS_REG:
     case EVENT_ID_NIC_CAPABILITY:
@@ -2337,6 +2331,15 @@ nicRxProcessMgmtPacket (
     nicRxFillRFB(prAdapter, prSwRfb);
 
     ucSubtype = (*(PUINT_8)(prSwRfb->pvHeader) & MASK_FC_SUBTYPE )>> OFFSET_OF_FC_SUBTYPE;
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+		if (nicUpdateWakeupStatistics(prAdapter, RX_MGMT_INT) != 0) {
+			DBGLOG(RX, INFO, ("mgmt frame, subtype 0x%x, on channel %d\n", ucSubtype,
+					HIF_RX_HDR_GET_CHNL_NUM(prSwRfb->prHifRxHdr)));
+			if (aucDebugModule[DBG_RX_IDX] & DBG_CLASS_INFO)
+				dumpMemory8(ANDROID_LOG_ERROR, (PUINT_8) prSwRfb->pvHeader,
+							(UINT_32)prSwRfb->u2PacketLen);
+		}
+#endif
 
 #if CFG_RX_PKTS_DUMP
     {
@@ -2435,10 +2438,29 @@ nicRxProcessRFBs (
         if (prSwRfb){
             switch(prSwRfb->ucPacketType){
                 case HIF_RX_PKT_TYPE_DATA:
+#if	CFG_SUPPORT_WAKEUP_STATISTICS
+					if (1 == nicUpdateWakeupStatistics(prAdapter, RX_DATA_INT))
+						glWlanSetIndicateWoWFlag();
+#endif
+
                     nicRxProcessDataPacket(prAdapter, prSwRfb);
                     break;
+				case HIF_RX_PKT_TYPE_SW_DEFINED:
+					if ((prSwRfb->prHifRxHdr->u2PacketType & RXM_RXD_PKT_TYPE_SW_BITMAP) ==
+						RXM_RXD_PKT_TYPE_SW_EVENT)
+						nicRxProcessEventPacket(prAdapter, prSwRfb);
+					else if ((prSwRfb->prHifRxHdr->u2PacketType & RXM_RXD_PKT_TYPE_SW_BITMAP) ==
+						RXM_RXD_PKT_TYPE_SW_FRAME)
+						nicRxProcessMgmtPacket(prAdapter, prSwRfb);
+					else
+						ASSERT(0);
+					break;
 
                 case HIF_RX_PKT_TYPE_EVENT:
+#if	CFG_SUPPORT_WAKEUP_STATISTICS
+					nicUpdateWakeupStatistics(prAdapter, RX_EVENT_INT);
+#endif
+
                     nicRxProcessEventPacket(prAdapter, prSwRfb);
                     break;
 
@@ -2463,6 +2485,10 @@ nicRxProcessRFBs (
                     break;
 
                 default:
+#if	CFG_SUPPORT_WAKEUP_STATISTICS
+					nicUpdateWakeupStatistics(prAdapter, RX_OTHERS_INT);
+#endif
+
                     RX_INC_CNT(prRxCtrl, RX_TYPE_ERR_DROP_COUNT);
                     RX_INC_CNT(prRxCtrl, RX_DROP_TOTAL_COUNT);
                     DBGLOG(RX, ERROR, ("ucPacketType = %d\n", prSwRfb->ucPacketType));

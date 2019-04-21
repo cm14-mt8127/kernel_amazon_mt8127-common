@@ -69,13 +69,6 @@ endif
 
 obj-$(CONFIG_MTK_WFD_SUPPORT)  += uibc/
 
-ifneq ($(CONFIG_GATOR_DRIVER),)
- ifneq ($(wildcard $(srctree)/$(src)/gator-driver/),)
-  obj-$(CONFIG_GATOR_DRIVER) += gator-driver/
- endif
-endif
- 
-
 obj-$(CONFIG_MTK_XHCI)   +=  xhci/
 
 #obj-y	+=  hdmitx/
@@ -101,10 +94,6 @@ obj-$(CONFIG_CUSTOM_KERNEL_ACCELEROMETER) += accelerometer/
 obj-$(CONFIG_CUSTOM_KERNEL_GYROSCOPE) += gyroscope/
 obj-$(CONFIG_CUSTOM_KERNEL_MAGNETOMETER) += magnetometer/
 obj-$(CONFIG_CUSTOM_KERNEL_BAROMETER) += barometer/
-#/*[PLATFORM]-ADD-BEIGIN by falin.luo 2015.4.17*/
-#add hall sensor support
-obj-$(CONFIG_MTK_HALL) += hall/
-#/*[PLATFORM]-ADD-END by falin.luo 2015.4.17*/
 
 ifneq ($(CONFIG_CUSTOM_KERNEL_SENSORHUB),"")
 obj-y	+= sensorHub/
@@ -148,7 +137,7 @@ endif
 endif
 #obj-y	+= matv/
 #obj-y	+= touchpanel/
-# 
+#obj-y	+= cpu_stress/
 
 obj-$(CONFIG_MTK_VOW_SUPPORT)	+= vow/
 
@@ -200,7 +189,6 @@ endif
 
 obj-y	+= accdet/
 obj-y	+= keypad/
-obj-$(CONFIG_MTK_DUM_CHAR)	+= dum-char/
 obj-$(CONFIG_MTK_SYSENV)	+= sysenv/
 
 ifdef CONFIG_CUSTOM_KERNEL_SSW
@@ -227,7 +215,6 @@ ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6572" "mt6582" "mt6592" "mt6595" "mt
 obj-y	+= masp/
 endif
 obj-$(CONFIG_MTK_MMC)	+= mmc-host/
-obj-$(CONFIG_MTK_MMC)	+= pmt/
 obj-$(CONFIG_MTK_MTD_NAND)	+= nand/
 obj-$(CONFIG_MTK_GPT_SCHEME_SUPPORT)	+= partition/
 obj-$(CONFIG_MTK_SOUND) += smartpa/
@@ -254,7 +241,7 @@ obj-$(CONFIG_USB_MU3D_DRV)	+= mu3phy/
 
 obj-$(CONFIG_MTK_TEST_XHCI)   +=  xhci_test/
 
-obj-y	+= vibrator/
+obj-$(CONFIG_MTK_VIBRATOR)	+= vibrator/
 obj-y	+= wdt/
 obj-y	+= freqhopping/
 obj-y	+= selinux_warning/
@@ -284,7 +271,7 @@ obj-$(CONFIG_MTK_SCHED_CMP_POWER_AWARE_CONTROLLER)	+=  pa/
 obj-$(CONFIG_HMP_POWER_AWARE_CONTROLLER)	+=  pa_hmp/
 
 #widevine drm
-#$(warning "CONFIG_TRUSTONIC_TEE_SUPPORT = $(CONFIG_TRUSTONIC_TEE_SUPPORT)")
+$(warning "CONFIG_TRUSTONIC_TEE_SUPPORT = $(CONFIG_TRUSTONIC_TEE_SUPPORT)")
 obj-$(CONFIG_TRUSTONIC_TEE_SUPPORT) += secwidevine/
 
 obj-$(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) += trustzone/
@@ -294,3 +281,6 @@ obj-$(CONFIG_PWR_LOSS_MTK_TEST) += power-loss-test/
 
 endif           # end of CONFIG_ARCH_MT6735
 endif		# end of CONFIG_ARCH_MT6795
+
+obj-y += dynamic_boost/
+obj-y += hwinfo/

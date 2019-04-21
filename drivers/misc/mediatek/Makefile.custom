@@ -19,10 +19,27 @@ MTK_PLATFORM_PATH_ROOT := $(srctree)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)
 MTK_PROJECT_PATH_ROOT := $(srctree)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)
 endif
 
-ifneq ($(CONFIG_MTK_USE_DRVGEN),y)
-DRVGEN_OUT := $(MTK_PROJECT_PATH_ROOT)/dct/dct
-endif
-
+ifeq ($(CONFIG_AUSTIN_PROJECT),y)
+ccflags-y += -I$(MTK_PLATFORM_PATH_ROOT)/include \
+             -I$(MTK_PLATFORM_PATH_ROOT)/include/mach \
+             -I$(MTK_PROJECT_PATH_ROOT)/accdet \
+             -I$(MTK_PROJECT_PATH_ROOT)/core \
+             -I$(MTK_PROJECT_PATH_ROOT)/camera/camera \
+             -I$(MTK_PROJECT_PATH_ROOT)/common \
+             -I$(MTK_PROJECT_PATH_ROOT)/dct/dct_austin \
+             -I$(srctree)/arch/arm//mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_austin \
+             -I$(MTK_PROJECT_PATH_ROOT)/hdmi \
+             -I$(MTK_PROJECT_PATH_ROOT)/imgsensor/inc \
+             -I$(MTK_PROJECT_PATH_ROOT)/keypad \
+             -I$(MTK_PROJECT_PATH_ROOT)/leds/mt65xx \
+             -I$(MTK_PROJECT_PATH_ROOT)/power \
+             -I$(MTK_PROJECT_PATH_ROOT)/rtc \
+             -I$(MTK_PROJECT_PATH_ROOT)/sound/inc \
+             -I$(MTK_PROJECT_PATH_ROOT)/touchpanel/ft5406_82 \
+             -I$(MTK_PROJECT_PATH_ROOT)/vibrator \
+             -I$(DRVGEN_OUT)/inc \
+             -I$(MTK_PROJECT_PATH_ROOT)/multibridge/mt8193/inc 
+else
 ccflags-y += -I$(MTK_PLATFORM_PATH_ROOT)/include \
              -I$(MTK_PLATFORM_PATH_ROOT)/include/mach \
              -I$(MTK_PROJECT_PATH_ROOT)/accdet \
@@ -30,6 +47,7 @@ ccflags-y += -I$(MTK_PLATFORM_PATH_ROOT)/include \
              -I$(MTK_PROJECT_PATH_ROOT)/camera/camera \
              -I$(MTK_PROJECT_PATH_ROOT)/common \
              -I$(MTK_PROJECT_PATH_ROOT)/dct/dct \
+             -I$(srctree)/arch/arm//mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct \
              -I$(MTK_PROJECT_PATH_ROOT)/hdmi \
              -I$(MTK_PROJECT_PATH_ROOT)/imgsensor/inc \
              -I$(MTK_PROJECT_PATH_ROOT)/keypad \
@@ -41,7 +59,7 @@ ccflags-y += -I$(MTK_PLATFORM_PATH_ROOT)/include \
              -I$(MTK_PROJECT_PATH_ROOT)/vibrator \
 	     -I$(DRVGEN_OUT)/inc \
              -I$(MTK_PROJECT_PATH_ROOT)/multibridge/mt8193/inc 
-
+endif
 ccflags-y += -I$(MTK_CUSTOM_PATH)/accdet/$(MTK_PLATFORM) \
              -I$(MTK_CUSTOM_PATH)/accelerometer/inc \
              -I$(MTK_CUSTOM_PATH)/alsps/inc \
@@ -74,8 +92,6 @@ ccflags-y += -I$(MTK_CUSTOM_PATH)/accdet/$(MTK_PLATFORM) \
              -I$(MTK_CUSTOM_PATH)/leds/$(MTK_PLATFORM) \
              -I$(MTK_CUSTOM_PATH)/lens/inc \
              -I$(MTK_CUSTOM_PATH)/magnetometer/inc \
-             -I$(MTK_CUSTOM_PATH)/met/platform/$(MTK_PLATFORM) \
-             -I$(MTK_CUSTOM_PATH)/met/$(MTK_PLATFORM) \
              -I$(MTK_CUSTOM_PATH)/sensorHub/inc \
              -I$(MTK_CUSTOM_PATH)/smi/$(MTK_PLATFORM) \
              -I$(MTK_CUSTOM_PATH)/ssw/inc \

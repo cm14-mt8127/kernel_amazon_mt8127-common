@@ -56,7 +56,7 @@
 #include "hdmicmd.h"
 #include <mach/mt_pmic_wrap.h>
 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 #include "hdmi_ca.h"
 #endif
 /*----------------------------------------------------------------------------*/
@@ -204,7 +204,7 @@ static void hdmi_get_params(HDMI_PARAMS *params)
     params->is_force_landscape = 1;
 
     params->scaling_factor = 0;
-	#ifndef CONFIG_MTK_HDMI_HDCP_SUPPORT
+	#ifndef MTK_HDMI_HDCP_SUPPORT
     params->NeedSwHDCP= 1;	
 	#endif	
 }
@@ -534,7 +534,7 @@ void hdmi_read(unsigned int u2Reg, unsigned int *p4Data)
 void hdmi_write(unsigned int u2Reg, unsigned int u4Data)
 {
 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 	if((u2Reg&0xFFFFF000)==0)
 	{
 		if(u2Reg < 0x100)
@@ -614,7 +614,7 @@ static int hdmi_internal_init(void)
     register_early_suspend(&hdmi_hdmi_early_suspend_desc);
     #endif
 	
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 	printk("[HDMI]fgCaHDMICreate\n");
 	fgCaHDMICreate();		
 #endif

@@ -11,6 +11,9 @@ config MTK_PLATFORM
 config ARCH_MTK_PROJECT
 	string "MTK project name"
 
+config AUSTIN_PROJECT
+        bool "amazon project name"
+
 config MTK_INTERNAL
 	bool "Enable MTK internal debug feature"
 	help
@@ -399,19 +402,11 @@ config MTK_TC1_FEATURE
 	bool "MTK_TC1_FEATURE"
 	default n
 
-config MTK_COMBO_AOSP_TETHERING_SUPPORT
-	bool "Multiplex wlan0 for both AP and STA"
-	default n
-
-config MTK_USE_DRVGEN
-	bool "use drvgen"
-	default n
-
 source "drivers/misc/mediatek/Kconfig.kernel"
 source "drivers/misc/mediatek/Kconfig.drivers"
 source "drivers/misc/mediatek/smartpa/Kconfig"
 
- 
+source "drivers/misc/mediatek/cpu_stress/Kconfig"
 source "drivers/misc/mediatek/lastpc/Kconfig"
 source "drivers/misc/mediatek/fmradio/Kconfig"
 source "drivers/misc/mediatek/hwmon/Kconfig"
@@ -422,7 +417,6 @@ source "drivers/misc/mediatek/conn_md/Kconfig"
 source "drivers/misc/mediatek/lens/Kconfig"
 source "drivers/misc/mediatek/imgsensor/Kconfig"
 source "drivers/misc/mediatek/flashlight/Kconfig"
-source "drivers/misc/mediatek/dum-char/Kconfig"
 source "drivers/misc/mediatek/sysenv/Kconfig"
 source "drivers/misc/mediatek/smi/Kconfig"
 source "drivers/misc/mediatek/btcvsd/Kconfig"

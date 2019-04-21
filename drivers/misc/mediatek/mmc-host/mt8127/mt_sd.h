@@ -1250,6 +1250,7 @@ struct ot_work_t
 
 struct msdc_host
 {
+    struct device               *dev;
     struct msdc_hw              *hw;
 
     struct mmc_host             *mmc;           /* mmc structure */
@@ -1338,8 +1339,17 @@ struct msdc_host
 #ifdef SDIO_ERROR_BYPASS      
     int                         sdio_error;     /* sdio error can't recovery */
 #endif									   
+	u32 crc_count;	/* total crc count */
+	u32 crc_invalid_count;	/* total crc invalid count eg CMD19 */
+	u32 req_count; /* total request count */
+	u32 datatimeout_count; /* total data timeout count */
+	u32 cmdtimeout_count; /* total cmd timeout count */
+	u32 reqtimeout_count; /* total req timeout count */
+	u32 pc_count;	/* total power cycle count */
+	u32 pc_suspend;	/* suspend/resume count */
 	void	(*power_control)(struct msdc_host *host,u32 on);
 	void	(*power_switch)(struct msdc_host *host,u32 on);
+	u32 inserted; /* total card detection cound */
 };
 typedef enum {
    TRAN_MOD_PIO,

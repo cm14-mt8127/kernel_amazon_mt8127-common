@@ -324,6 +324,10 @@ typedef WLAN_STATUS (*PROCESS_RX_MGT_FUNCTION)(P_ADAPTER_T, P_SW_RFB_T);
 *                                 M A C R O S
 ********************************************************************************
 */
+#define RXM_RXD_PKT_TYPE_SW_BITMAP 0xE00F
+#define RXM_RXD_PKT_TYPE_SW_EVENT  0xE000
+#define RXM_RXD_PKT_TYPE_SW_FRAME  0xE001
+
 #define RX_INC_CNT(prRxCtrl, eCounter)              \
     {((P_RX_CTRL_T)prRxCtrl)->au8Statistics[eCounter]++;}
 

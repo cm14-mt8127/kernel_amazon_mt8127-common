@@ -2381,10 +2381,10 @@ kalMetProfilingFinish (
     IN P_ADAPTER_T  prAdapter,
     IN P_MSDU_INFO_T prMsduInfo
     );    
-int kalMetInitProcfs(
+int kalInitProcfs(
     IN P_GLUE_INFO_T prGlueInfo
     );
-int kalMetRemoveProcfs(void); 
+int kalRemoveProcfs(void); 
 
 UINT_64 kalGetBootTime(void);
 

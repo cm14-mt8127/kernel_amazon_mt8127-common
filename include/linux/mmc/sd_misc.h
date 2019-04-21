@@ -165,7 +165,6 @@ typedef enum {
     EMMC_BOOT_END
 } BOOT_PARTITION_EN;
 
-#ifdef CONFIG_MTK_GPT_SCHEME_SUPPORT
 typedef enum {
     EMMC_PART_UNKNOWN=0
     ,EMMC_PART_BOOT1
@@ -178,7 +177,6 @@ typedef enum {
     ,EMMC_PART_USER
     ,EMMC_PART_END
 } Region;
-#endif
 
 typedef enum {
     CARD_INFO = 0,

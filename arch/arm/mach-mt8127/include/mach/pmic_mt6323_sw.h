@@ -29,6 +29,8 @@
 #define PMIC6323_E1_CID_CODE    0x1023
 #define PMIC6323_E2_CID_CODE    0x2023
 
+extern struct workqueue_struct *system_highpri_wq;
+
 //==============================================================================
 // The CHIP SPEC of each block
 //==============================================================================

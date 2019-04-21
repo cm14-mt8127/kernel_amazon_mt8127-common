@@ -1863,7 +1863,7 @@ bowStopping(
         //prBowBssInfo->fgIsBeaconActivated = FALSE;
         nicPmIndicateBssAbort(prAdapter, NETWORK_TYPE_BOW_INDEX);
         bowChangeMediaState(prAdapter, PARAM_MEDIA_STATE_DISCONNECTED);
-        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
         /*temp solution for FW hal_pwr_mgt.c#3037 ASSERT*/
         nicDeactivateNetwork(prAdapter, NETWORK_TYPE_BOW_INDEX);
         SET_NET_PWR_STATE_IDLE(prAdapter, NETWORK_TYPE_BOW_INDEX);
@@ -2034,7 +2034,7 @@ bowStarting(
 
     //4 <3.1> use command packets to inform firmware
         rlmBssInitForAPandIbss(prAdapter, prBssInfo);
-        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     //4 <3.2> Update AdHoc PM parameter
         nicPmIndicateBssCreated(prAdapter, NETWORK_TYPE_BOW_INDEX);
@@ -2708,7 +2708,7 @@ bowFsmRunEventJoinComplete(
 #endif
 
             //4 <1.3> Update BSS_INFO_T
-            nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+            nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
 #if CFG_BOW_TEST
             DBGLOG(BOW, EVENT, ("Finish bowUpdateBssInfoForJOIN.\n"));
 #endif
@@ -2944,7 +2944,7 @@ bowRunEventAAAComplete (
 
     /*Update BssInfo to connected*/
     bowChangeMediaState(prAdapter, PARAM_MEDIA_STATE_CONNECTED);
-    nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     /*Update StaRec to State3*/
     cnmStaRecChangeState(prAdapter, prStaRec, STA_STATE_3);
@@ -3177,7 +3177,7 @@ bowValidateAssocReq (
 
         /*Undpate BssInfo to FW*/
         bowChangeMediaState(prAdapter, PARAM_MEDIA_STATE_CONNECTED);
-        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
 
         /*reply successful*/
         *pu2StatusCode = STATUS_CODE_SUCCESSFUL;
@@ -3411,7 +3411,7 @@ bowRunEventChGrant (
     }
     else {
         /*update bssinfo*/
-        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX);
+        nicUpdateBss(prAdapter, NETWORK_TYPE_BOW_INDEX, STA_REC_INDEX_NOT_FOUND);
         bowReleaseCh(prAdapter);
         }
 

@@ -6493,7 +6493,8 @@ TdlsexRxFrameHandle(
 		{
 			case ELEM_ID_HT_CAP: /* 0x2d */
 				/* backup the HT IE of 1st unhandled setup request frame */
-				if (prGlueInfo->rTdlsHtCap.ucId == 0x00)
+				if (prGlueInfo->rTdlsHtCap.ucId == 0x00 &&
+					ucElmLen <= sizeof(IE_HT_CAP_T) - 2)
 				{
 					kalMemCopy(prGlueInfo->aucTdlsHtPeerMac, pucPeerMac, 6);
 					kalMemCopy(&prGlueInfo->rTdlsHtCap, pPkt-2, ucElmLen+2);

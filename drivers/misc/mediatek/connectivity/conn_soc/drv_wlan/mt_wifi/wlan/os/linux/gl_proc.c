@@ -63,22 +63,33 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-#include "gl_os.h"
-#include "gl_kal.h"
+#include "precomp.h"
+//#include "gl_os.h"
+//#include "gl_kal.h"
 
-#include "wlan_lib.h"
-#include "debug.h"
+//#include "wlan_lib.h"
+//#include "debug.h"
 
 
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************
 */
-#define PROC_MCR_ACCESS                         "mcr"
-#define PROC_DRV_STATUS                         "status"
-#define PROC_RX_STATISTICS                      "rx_statistics"
-#define PROC_TX_STATISTICS                      "tx_statistics"
-#define PROC_DBG_LEVEL                          "dbg_level"
+#define PROC_WLAN_CHIP_ID				"chipid"
+#define PROC_VERSION					"FWVersion"
+#define PROC_WLAN_MCR					"MCR"
+#define PROC_WLAN_THERMO                        "wlanThermo"
+#define PROC_COUNTRY					"country"
+#define PROC_ROAM_PARAM				"roam_param"
+#define PROC_DRV_STATUS				"status"
+#define PROC_RX_BA_WIN					"RxBaWin"
+#define PROC_RX_STATISTICS				"rx_statistics"
+#define PROC_TX_STATISTICS				"tx_statistics"
+#define PROC_DBG_LEVEL_NAME			"dbgLevel"
+#define PROC_ANTENNA_SELECT			"antenna_select"
+/*#define PROC_ANTENNA_RSSI		"antenna_query" */
+#define PROC_DTIM "dtim_skip_count"
+#define PROC_ROOT_NAME					"wlan"
 
 #define PROC_MCR_ACCESS_MAX_USER_INPUT_LEN      20
 #define PROC_RX_STATISTICS_MAX_USER_INPUT_LEN   10
@@ -86,6 +97,9 @@
 #define PROC_DBG_LEVEL_MAX_USER_INPUT_LEN       20
 #define PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN      30
 
+
+#define PROC_UID_SHELL							2000
+#define PROC_GID_WIFI							1010
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -102,6 +116,10 @@
 ********************************************************************************
 */
 static UINT_32 u4McrOffset = 0;
+static UINT_16 u2RxBaWin = 0x0;
+#if CFG_SUPPORT_THERMO_THROTTLING
+static P_GLUE_INFO_T g_prGlueInfo_proc;
+#endif
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -117,6 +135,99 @@ static UINT_32 u4McrOffset = 0;
 *                              F U N C T I O N S
 ********************************************************************************
 */
+
+static ssize_t
+procRxBAWinRead(
+struct file *filp,
+char __user *buf,
+size_t count,
+loff_t *f_pos)
+{
+	UINT_32 u4CopySize = 0;
+	UINT_16 u2RxBa;
+	UINT_8 aucProcBuf[42];
+
+	if (*f_pos > 0)
+		return 0;	/* To indicate end of file. */;
+
+	u2RxBa = u2RxBaWin;
+	if (!u2RxBaWin)
+		kalSprintf(aucProcBuf, "RxBaWin : 0x%x(disable)\n", u2RxBa);
+	else
+		kalSprintf(aucProcBuf, "RxBaWin : 0x%x\n", u2RxBa);
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (u4CopySize > count)
+		u4CopySize = count;
+
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+	*f_pos += u4CopySize;
+
+	return (ssize_t)u4CopySize;
+}
+
+static ssize_t
+procRxBAWinWrite(
+struct file *file,
+const char __user *buffer,
+size_t count,
+loff_t *data)
+{
+	UINT8 acBuf[21];
+	int i4CopySize;
+	PARAM_CUSTOM_SW_CTRL_STRUCT_T uSwCtrlInfo;
+	UINT_32 u4BufLen;
+	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+	UINT8 *temp = &acBuf[0];
+
+	if (count < (sizeof(acBuf) - 1))
+		i4CopySize = count;
+	else
+		i4CopySize = (sizeof(acBuf) - 1);
+
+	if (copy_from_user(acBuf, buffer, i4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+	acBuf[i4CopySize] = '\0';
+
+	rStatus = sscanf(temp, "0x%hx", &u2RxBaWin);
+
+	if (u2RxBaWin & 0x08)
+		u2RxBaWin &= 0x18;
+	else if (u2RxBaWin & 0x04)
+		u2RxBaWin &= 0x14;
+	else if (u2RxBaWin & 0x02)
+		u2RxBaWin &= 0x12;
+	else if (u2RxBaWin & 0x01)
+		u2RxBaWin &= 0x11;
+
+	uSwCtrlInfo.u4Data = (UINT_32)u2RxBaWin;
+	uSwCtrlInfo.u4Id = 0x30000000;
+
+	if (rStatus == 1) {
+		rStatus = kalIoctl(g_prGlueInfo_proc,
+			(PFN_OID_HANDLER_FUNC) wlanoidSetSwCtrlWrite,
+			(PVOID)&uSwCtrlInfo,
+			sizeof(uSwCtrlInfo),
+			FALSE, FALSE, TRUE, FALSE,
+			&u4BufLen);
+		if (rStatus == WLAN_STATUS_FAILURE) {
+			DBGLOG(INIT, INFO, ("write RxBaWin failed 0x%x\n", rStatus));
+			return -EINVAL;
+		}
+	}
+	return (ssize_t)count;
+}
+
+static const struct file_operations rxba_fops = {
+	.owner = THIS_MODULE,
+	.write = procRxBAWinWrite,
+	.read = procRxBAWinRead,
+};
+
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief The PROC function for reading MCR register to User Space, the offset of
@@ -132,57 +243,42 @@ static UINT_32 u4McrOffset = 0;
 * \return number of characters print to the buffer from User Space.
 */
 /*----------------------------------------------------------------------------*/
-static int
-procMCRRead (
-    char *page,
-    char **start,
-    off_t off,
-    int count,
-    int *eof,
-    void *data
-    )
+static ssize_t procMCRRead(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
-    P_GLUE_INFO_T prGlueInfo; 
-    PARAM_CUSTOM_MCR_RW_STRUC_T rMcrInfo;
-    UINT_32 u4BufLen;
-    char *p = page;
-    UINT_32 u4Count;
-    WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+	UINT_32 u4BufLen = 0;
+	UINT_32 u4CopySize = 0;
+	PARAM_CUSTOM_MCR_RW_STRUCT_T rMcrInfo;
+	WLAN_STATUS rStatus;
+	UINT_8 aucProcBuf[42];
 
+	if (*f_pos > 0)
+		return 0;	/* To indicate end of file. */;
 
-    ASSERT(data);
+	rMcrInfo.u4McrOffset = u4McrOffset;
 
-    // Kevin: Apply PROC read method 1.
-    if (off != 0) {
-        return 0; // To indicate end of file.
-    }
+	rStatus = kalIoctl(g_prGlueInfo_proc,
+			   wlanoidQueryMcrRead,
+			   (PVOID)&rMcrInfo, sizeof(rMcrInfo), TRUE, TRUE, TRUE, FALSE, &u4BufLen);
 
-    prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv((struct net_device *)data));
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("read mcr failed\n"));
+		return -EINVAL;
+	}
 
-    rMcrInfo.u4McrOffset = u4McrOffset;
+	kalSprintf(aucProcBuf, "Offset : 0x%08x, Value : 0x%08x\n",
+		rMcrInfo.u4McrOffset, rMcrInfo.u4McrData);
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (u4CopySize > count)
+		u4CopySize = count;
 
-    rStatus = kalIoctl(prGlueInfo,
-                        wlanoidQueryMcrRead,
-                        (PVOID)&rMcrInfo,
-                        sizeof(rMcrInfo),
-                        TRUE,
-                        TRUE,
-                        TRUE,
-                        FALSE,
-                        &u4BufLen);
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+	*f_pos += u4CopySize;
 
-
-    SPRINTF(p, ("MCR (0x%08xh): 0x%08x\n",
-        rMcrInfo.u4McrOffset, rMcrInfo.u4McrData));
-
-    u4Count = (UINT_32)((ULONG)p - (ULONG)page);
-
-    *eof = 1;
-
-    return (int)u4Count;
-
-} /* end of procMCRRead() */
-
+	return (ssize_t)u4CopySize;
+}				/* end of procMCRRead() */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -197,346 +293,143 @@ procMCRRead (
 * \return number of characters write from User Space.
 */
 /*----------------------------------------------------------------------------*/
-static int
-procMCRWrite (
-    struct file *file,
-    const char *buffer,
-    unsigned long count,
-    void *data
-    )
+static ssize_t procMCRWrite(struct file *file, const char __user *buffer, size_t count, loff_t *data)
 {
-    P_GLUE_INFO_T prGlueInfo; 
-    char acBuf[PROC_MCR_ACCESS_MAX_USER_INPUT_LEN + 1]; // + 1 for "\0"
-    int i4CopySize;
-    PARAM_CUSTOM_MCR_RW_STRUC_T rMcrInfo;
-    UINT_32 u4BufLen;
-    WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+	UINT8 acBuf[PROC_MCR_ACCESS_MAX_USER_INPUT_LEN + 1];	/* + 1 for "\0" */
+	int i4CopySize;
+	PARAM_CUSTOM_MCR_RW_STRUCT_T rMcrInfo;
+	UINT_32 u4BufLen, u4McrData = 0;
+	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+	UINT8 *temp = &acBuf[0];
 
+	i4CopySize = (count < (sizeof(acBuf) - 1)) ? count : (sizeof(acBuf) - 1);
 
-    ASSERT(data);
+	if (copy_from_user(acBuf, buffer, i4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+	acBuf[i4CopySize] = '\0';
 
-    i4CopySize = (count < (sizeof(acBuf) - 1)) ? count : (sizeof(acBuf) - 1);
-    if (copy_from_user(acBuf, buffer, i4CopySize)) {
-        return 0;
-    }
-    acBuf[i4CopySize] = '\0';
+	rStatus = sscanf(temp, "0x%x 0x%x", &u4McrOffset, &u4McrData);
+	rMcrInfo.u4McrOffset = u4McrOffset;
+	rMcrInfo.u4McrData = u4McrData;
 
-    switch (sscanf(acBuf, "0x%x 0x%x",
-                   &rMcrInfo.u4McrOffset, &rMcrInfo.u4McrData)) {
-    case 2:
-        /* NOTE: Sometimes we want to test if bus will still be ok, after accessing
-         * the MCR which is not align to DW boundary.
-         */
-        //if (IS_ALIGN_4(rMcrInfo.u4McrOffset))
-        {
-            prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv((struct net_device *)data));
- 
-            u4McrOffset = rMcrInfo.u4McrOffset;
+	if (rStatus == 2) {
+		/* NOTE: Sometimes we want to test if bus will still be ok, after accessing
+		 * the MCR which is not align to DW boundary.
+		 */
+		/* if (IS_ALIGN_4(rMcrInfo.u4McrOffset)) */
+		rStatus = kalIoctl(g_prGlueInfo_proc,
+				wlanoidSetMcrWrite,
+				(PVOID)&rMcrInfo, sizeof(rMcrInfo), FALSE, FALSE, TRUE, FALSE, &u4BufLen);
+		if (rStatus != WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, INFO, ("write mcr failed\n"));
+			return -EINVAL;
+		}
+	}
+	return (ssize_t)count;
+}				/* end of procMCRWrite() */
 
-            //printk("Write 0x%lx to MCR 0x%04lx\n",
-                //rMcrInfo.u4McrOffset, rMcrInfo.u4McrData);
+static const struct file_operations mcr_fops = {
+	.owner = THIS_MODULE,
+	.write = procMCRWrite,
+	.read = procMCRRead,
+};
 
-            rStatus = kalIoctl(prGlueInfo,
-                                wlanoidSetMcrWrite,
-                                (PVOID)&rMcrInfo,
-                                sizeof(rMcrInfo),
-                                FALSE,
-                                FALSE,
-                                TRUE,
-                                FALSE,
-                                &u4BufLen);
+static struct proc_dir_entry *gprProcRoot;
+static UINT_8 aucProcBuf[1536];
+static UINT_8 aucDbModuleName[][PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN] = {
+	"INIT", "HAL", "INTR", "REQ", "TX", "RX", "RFTEST", "EMU", "SW1", "SW2",
+	"SW3", "SW4", "HEM", "AIS", "RLM", "MEM", "CNM", "RSN", "BSS", "SCN",
+	"SAA", "AAA", "P2P", "QM", "SEC", "BOW", "WAPI", "ROAMING", "TDLS", "OID"
+};
 
-        }
-        break;
-
-    case 1:
-        //if (IS_ALIGN_4(rMcrInfo.u4McrOffset))
-        {
-            u4McrOffset = rMcrInfo.u4McrOffset;
-        }
-        break;
-
-    default:
-        break;
-    }
-
-    return count;
-
-} /* end of procMCRWrite() */
-
-#if 0
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief The PROC function for reading Driver Status to User Space.
-*
-* \param[in] page       Buffer provided by kernel.
-* \param[in out] start  Start Address to read(3 methods).
-* \param[in] off        Offset.
-* \param[in] count      Allowable number to read.
-* \param[out] eof       End of File indication.
-* \param[in] data       Pointer to the private data structure.
-*
-* \return number of characters print to the buffer from User Space.
-*/
-/*----------------------------------------------------------------------------*/
-static int
-procDrvStatusRead (
-    char *page,
-    char **start,
-    off_t off,
-    int count,
-    int *eof,
-    void *data
-    )
+static ssize_t procDbgLevelRead(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
-    P_GLUE_INFO_T prGlueInfo = ((struct net_device *)data)->priv;
-    char *p = page;
-    UINT_32 u4Count;
+	UINT_8 *temp = &aucProcBuf[0];
+	UINT_32 u4CopySize = 0;
+	UINT_16 i;
+	UINT_16 u2ModuleNum = 0;
 
-    GLUE_SPIN_LOCK_DECLARATION();
+	/* if *f_ops>0, we should return 0 to make cat command exit */
+	if (*f_pos > 0)
+		return 0;
 
+	kalStrCpy(temp, "\nERROR|WARN|STATE|EVENT|TRACE|INFO|LOUD|TEMP\n"
+			"bit0 |bit1|bit2 |bit3 |bit4 |bit5|bit6|bit7\n\n"
+			"Debug Module\tIndex\tLevel\tDebug Module\tIndex\tLevel\n\n");
+	temp += kalStrLen(temp);
 
-    ASSERT(data);
+	u2ModuleNum = (sizeof(aucDbModuleName) / PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN) & 0xfe;
+	for (i = 0; i < u2ModuleNum; i += 2)
+		SPRINTF(temp, ("DBG_%s_IDX\t(0x%02x):\t0x%02x\tDBG_%s_IDX\t(0x%02x):\t0x%02x\n",
+				&aucDbModuleName[i][0], i, aucDebugModule[i],
+				&aucDbModuleName[i+1][0], i+1, aucDebugModule[i+1]));
 
-    // Kevin: Apply PROC read method 1.
-    if (off != 0) {
-        return 0; // To indicate end of file.
-    }
+	if ((sizeof(aucDbModuleName) / PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN) & 0x1)
+		SPRINTF(temp, ("DBG_%s_IDX\t(0x%02x):\t0x%02x\n",
+				&aucDbModuleName[u2ModuleNum][0], u2ModuleNum, aucDebugModule[u2ModuleNum]));
 
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (u4CopySize > count)
+		u4CopySize = count;
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
 
-    SPRINTF(p, ("GLUE LAYER STATUS:"));
-    SPRINTF(p, ("\n=================="));
+	*f_pos += u4CopySize;
+	return (ssize_t)u4CopySize;
+}
 
-    SPRINTF(p, ("\n* Number of Pending Frames: %ld\n",
-        prGlueInfo->u4TxPendingFrameNum));
-
-    GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    wlanoidQueryDrvStatusForLinuxProc(prGlueInfo->prAdapter, p, &u4Count);
-
-    GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    u4Count += (UINT_32)(p - page);
-
-    *eof = 1;
-
-    return (int)u4Count;
-
-} /* end of procDrvStatusRead() */
-
-
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief The PROC function for reading Driver RX Statistic Counters to User Space.
-*
-* \param[in] page       Buffer provided by kernel.
-* \param[in out] start  Start Address to read(3 methods).
-* \param[in] off        Offset.
-* \param[in] count      Allowable number to read.
-* \param[out] eof       End of File indication.
-* \param[in] data       Pointer to the private data structure.
-*
-* \return number of characters print to the buffer from User Space.
-*/
-/*----------------------------------------------------------------------------*/
-static int
-procRxStatisticsRead (
-    char *page,
-    char **start,
-    off_t off,
-    int count,
-    int *eof,
-    void *data
-    )
+static ssize_t procDbgLevelWrite(struct file *file, const char *buffer, size_t count, loff_t *data)
 {
-    P_GLUE_INFO_T prGlueInfo = ((struct net_device *)data)->priv;
-    char *p = page;
-    UINT_32 u4Count;
+	UINT_32 u4NewDbgModule, u4NewDbgLevel;
+	UINT_8 i = 0;
+	UINT_32 u4CopySize = sizeof(aucProcBuf);
+	UINT_8 *temp = &aucProcBuf[0];
 
-    GLUE_SPIN_LOCK_DECLARATION();
+	kalMemSet(aucProcBuf, 0, u4CopySize);
+	if (u4CopySize > count)
+		u4CopySize = count;
+	else
+		u4CopySize = u4CopySize - 1;
 
+	if (copy_from_user(aucProcBuf, buffer, u4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+	aucProcBuf[u4CopySize] = '\0';
 
-    ASSERT(data);
+	while (temp) {
+		if (sscanf(temp, "0x%x:0x%x", &u4NewDbgModule, &u4NewDbgLevel) != 2)  {
+			pr_info("debug module and debug level should be one byte in length\n");
+			break;
+		}
+		if (u4NewDbgModule == 0xFF) {
+			for (i = 0; i < DBG_MODULE_NUM; i++)
+				aucDebugModule[i] = u4NewDbgLevel & DBG_CLASS_MASK;
 
-    // Kevin: Apply PROC read method 1.
-    if (off != 0) {
-        return 0; // To indicate end of file.
-    }
-
-
-    SPRINTF(p, ("RX STATISTICS (Write 1 to clear):"));
-    SPRINTF(p, ("\n=================================\n"));
-
-    GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    wlanoidQueryRxStatisticsForLinuxProc(prGlueInfo->prAdapter, p, &u4Count);
-
-    GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    u4Count += (UINT_32)(p - page);
-
-    *eof = 1;
-
-    return (int)u4Count;
-
-} /* end of procRxStatisticsRead() */
-
-
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief The PROC function for reset Driver RX Statistic Counters.
-*
-* \param[in] file   pointer to file.
-* \param[in] buffer Buffer from user space.
-* \param[in] count  Number of characters to write
-* \param[in] data   Pointer to the private data structure.
-*
-* \return number of characters write from User Space.
-*/
-/*----------------------------------------------------------------------------*/
-static int
-procRxStatisticsWrite (
-    struct file *file,
-    const char *buffer,
-    unsigned long count,
-    void *data
-    )
-{
-    P_GLUE_INFO_T prGlueInfo = ((struct net_device *)data)->priv;
-    char acBuf[PROC_RX_STATISTICS_MAX_USER_INPUT_LEN + 1]; // + 1 for "\0"
-    UINT_32 u4CopySize;
-    UINT_32 u4ClearCounter;
-
-    GLUE_SPIN_LOCK_DECLARATION();
+			break;
+		} else if (u4NewDbgModule >= DBG_MODULE_NUM) {
+			pr_info("debug module index should less than %d\n", DBG_MODULE_NUM);
+			break;
+		}
+		aucDebugModule[u4NewDbgModule] =  u4NewDbgLevel & DBG_CLASS_MASK;
+		temp = kalStrChr(temp, ',');
+		if (!temp)
+			break;
+		temp++; /* skip ',' */
+	}
+	return count;
+}
 
 
-    ASSERT(data);
-
-    u4CopySize = (count < (sizeof(acBuf) - 1)) ? count : (sizeof(acBuf) - 1);
-    copy_from_user(acBuf, buffer, u4CopySize);
-    acBuf[u4CopySize] = '\0';
-
-    if (sscanf(acBuf, "%ld", &u4ClearCounter) == 1) {
-        if (u4ClearCounter == 1) {
-            GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-            wlanoidSetRxStatisticsForLinuxProc(prGlueInfo->prAdapter);
-
-            GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-        }
-    }
-
-    return count;
-
-} /* end of procRxStatisticsWrite() */
-
-
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief The PROC function for reading Driver TX Statistic Counters to User Space.
-*
-* \param[in] page       Buffer provided by kernel.
-* \param[in out] start  Start Address to read(3 methods).
-* \param[in] off        Offset.
-* \param[in] count      Allowable number to read.
-* \param[out] eof       End of File indication.
-* \param[in] data       Pointer to the private data structure.
-*
-* \return number of characters print to the buffer from User Space.
-*/
-/*----------------------------------------------------------------------------*/
-static int
-procTxStatisticsRead (
-    char *page,
-    char **start,
-    off_t off,
-    int count,
-    int *eof,
-    void *data
-    )
-{
-    P_GLUE_INFO_T prGlueInfo = ((struct net_device *)data)->priv;
-    char *p = page;
-    UINT_32 u4Count;
-
-    GLUE_SPIN_LOCK_DECLARATION();
-
-
-    ASSERT(data);
-
-    // Kevin: Apply PROC read method 1.
-    if (off != 0) {
-        return 0; // To indicate end of file.
-    }
-
-
-    SPRINTF(p, ("TX STATISTICS (Write 1 to clear):"));
-    SPRINTF(p, ("\n=================================\n"));
-
-    GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    wlanoidQueryTxStatisticsForLinuxProc(prGlueInfo->prAdapter, p, &u4Count);
-
-    GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-    u4Count += (UINT_32)(p - page);
-
-    *eof = 1;
-
-    return (int)u4Count;
-
-} /* end of procTxStatisticsRead() */
-
-
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief The PROC function for reset Driver TX Statistic Counters.
-*
-* \param[in] file   pointer to file.
-* \param[in] buffer Buffer from user space.
-* \param[in] count  Number of characters to write
-* \param[in] data   Pointer to the private data structure.
-*
-* \return number of characters write from User Space.
-*/
-/*----------------------------------------------------------------------------*/
-static int
-procTxStatisticsWrite (
-    struct file *file,
-    const char *buffer,
-    unsigned long count,
-    void *data
-    )
-{
-    P_GLUE_INFO_T prGlueInfo = ((struct net_device *)data)->priv;
-    char acBuf[PROC_RX_STATISTICS_MAX_USER_INPUT_LEN + 1]; // + 1 for "\0"
-    UINT_32 u4CopySize;
-    UINT_32 u4ClearCounter;
-
-    GLUE_SPIN_LOCK_DECLARATION();
-
-
-    ASSERT(data);
-
-    u4CopySize = (count < (sizeof(acBuf) - 1)) ? count : (sizeof(acBuf) - 1);
-    copy_from_user(acBuf, buffer, u4CopySize);
-    acBuf[u4CopySize] = '\0';
-
-    if (sscanf(acBuf, "%ld", &u4ClearCounter) == 1) {
-        if (u4ClearCounter == 1) {
-            GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-
-            wlanoidSetTxStatisticsForLinuxProc(prGlueInfo->prAdapter);
-
-            GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_FSM);
-        }
-    }
-
-    return count;
-
-} /* end of procTxStatisticsWrite() */
-#endif
-
+static const struct file_operations dbglevel_ops = {
+	.owner = THIS_MODULE,
+	.read = procDbgLevelRead,
+	.write = procDbgLevelWrite,
+};
 
 #if DBG
 static UINT_8 aucDbModuleName[][PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN] = {
@@ -567,7 +460,7 @@ static UINT_8 aucDbModuleName[][PROC_DBG_LEVEL_MAX_DISPLAY_STR_LEN] = {
     "DBG_SEC_IDX",
     "DBG_BOW_IDX"
     };
-    
+
 extern UINT_8 aucDebugModule[];
 
 
@@ -659,102 +552,328 @@ procDbgLevelWrite (
 }
 #endif /* DBG */
 
+static ssize_t procCountryRead(struct file *file, char __user *buf,
+				size_t count, loff_t *f_pos)
 
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief This function create a PROC fs in linux /proc/net subdirectory.
-*
-* \param[in] prDev      Pointer to the struct net_device.
-* \param[in] pucDevName Pointer to the name of net_device.
-*
-* \return N/A
-*/
-/*----------------------------------------------------------------------------*/
-INT_32
-procInitProcfs (
-    struct net_device *prDev,
-    char *pucDevName
-    )
 {
-    P_GLUE_INFO_T prGlueInfo;
-    struct proc_dir_entry *prEntry;
+	UINT_32 u4BufLen = 0;
+	UINT_32 u4CopySize = 0;
+	UINT_16 u2CountryCode = 0;
+	WLAN_STATUS rStatus;
+	UINT_8 *temp = aucProcBuf;
+
+	if (*f_pos > 0)
+		return 0;
+
+	rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidGetCountryCode,
+			   &u2CountryCode, sizeof(u2CountryCode), TRUE, FALSE, FALSE, FALSE, &u4BufLen);
+
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("failed get country code"));
+		return -EINVAL;
+	}
+
+	/* country code NULL */
+	if (u2CountryCode == 0x0)
+		kalStrCpy(aucProcBuf, "Country: NULL\n");
+	else
+		SPRINTF(temp, ("Country: %c%c\n", (char)((u2CountryCode & 0xFF00) >> 8),
+						  (char)(u2CountryCode & 0x00FF)));
+
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (u4CopySize > count)
+		u4CopySize = count;
+
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+
+	*f_pos += u4CopySize;
+	return (ssize_t)u4CopySize;
+}
+
+static ssize_t procCountryWrite(struct file *file, const char __user *buffer,
+				size_t count, loff_t *data)
+{
+	UINT_32 u4BufLen = 0;
+	WLAN_STATUS rStatus;
+	UINT_8 aucCountry[2];
+	UINT_32 u4CopySize = sizeof(aucProcBuf);
+
+	aucCountry[0] = aucProcBuf[0];
+	aucCountry[1] = aucProcBuf[1];
+	if ('X' == aucProcBuf[0] && 'X' == aucProcBuf[1])
+		aucProcBuf[0] = aucProcBuf[1] = 'W';
+
+	kalMemSet(aucProcBuf, 0, u4CopySize);
+	if (u4CopySize >= count+1)
+		u4CopySize = count;
+
+	if (copy_from_user(aucProcBuf, buffer, u4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+
+	aucProcBuf[u4CopySize] = '\0';
+	rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidSetCountryCode,
+				&aucProcBuf[0], 2, FALSE, FALSE, TRUE, FALSE, &u4BufLen);
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO,( "failed set country code: %s\n", aucProcBuf));
+		return -EINVAL;
+	}
+
+	rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidUpdatePowerTable,
+				&aucProcBuf[0], 2, FALSE, FALSE, TRUE, FALSE, &u4BufLen);
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("failed update power table: %c%c\n", aucProcBuf[0], aucProcBuf[1]));
+		return -EINVAL;
+	}
+	/*Indicate channel change notificaiton to wpa_supplicant via cfg80211*/
+	if ('W' == aucCountry[0] && 'W' == aucCountry[1])
+		aucCountry[0] = aucCountry[1] = 'X';
+	wlanRegulatoryHint(&aucCountry[0]);
+
+	return count;
+}
+
+static const struct file_operations country_ops = {
+	.owner = THIS_MODULE,
+	.write = procCountryWrite,
+	.read = procCountryRead
+};
+
+static ssize_t procRoamRead(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+{
+	UINT_32 u4CopySize;
+	WLAN_STATUS rStatus;
+	UINT_32 u4BufLen = 0;
+	/* if *f_pos > 0, it means has read successed last time, don't try again */
+	if (*f_pos > 0)
+		return 0;
+	rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidGetRoamParams, aucProcBuf, sizeof(aucProcBuf),
+			   TRUE, FALSE, FALSE, FALSE, &u4BufLen);
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("failed to read roam params\n"));
+		return -EINVAL;
+	}
+
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (u4CopySize > count)
+		u4CopySize = count;
+
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+
+	*f_pos += u4CopySize;
+
+	return (INT_32)u4CopySize;
+}
+
+static ssize_t procRoamWrite(struct file *file, const char __user *buffer, size_t count, loff_t *data)
+{
+	WLAN_STATUS rStatus;
+	UINT_32 u4BufLen = 0;
+	UINT_32 u4CopySize = sizeof(aucProcBuf);
+
+	kalMemSet(aucProcBuf, 0, u4CopySize);
+	if (u4CopySize >= count+1)
+		u4CopySize = count;
+
+	if (copy_from_user(aucProcBuf, buffer, u4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+
+	if (kalStrnCmp(aucProcBuf, "force_roam", 10) == 0)
+		rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidSetForceRoam, NULL, 0,
+				   FALSE, FALSE, FALSE, FALSE, &u4BufLen);
+	else
+		rStatus = kalIoctl(g_prGlueInfo_proc, wlanoidSetRoamParams, aucProcBuf,
+				   kalStrLen(aucProcBuf), FALSE, FALSE, TRUE, FALSE, &u4BufLen);
+
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		DBGLOG(INIT, INFO, ("failed to set roam params: %s\n", aucProcBuf));
+		return -EINVAL;
+	}
+	return count;
+}
+
+static const struct file_operations roam_ops = {
+	.owner = THIS_MODULE,
+	.read = procRoamRead,
+	.write = procRoamWrite,
+};
+
+static ssize_t procVersionRead(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+{
+	UINT_32 u4CopySize;
+	P_WIFI_VER_INFO_T wifiVer = &g_prGlueInfo_proc->prAdapter->rVerInfo;
+	UINT_8 temp[40];
+	/* if *f_pos > 0, it means has read successed last time, don't try again */
+	if (*f_pos > 0)
+		return 0;
+	DBGLOG(INIT, INFO, ("here4\n"));
+	kalSprintf(temp, "Firmware Version: 0x%x.%lx\n",
+                wifiVer->u2FwOwnVersion>>8,
+                wifiVer->u2FwOwnVersion & BITS(0, 7));
+
+	u4CopySize = kalStrLen(temp);
+	if (copy_to_user(buf, temp, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+	*f_pos += u4CopySize;
+
+	return (INT_32)u4CopySize;
+}
+static const struct file_operations version_fops = {
+	.owner = THIS_MODULE,
+	.read = procVersionRead,
+};
+
+static ssize_t procChipIDRead(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+{
+	UINT_32 u4CopySize;
+	P_WIFI_VER_INFO_T wifiVer = &g_prGlueInfo_proc->prAdapter->rVerInfo;
+	UINT_8 temp[25];
+    /* if *f_pos > 0, it means has read successed last time, don't try again */
+	if (*f_pos > 0)
+		return 0;
+	DBGLOG(INIT, INFO, ("here\n"));
+	kalSprintf(temp, "Chip ID : 0x%04x\n", wifiVer->u2FwProductID);
+
+	u4CopySize = kalStrLen(temp);
+	if (copy_to_user(buf, temp, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+	*f_pos += u4CopySize;
+
+	return (INT_32)u4CopySize;
+}
+static const struct file_operations ChipID_fops = {
+	.owner = THIS_MODULE,
+	.read = procChipIDRead,
+};
+
+static ssize_t dtim_skip_count_read(struct file *filp,
+				   char __user *buf,
+				   size_t count, loff_t *f_pos)
+{
+	UINT_32 u4CopySize;
+	P_ADAPTER_T prAdapter;
+	int pos = 0;
+	unsigned char dtim_skip_count = 0;
+
+	if (g_prGlueInfo_proc != NULL)
+		prAdapter = g_prGlueInfo_proc->prAdapter;
+	else
+		return -EFAULT;
+	/* if *f_pos > 0, it means has read successed last time,
+	 *  don't try again
+	 */
+	if (*f_pos > 0)
+		return 0;
+
+	dtim_skip_count = prAdapter->dtim_skip_count;
+	pos += snprintf(aucProcBuf, sizeof(aucProcBuf),
+			"DTIM Skip Count:%hhu\n",
+			dtim_skip_count);
+
+	u4CopySize = kalStrLen(aucProcBuf);
+	if (copy_to_user(buf, aucProcBuf, u4CopySize)) {
+		pr_err("copy to user failed\n");
+		return -EFAULT;
+	}
+	*f_pos += u4CopySize;
+
+	return (INT_32)u4CopySize;
+}
+
+static ssize_t dtim_skip_count_write(struct file *file,
+				     const char __user *buffer,
+				     size_t count, loff_t *data)
+{
+	P_ADAPTER_T prAdapter;
+	unsigned char dtim_skip_count = 0;
+	UINT_32 u4CopySize = sizeof(aucProcBuf);
+
+	if (g_prGlueInfo_proc != NULL)
+		prAdapter = g_prGlueInfo_proc->prAdapter;
+	else
+		return -EFAULT;
+
+	kalMemSet(aucProcBuf, 0, u4CopySize);
+
+	if (u4CopySize > count)
+		u4CopySize = count;
+	else
+		u4CopySize = u4CopySize - 1;
+
+	if (copy_from_user(aucProcBuf, buffer, u4CopySize)) {
+		pr_err("error of copy from user\n");
+		return -EFAULT;
+	}
+
+	aucProcBuf[u4CopySize] = '\0';
+
+	if (sscanf(aucProcBuf, "%hhu", &dtim_skip_count) == 1) {
+		if (dtim_skip_count > 6)
+			return -EINVAL;
+		prAdapter->dtim_skip_count = dtim_skip_count;
+	} else {
+		return -EINVAL;
+	}
+
+	return count;
+}
 
 
-    ASSERT(prDev);
+static const struct file_operations dtim_ops = {
+	.owner = THIS_MODULE,
+	.read = dtim_skip_count_read,
+	.write = dtim_skip_count_write,
+};
 
-    if (init_net.proc_net == (struct proc_dir_entry *)NULL) {
-        DBGLOG(INIT, INFO, ("init proc fs fail: proc_net == NULL\n"));
-        return -ENOENT;
-    }
+INT_32 procInitFs(VOID)
+{
+	struct proc_dir_entry *prEntry;
 
-    prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
+	if (init_net.proc_net == (struct proc_dir_entry *)NULL) {
+		pr_err("init proc fs fail: proc_net == NULL\n");
+		return -ENOENT;
+	}
 
-    if (!prGlueInfo) {
-        DBGLOG(INIT, WARN, ("The OS context is NULL\n"));
-        return -ENOENT;
-    }
+	/*
+	 * Directory: Root (/proc/net/wlan0)
+	 */
 
+	gprProcRoot = proc_mkdir(PROC_ROOT_NAME, init_net.proc_net);
+	if (!gprProcRoot) {
+		pr_err("gprProcRoot == NULL\n");
+		return -ENOENT;
+	}
+	proc_set_user(gprProcRoot, KUIDT_INIT(PROC_UID_SHELL), KGIDT_INIT(PROC_GID_WIFI));
 
-    /*
-    /proc/net/wlan0
-               |-- mcr              (PROC_MCR_ACCESS)
-               |-- status           (PROC_DRV_STATUS)
-               |-- rx_statistics    (PROC_RX_STATISTICS)
-               |-- tx_statistics    (PROC_TX_STATISTICS)
-               |-- dbg_level        (PROC_DBG_LEVEL)
-               |-- (end)
-     */
+	prEntry = proc_create(PROC_DBG_LEVEL_NAME, 0664, gprProcRoot, &dbglevel_ops);
+	if (prEntry == NULL) {
+		pr_err("Unable to create /proc entry dbgLevel\n\r");
+		return -1;
+	}
+	proc_set_user(prEntry, KUIDT_INIT(PROC_UID_SHELL), KGIDT_INIT(PROC_GID_WIFI));
 
-    /*
-    * Directory: Root (/proc/net/wlan0)
-    */
+	return 0;
+}				/* end of procInitProcfs() */
 
-    prGlueInfo->pProcRoot = proc_mkdir(pucDevName, init_net.proc_net);
-    if (prGlueInfo->pProcRoot == NULL) {
-        return -ENOENT;
-    }
-
-    /* File Root/mcr (RW) */
-    prEntry = create_proc_entry(PROC_MCR_ACCESS, 0, prGlueInfo->pProcRoot);
-    if (prEntry) {
-        prEntry->read_proc = procMCRRead;
-        prEntry->write_proc = procMCRWrite;
-        prEntry->data = (void *)prDev;
-    }
-
-#if 0
-    /* File Root/status (RW) */
-    prEntry = create_proc_read_entry(PROC_DRV_STATUS, 0, prGlueInfo->pProcRoot,
-                                     procDrvStatusRead, prDev);
-
-    /* File Root/rx_statistics (RW) */
-    prEntry = create_proc_entry(PROC_RX_STATISTICS, 0, prGlueInfo->pProcRoot);
-    if (prEntry) {
-        prEntry->read_proc = procRxStatisticsRead;
-        prEntry->write_proc = procRxStatisticsWrite;
-        prEntry->data = (void *)prDev;
-    }
-
-    /* File Root/tx_statistics (RW) */
-    prEntry = create_proc_entry(PROC_TX_STATISTICS, 0, prGlueInfo->pProcRoot);
-    if (prEntry) {
-        prEntry->read_proc = procTxStatisticsRead;
-        prEntry->write_proc = procTxStatisticsWrite;
-        prEntry->data = (void *)prDev;
-    }
-
-#if DBG
-    /* File Root/dbg_level (RW) */
-    prEntry = create_proc_entry(PROC_DBG_LEVEL, 0644, prGlueInfo->pProcRoot);
-    if (prEntry) {
-        prEntry->read_proc = procDbgLevelRead;
-        prEntry->write_proc = procDbgLevelWrite;
-    }
-#endif /* DBG */
-#endif
-    return 0;
-
-} /* end of procInitProcfs() */
+INT_32 procUninitProcFs(VOID)
+{
+	remove_proc_entry(PROC_DBG_LEVEL_NAME, gprProcRoot);
+	remove_proc_subtree(PROC_ROOT_NAME, init_net.proc_net);
+	return 0;
+}
 
 
 /*----------------------------------------------------------------------------*/
@@ -767,45 +886,103 @@ procInitProcfs (
 * \return N/A
 */
 /*----------------------------------------------------------------------------*/
-INT_32
-procRemoveProcfs (
-    struct net_device *prDev,
-    char *pucDevName
-    )
+INT_32 procRemoveProcfs(VOID)
 {
-    P_GLUE_INFO_T prGlueInfo = NULL;
-
-
-    ASSERT(prDev);
-
-    if (!prDev) {
-        return -ENOENT;
-    }
-
-    if (init_net.proc_net == (struct proc_dir_entry *)NULL) {
-        DBGLOG(INIT, WARN, ("remove proc fs fail: proc_net == NULL\n"));
-        return -ENOENT;
-    }
-
-    prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
-    if (!prGlueInfo->pProcRoot) {
-        DBGLOG(INIT, WARN, ("The procfs root is NULL\n"));
-        return -ENOENT;
-    }
-#if 0
-#if DBG
-    remove_proc_entry(PROC_DBG_LEVEL,       prGlueInfo->pProcRoot);
-#endif /* DBG */
-    remove_proc_entry(PROC_TX_STATISTICS,   prGlueInfo->pProcRoot);
-    remove_proc_entry(PROC_RX_STATISTICS,   prGlueInfo->pProcRoot);
-    remove_proc_entry(PROC_DRV_STATUS,      prGlueInfo->pProcRoot);
+	/* remove root directory (proc/net/wlan0) */
+	/* remove_proc_entry(pucDevName, init_net.proc_net); */
+	//remove_proc_entry(PROC_WLAN_THERMO, gprProcRoot);
+	remove_proc_entry(PROC_ROAM_PARAM, gprProcRoot);
+	remove_proc_entry(PROC_COUNTRY, gprProcRoot);
+	remove_proc_entry(PROC_WLAN_MCR, gprProcRoot);
+	remove_proc_entry(PROC_VERSION, gprProcRoot);
+	//remove_proc_entry(PROC_RX_BA_WIN, gprProcRoot);
+	remove_proc_entry(PROC_WLAN_CHIP_ID, gprProcRoot);
+	remove_proc_entry(PROC_DTIM, gprProcRoot);
+#if CFG_SUPPORT_THERMO_THROTTLING
+	g_prGlueInfo_proc = NULL;
 #endif
-    remove_proc_entry(PROC_MCR_ACCESS,      prGlueInfo->pProcRoot);
+	return 0;
+}				/* end of procRemoveProcfs() */
 
-    /* remove root directory (proc/net/wlan0) */
-    remove_proc_entry(pucDevName, init_net.proc_net);
 
-    return 0;
 
-} /* end of procRemoveProcfs() */
+INT_32 procCreateFsEntry(P_GLUE_INFO_T prGlueInfo)
+{
+	struct proc_dir_entry *prEntry;
 
+	DBGLOG(INIT, TRACE, ("[%s]\n", __func__));
+
+#if CFG_SUPPORT_THERMO_THROTTLING
+	g_prGlueInfo_proc = prGlueInfo;
+#endif
+	prGlueInfo->pProcRoot = gprProcRoot;
+#if 0
+	prEntry = proc_create(PROC_WLAN_THERMO, 0664, gprProcRoot, &proc_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, "Unable to create /proc entry\n\r");
+		return -1;
+	}
+#endif
+
+	prEntry = proc_create(PROC_ROAM_PARAM, 0664, gprProcRoot, &roam_ops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+
+
+	prEntry = proc_create(PROC_COUNTRY, 0664, gprProcRoot, &country_ops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+
+
+	prEntry = proc_create(PROC_WLAN_MCR, 0664, gprProcRoot, &mcr_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+
+	prEntry = proc_create(PROC_VERSION, 0664, gprProcRoot, &version_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+
+	prEntry = proc_create(PROC_WLAN_CHIP_ID, 0664, gprProcRoot, &ChipID_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+	prEntry = proc_create(PROC_RX_BA_WIN, 0664, gprProcRoot, &rxba_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+#if 0
+#ifdef CONFIG_MTK_WIFI_ANTENNA_SWITCH
+	prEntry = proc_create(PROC_ANTENNA_SELECT, 0664, gprProcRoot, &antenna_select_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, "Unable to create /proc entry\n\r");
+		return -1;
+	}
+#endif
+#ifdef CONFIG_MTK_WIFI_ANTENNA_SELECT
+	prEntry = proc_create(PROC_ANTENNA_RSSI, 0664, gprProcRoot,
+			      &antenna_rssi_fops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, "Unable to create /proc entry\n\r");
+		return -1;
+	}
+#endif
+#endif
+	prEntry = proc_create(PROC_DTIM, 0664, gprProcRoot, &dtim_ops);
+	if (prEntry == NULL) {
+		DBGLOG(INIT, ERROR, ("Unable to create /proc entry\n\r"));
+		return -1;
+	}
+
+	proc_set_user(prEntry, KUIDT_INIT(PROC_UID_SHELL), KGIDT_INIT(PROC_GID_WIFI));
+	return 0;
+}

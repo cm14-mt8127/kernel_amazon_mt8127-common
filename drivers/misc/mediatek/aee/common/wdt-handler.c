@@ -21,6 +21,7 @@
 #include <mach/smp.h>
 #include <mach/irqs.h>
 #endif
+#include <mach/mtk_rtc.h>
 #include "aee-common.h"
 
 #undef WDT_DEBUG_VERBOSE
@@ -52,7 +53,7 @@ extern void irq_raise_softirq(const struct cpumask *mask, unsigned int irq);
 
 #define WDT_PERCPU_LOG_SIZE	1024
 #define WDT_LOG_DEFAULT_SIZE	4096
-#define WDT_SAVE_STACK_SIZE		128
+#define WDT_SAVE_STACK_SIZE		512
 #define MAX_EXCEPTION_FRAME		16
 
 extern int debug_locks;
@@ -276,7 +277,9 @@ static void aee_wdt_dump_stack_bin(unsigned int cpu, unsigned long bottom, unsig
 }
 #endif				/* #ifdef CONFIG_FIQ_GLUE */
 
+#ifdef CONFIG_MTK_AEE_MRDUMP
 extern void mrdump_mini_per_cpu_regs(int cpu, struct pt_regs *regs);
+#endif
 /* save binary register and stack value into ram console */
 static void aee_save_reg_stack_sram(int cpu)
 {
@@ -314,12 +317,14 @@ static void aee_save_reg_stack_sram(int cpu)
 			if (wdt_percpu_stackframe[cpu][i] == 0)
 				break;
 			len += snprintf((str_buf + len), (sizeof(str_buf) - len),
-					"%08lx, ", wdt_percpu_stackframe[cpu][i]);
+					"<%08lx>%pS, ", wdt_percpu_stackframe[cpu][i], (void *) wdt_percpu_stackframe[cpu][i]);
 		}
 		aee_sram_fiq_log(str_buf);
 	}
 
+#ifdef CONFIG_MTK_AEE_MRDUMP
 	mrdump_mini_per_cpu_regs(cpu, &regs_buffer_bin[cpu].regs);
+#endif
 }
 
 #ifdef CONFIG_SMP
@@ -410,6 +415,10 @@ void aee_smp_send_stop(void)
 
 void aee_wdt_irq_info(void)
 {
+
+	pr_err("Watchdog timeout FIQ!!!\n");
+	dump_stack();
+
 	unsigned long long t;
 	unsigned long nanosec_rem;
 	int res = 0, cpu;

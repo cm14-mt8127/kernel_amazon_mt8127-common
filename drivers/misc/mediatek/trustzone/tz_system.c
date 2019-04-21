@@ -47,6 +47,8 @@ static const KREE_REE_Service_Func ree_service_funcs[] =
     KREE_ServEnableClock,
     KREE_ServDisableClock,
     KREE_ServThread_Create,
+
+    KREE_ServSemaphoreDownInterruptible,
 };
 #define ree_service_funcs_num (sizeof(ree_service_funcs)/sizeof(ree_service_funcs[0]))
 

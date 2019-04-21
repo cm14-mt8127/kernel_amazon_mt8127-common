@@ -1,11 +1,11 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2008-2013 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ * Copyright (C) 2010, 2012-2014 ARM Limited. All rights reserved.
+ * 
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 /**
@@ -16,6 +16,7 @@
 #ifndef __MALI_OSK_H__
 #define __MALI_OSK_H__
 
+#include <linux/seq_file.h>
 #include "mali_osk_types.h"
 #include "mali_osk_specific.h"           /* include any per-os specifics */
 #include "mali_osk_locks.h"
@@ -1226,6 +1227,17 @@ void _mali_osk_dbgmsg( const char *fmt, ... );
  */
 u32 _mali_osk_snprintf( char *buf, u32 size, const char *fmt, ... );
 
+/** @brief Print fmt into print_ctx.
+ *
+ * The interpretation of \a fmt is the same as the \c format parameter in
+ * _mali_osu_vsnprintf().
+ *
+ * @param print_ctx a pointer to the result file buffer
+ * @param fmt a _mali_osu_vsnprintf() style format string
+ * @param ... a variable-number of parameters suitable for \a fmt
+ */
+#define _mali_osk_ctxprintf seq_printf
+
 /** @brief Abnormal process abort.
  *
  * Terminates the caller-process if this function is called.
@@ -1254,6 +1266,13 @@ void _mali_osk_break(void);
  * @return Identificator for calling process.
  */
 u32 _mali_osk_get_pid(void);
+
+/** @brief Return an name for calling process.
+ *
+ * @return name for calling process.
+ */
+char *_mali_osk_get_comm(void);
+
 
 /** @brief Return an identificator for calling thread.
  *

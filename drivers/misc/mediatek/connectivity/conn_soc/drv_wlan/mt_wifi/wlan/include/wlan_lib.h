@@ -341,6 +341,7 @@
 #define CSUM_OFFLOAD_EN_ALL         BITS(0,6)
 
 /* TCP, UDP, IP Checksum */
+#define RX_LEN_MISMATCH          BIT(8)
 #define RX_CS_TYPE_UDP           BIT(7)
 #define RX_CS_TYPE_TCP           BIT(6)
 #define RX_CS_TYPE_IPv6          BIT(5)
@@ -635,6 +636,11 @@ typedef struct _PARAM_GET_STA_STATISTICS {
     
     UINT_32 u4TxAverageAirTime;    
 
+	UINT_32 u4NetDevTxPkts;
+	UINT_32 u4NetDevTxBytes;
+	UINT_32 u4NetDevRxPkts;
+	UINT_32 u4NetDevRxBytes;
+
     /* Global queue management statistic */
 	UINT_32 au4TcAverageQueLen[NUM_TC_RESOURCE_TO_STATISTICS];
     UINT_32 au4TcCurrentQueLen[NUM_TC_RESOURCE_TO_STATISTICS];
@@ -642,6 +648,12 @@ typedef struct _PARAM_GET_STA_STATISTICS {
     /* Reserved fields */
     UINT_8  au4Reserved[32];
 } PARAM_GET_STA_STA_STATISTICS, *P_PARAM_GET_STA_STATISTICS;
+
+typedef enum _ENUM_BAND_EDGE_CERT_T {
+	BAND_EDGE_CERT_FCC = 0,
+	BAND_EDGE_CERT_KCC = 1,
+	BAND_EDGE_CERT_NUM = 2
+} ENUM_BAND_EDGE_CERT_T, *P_ENUM_BAND_EDGE_CERT_T;
 
 #if CFG_AUTO_CHANNEL_SEL_SUPPORT
 

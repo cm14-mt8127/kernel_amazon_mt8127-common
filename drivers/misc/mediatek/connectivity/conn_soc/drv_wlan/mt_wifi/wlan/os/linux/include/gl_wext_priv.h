@@ -208,6 +208,8 @@
 
 #define PRIV_CMD_MET_PROFILING			33
 
+#define PRIV_CMD_DTIM_SKIP_COUNT		34
+
 /* other string command ID */
 #define PRIV_CMD_OTHER_TDLS				0x00
 

@@ -682,6 +682,16 @@ static void _i2c_translate_msg(mt_i2c *i2c,struct i2c_msg *msg)
 
   i2c->msg_buf = msg->buf;
   i2c->msg_len = msg->len;
+
+  #ifdef TRANS_LEN_EXCEED_255BYTES
+	if ((!(msg->ext_flag & I2C_DMA_FLAG))
+		 && (((msg->len & 0xFF) > 8)
+		 || (((msg->len >> 8) & 0xFF) > 8))) {
+		    I2CLOG("I2C transfer len > 255 bytes.\n");
+			i2c->ext_flag |= I2C_DMA_FLAG;
+	}
+  #endif
+
   if(msg->ext_flag & I2C_RS_FLAG)
     i2c->st_rs = I2C_TRANS_REPEATED_START;
   else

@@ -175,7 +175,7 @@ static int xLog_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	unsigned long offset;
 	offset =
 	    (((unsigned long)vmf->virtual_address - vma->vm_start) + (vma->vm_pgoff << PAGE_SHIFT));
-	if (offset > PAGE_SIZE << 4)
+	if (offset > PAGE_SIZE << 1)
 		goto nopage_out;
 	page = virt_to_page(xLogMem + offset);
 	vmf->page = page;
@@ -205,6 +205,8 @@ static int xlog_release(struct inode *ignored, struct file *file)
 
 static int xlog_mmap(struct file *file, struct vm_area_struct *vma)
 {
+	if ((vma->vm_end - vma->vm_start) != PAGE_SIZE)
+		return -1;
 	vma->vm_ops = &xLog_vmops;
 	vma->vm_flags |= VM_IO;
 	vma->vm_private_data = file->private_data;
@@ -363,7 +365,7 @@ static void __exit xlog_exit(void)
 {
 	int err;
 
-	free_pages((long unsigned)xLogMem, 4);
+	free_pages((long unsigned)xLogMem, 1);
 
 	err = misc_deregister(&xlog_dev);
 	if (unlikely(err))

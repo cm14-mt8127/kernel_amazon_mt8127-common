@@ -17,9 +17,6 @@ endif
 ifeq ($(CONFIG_MTK_BMA222E),y)
 obj-y   +=  bma222E/
 endif
-ifeq ($(CONFIG_MTK_BMA2XX),y)
-obj-y   +=  bma2xx/
-endif
 ifeq ($(CONFIG_MTK_BMA222E_NEW),y)
 obj-y   +=  bma222E-new/
 endif
@@ -31,6 +28,9 @@ obj-y   +=  mpu6050g-new/
 endif
 ifeq ($(CONFIG_MTK_BMA250),y)
 obj-y   +=  bma250/
+endif
+ifeq ($(CONFIG_MTK_BMA253),y)
+obj-y   +=  bma253/
 endif
 ifeq ($(CONFIG_MTK_KXTIK1004),y)
 obj-y   +=  kxtik1004/
@@ -53,4 +53,7 @@ obj-y   +=  bma250e/
 endif
 ifeq ($(CONFIG_MTK_BMA056),y)
 obj-y   +=  bma056/
+endif
+ifeq ($(CONFIG_MTK_MC3410),y)
+obj-y   +=  mc3410-new/
 endif

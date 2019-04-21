@@ -15,6 +15,7 @@
 #include <mach/wd_api.h>
 #include <mach/eint.h>
 #include <mach/mtk_ccci_helper.h>
+#include <mach/mt_gpt.h>
 
 /**************************************
  * only for internal debug
@@ -28,6 +29,14 @@
 #define SPM_PCMWDT_EN           1
 #define SPM_BYPASS_SYSPWREQ     0
 #endif
+
+/* Added by haitaoy@amazon.com for AUSTINPLAT-1413. */
+static struct mt_wake_event spm_wake_event = {
+	.domain = "SPM",
+};
+
+static struct mt_wake_event *mt_wake_event_comm;
+static struct mt_wake_event_map *mt_wake_event_tbl;
 
 #ifndef MTK_ALPS_BOX_SUPPORT
 /**********************************************************
@@ -832,11 +841,6 @@ static wake_reason_t spm_output_wake_reason(const wake_status_t *wakesta, bool d
     if (dpidle)     /* bypass wakeup event check */
         return WR_WAKE_SRC;
 
-    if((wakesta->event_reg & 0x100000) == 0)
-    {
-        spm_crit2("Sleep Abort!\n");
-    }
-
     if (wakesta->r12 & (1U << 0)) {
         if (!(wakesta->isr & ISR_TWAM) && !wakesta->cpu_wake) {
             strcat(str, "PCM_TIMER ");
@@ -948,6 +952,11 @@ static wake_reason_t spm_output_wake_reason(const wake_status_t *wakesta, bool d
         strcat(str, "CPU3_IRQ ");
         wr = WR_WAKE_SRC;
     }
+    if ((wakesta->event_reg & 0x100000) == 0)
+    {
+        spm_crit2("Sleep Abort!\n");
+        wr = WR_PCM_ABORT;
+    }
     if (wr == WR_NONE) {
         strcat(str, "UNKNOWN ");
         wr = WR_UNKNOWN;
@@ -1024,6 +1033,121 @@ int spm_set_sleep_wakesrc(u32 wakesrc, bool enable, bool replace)
     return 0;
 }
 
+/* Added by haitaoy@amazon.com for AUSTINPLAT-1413. */
+/**********************************************************************************/
+void spm_set_wakeup_event_map(struct mt_wake_event_map *tbl)
+{
+	mt_wake_event_tbl = tbl;
+}
+
+static struct mt_wake_event_map *spm_map_wakeup_event(struct mt_wake_event *mt_we)
+{
+	/* map proprietary mt_wake_event to wake_source_t */
+	struct mt_wake_event_map *tbl = mt_wake_event_tbl;
+	if (!tbl || !mt_we)
+		return NULL;
+	for (; tbl->domain; tbl++) {
+		if (!strcmp(tbl->domain, mt_we->domain) && tbl->code == mt_we->code)
+			return tbl;
+	}
+	return NULL;
+}
+
+wakeup_event_t spm_read_wakeup_event_and_irq(int *pirq)
+{
+	struct mt_wake_event_map *tbl =
+		spm_map_wakeup_event(spm_get_wakeup_event());
+
+	if (!tbl)
+		return WEV_NONE;
+
+	if (pirq)
+		*pirq = tbl->irq;
+	return tbl->we;
+}
+EXPORT_SYMBOL(spm_read_wakeup_event_and_irq);
+
+void spm_report_wakeup_event(struct mt_wake_event *we, int code)
+{
+	unsigned long flags;
+	struct mt_wake_event *head;
+	struct mt_wake_event_map *evt;
+
+	static char *ev_desc[] = {
+		"RTC", "WIFI", "WAN", "USB",
+		"PWR", "HALL", "BT", "CHARGER",
+	};
+
+	spin_lock_irqsave(&spm_lock, flags);
+	head = mt_wake_event_comm;
+	mt_wake_event_comm = we;
+	we->parent = head;
+	we->code = code;
+	mt_wake_event_comm = we;
+	spin_unlock_irqrestore(&spm_lock, flags);
+	pr_err("%s: WAKE EVT: %s#%d (parent %s#%d)\n",
+		__func__, we->domain, we->code,
+		head ? head->domain : "NONE",
+		head ? head->code : -1);
+	evt = spm_map_wakeup_event(we);
+	if (evt && evt->we != WEV_NONE) {
+		char *name = (evt->we >= 0 && evt->we < ARRAY_SIZE(ev_desc))
+                     ? ev_desc[evt->we] : "UNKNOWN";
+		pm_report_resume_irq(evt->irq);
+		pr_err("%s: WAKEUP from source %d [%s]\n",
+			__func__, evt->we, name);
+	}
+}
+EXPORT_SYMBOL(spm_report_wakeup_event);
+
+void spm_clear_wakeup_event(void)
+{
+	mt_wake_event_comm = NULL;
+}
+EXPORT_SYMBOL(spm_clear_wakeup_event);
+
+wakeup_event_t irq_to_wakeup_ev(int irq)
+{
+	struct mt_wake_event_map *tbl = mt_wake_event_tbl;
+
+	if (!tbl)
+		return WEV_NONE;
+
+	for (; tbl->domain; tbl++) {
+		if (tbl->irq == irq)
+			return tbl->we;
+	}
+
+	return WEV_MAX;
+}
+EXPORT_SYMBOL(irq_to_wakeup_ev);
+
+struct mt_wake_event *spm_get_wakeup_event(void)
+{
+	return mt_wake_event_comm;
+}
+EXPORT_SYMBOL(spm_get_wakeup_event);
+
+static void spm_report_wake_source(u32 event_mask)
+{
+	int event = -1;
+	u32 mask = event_mask;
+	int event_count = 0;
+	while (mask && !event_count) {
+		event = __ffs(mask);
+		event_count++;
+		mask &= ~(1 << event);
+	}
+
+	if (mask)
+		pr_err("%s: multiple wakeup events detected: %08X\n",
+			__func__, event_mask);
+
+	if (event >= 0)
+		spm_report_wakeup_event(&spm_wake_event, event);
+}
+/**********************************************************************************/
+
 /*
  * cpu_pdn:
  *    true  = CPU shutdown
@@ -1077,6 +1201,8 @@ wake_reason_t spm_go_to_sleep(bool cpu_pdn, bool infra_pdn, int pwake_time)
         goto RESTORE_IRQ;
     }
 
+    mt_wake_event_comm = NULL;
+
     spm_init_pcm_register();
 
     spm_init_event_vector(pcmdesc);
@@ -1100,6 +1226,9 @@ RESTORE_IRQ:
     mt_cirq_disable();
     mt_irq_mask_restore(&mask);
     spin_unlock_irqrestore(&spm_lock, flags);
+
+    if ((last_wr == WR_WAKE_SRC) || (last_wr == WR_PCM_ABORT))
+        spm_report_wake_source(wakesta.r12);
 
     //spm_go_to_normal();   /* included in pcm_suspend */
 
@@ -1216,6 +1345,8 @@ wake_reason_t spm_go_to_dpidle(bool cpu_pdn, u16 pwrlevel)
     const pcm_desc_t *pcmdesc = &pcm_dpidle;
     const bool pcmwdt_en = false;
 
+    aee_rr_rec_deepidle_val(0x1);
+
     spin_lock_irqsave(&spm_lock, flags);
     mt_irq_mask_all(&mask);
     mt_irq_unmask_for_sleep(MT_SPM_IRQ_ID);
@@ -1225,6 +1356,8 @@ wake_reason_t spm_go_to_dpidle(bool cpu_pdn, u16 pwrlevel)
     spm_reset_and_init_pcm();
 
     spm_kick_im_to_fetch(pcmdesc);
+
+    aee_rr_rec_deepidle_val(0x3);
 
     if (spm_request_uart_to_sleep()) {
         wr = WR_UART_BUSY;
@@ -1243,7 +1376,11 @@ wake_reason_t spm_go_to_dpidle(bool cpu_pdn, u16 pwrlevel)
 
     spm_dpidle_before_wfi();
 
+    aee_rr_rec_deepidle_val(0x7);
+
     spm_trigger_wfi_for_dpidle(cpu_pdn);
+
+    aee_rr_rec_deepidle_val(0xF);
 
     spm_dpidle_after_wfi();
 
@@ -1258,6 +1395,8 @@ RESTORE_IRQ:
     mt_cirq_disable();
     mt_irq_mask_restore(&mask);
     spin_unlock_irqrestore(&spm_lock, flags);
+
+    aee_rr_rec_deepidle_val(0x0);
 
     return wr;
 }

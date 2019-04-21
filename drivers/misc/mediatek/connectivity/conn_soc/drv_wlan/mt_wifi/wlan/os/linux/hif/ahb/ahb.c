@@ -743,7 +743,7 @@ glSetHifInfo (
     HifInfo->HifTmrLoopbkFn.expires = jiffies + MSEC_TO_SYSTIME(30000);
     add_timer(&(HifInfo->HifTmrLoopbkFn));
 
-    HIF_DBG(("[WiFi/HIF] Start loopback test after 10 seconds (jiffies = %u)...\n",
+    printk(("[WiFi/HIF] Start loopback test after 10 seconds (jiffies = %u)...\n",
             jiffies));
 }
 #endif /* CONF_HIF_LOOPBACK_AUTO */

@@ -1636,9 +1636,13 @@ rlmProcessAssocRsp (
     prBssInfo->fgUseShortSlotTime =
         (prBssInfo->u2CapInfo & CAP_INFO_SHORT_SLOT_TIME) ? TRUE : FALSE;
 
-    if ((ucPriChannel =
-         rlmRecIeInfoForClient(prAdapter, prBssInfo, pucIE, u2IELength)) > 0) {
-        prBssInfo->ucPrimaryChannel = ucPriChannel;
+    ucPriChannel =
+         rlmRecIeInfoForClient(prAdapter, prBssInfo, pucIE, u2IELength);
+
+    if (prBssInfo->ucPrimaryChannel != ucPriChannel) {
+		DBGLOG(RLM, INFO,
+		       ("Use RF pri channel[%u].Pri channel in HT OP IE is :[%u]\n", prBssInfo->ucPrimaryChannel,
+			ucPriChannel));
     }
 
     if (!RLM_NET_IS_11N(prBssInfo) ||
@@ -1995,7 +1999,7 @@ rlmProcessChannelSwitchIE(
          prAisBssInfo = &(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_AIS_INDEX]);
          printk("[5G DFS] switch channel [%d]->[%d] \r\n", prAisBssInfo->ucPrimaryChannel, prChannelSwitchIE->ucNewChannelNum);
          prAisBssInfo->ucPrimaryChannel = prChannelSwitchIE->ucNewChannelNum;
-         nicUpdateBss(prAdapter, prAisBssInfo->ucNetTypeIndex);
+         nicUpdateBss(prAdapter, prAisBssInfo->ucNetTypeIndex, STA_REC_INDEX_NOT_FOUND);
     }
 
     return;

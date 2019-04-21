@@ -34,6 +34,7 @@ TZ_RESULT KREE_ServSemaphoreDowntrylock (u32 op, u8 param[REE_SERVICE_BUFFER_SIZ
 
 TZ_RESULT KREE_ServSemaphoreUp (u32 op, u8 param[REE_SERVICE_BUFFER_SIZE]);
 
+TZ_RESULT KREE_ServSemaphoreDownInterruptible (u32 op, u8 param[REE_SERVICE_BUFFER_SIZE]);
 #if 0
 /* wait queue
 */

@@ -252,6 +252,21 @@ int32_t cmdq_append_command(cmdqRecHandle  handle,
 
     CMDQ_MSG("REC: 0x%p CMD: 0x%p, op: 0x%02x, argA: 0x%08x, argB: 0x%08x\n", handle, pCommand, code, argA, argB);
 
+    /* It is differenet Read/Write/Poll instruction encoding between ROME and 82.
+     * instr SYNC: same
+     *
+     * instr Read/Write/Poll
+     * @82
+     * argA, bit  0-21: engine address
+     * argA, bit 22-23: subsys encoding       
+     * argA, bit 24-31: OP
+     *
+     * @ROME
+     * argA, bit  0-15: engine address
+     * argA, bit 16-23: subsys encoding       
+     * argA, bit 24-31: OP
+     *
+     */
     switch(code)
     {
         case CMDQ_CODE_READ:
@@ -336,11 +351,13 @@ int32_t cmdq_append_command(cmdqRecHandle  handle,
 #endif
 bool cmdq_rec_is_dsi_cmd_mode(CMDQ_SCENARIO_ENUM scn)
 {
+    // not support DISPLAY until ROME
     return false; 
 }
 
 static void cmdq_rec_insert_frame_sync_instructions(cmdqRecHandle handle)
 {
+    // dummy function becuase we support prefetch since ROME
 }
 
 int32_t cmdqRecReset(cmdqRecHandle handle)
@@ -469,6 +486,7 @@ int32_t cmdq_rec_finalize_command(cmdqRecHandle handle, bool loop)
     if (!handle->finalized)
     {
         #if 0
+        // Never go here because we do not support prefetch until ROME 
         // FOR disp sys, we should insert CONFIG_DIRTY event
         // so that trigger loop wakes up
         if (cmdq_core_should_enable_prefetch(handle->scenario))

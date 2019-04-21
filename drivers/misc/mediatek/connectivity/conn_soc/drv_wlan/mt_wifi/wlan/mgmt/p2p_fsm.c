@@ -2441,7 +2441,7 @@ p2pFsmRunEventDeauthTxDone (
         /* Because the eConnectionState is changed before Deauth TxDone. Dont Check eConnectionState */
         //if (eOriMediaStatus != prP2pBssInfo->eConnectionState) {
             /* Update Disconnected state to FW. */
-            nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+            nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
         //}
 
 
@@ -2579,24 +2579,7 @@ p2pFsmRunEventJoinComplete (
                                                                     prJoinInfo->aucIEBuf,
                                                                     prJoinInfo->u4BufLength,
                                                                     prStaRec->u2StatusCode);
-                    /* ALPS01912628 */
-                    /* Driver will not CMD_ID_INDICATE_PM_BSS_CONNECT to firmware due to not RX beacon
-                     * firmware will report beacon timeout with TYPE=2 to driver ; here just stop the beacon timeout
-                     * TYPE=2 timer. Driver will update the DTIMPeriod late if RX beacon
-                     */
-                    if (!prP2pBssInfo->fgIsIndicatedPMBssConn) {
-                        if (prP2pBssInfo->ucDTIMPeriod == 0)
-                            if (prP2pFsmInfo->prTargetBss)
-                                /* get DTIMPeriod of targetBss, driver will update later if RX beacon */
-                                prP2pBssInfo->ucDTIMPeriod = prP2pFsmInfo->prTargetBss->ucDTIMPeriod;
-                            else
-                                prP2pBssInfo->ucDTIMPeriod = 1; /* assign 1, driver will update later if RX beacon */
-                        nicPmIndicateBssConnected(prAdapter, NETWORK_TYPE_P2P_INDEX);
-                        DBGLOG(P2P, INFO, ("P2P: GC join success, indicate BSS connect, DTIMPeriod %d from: %s\n",
-					prP2pBssInfo->ucDTIMPeriod, prP2pFsmInfo->prTargetBss? "TargetBss":"Pickup"));
-                        prP2pBssInfo->fgIsIndicatedPMBssConn = TRUE;
-                        prP2pBssInfo->ucDTIMPeriod = 0; /* give driver a chance to update later if RX beacon */
-                    }
+
                 }
                 else {
                     /* Join Fail*/
@@ -3332,7 +3315,7 @@ p2pRunEventAAAComplete (
 
         /* Update Connected state to FW. */
         if (eOriMediaState != prP2pBssInfo->eConnectionState) {
-            nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+            nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
         }
 
     } while (FALSE);

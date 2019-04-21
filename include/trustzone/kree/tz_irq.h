@@ -17,6 +17,7 @@ void kree_fiq_eoi(unsigned int iar);
 int kree_raise_softfiq(unsigned int mask, unsigned int irq);
 void kree_irq_mask_all(unsigned int *pmask, unsigned int size);
 void kree_irq_mask_restore(unsigned int *pmask, unsigned int size);
+int kree_set_fiq_affinity(int irq, int cpuid);
 
 #else
 

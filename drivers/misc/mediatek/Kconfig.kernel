@@ -339,18 +339,6 @@ config MTK_TABLET_HARDWARE
 	help
 	  MTM tablet machine name 
 
-config GATOR_DRIVER
-	tristate "DS-5 profiling tool kernel driver"
-	default n
-	depends on PROFILING
-	depends on HIGH_RES_TIMERS
-	depends on LOCAL_TIMERS || !(ARM && SMP)
-	depends on PERF_EVENTS
-	depends on HW_PERF_EVENTS || !(ARM || ARM64)
-	select TRACING
-	help
-	  kernel driver of DS-5 profiling tool
-
 config MTK_IPV6_TETHER_NDP_MODE
 	bool "MTK_IPV6_TETHER_NDP_MODE"
 	help

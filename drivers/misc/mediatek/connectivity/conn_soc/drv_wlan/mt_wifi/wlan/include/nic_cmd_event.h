@@ -730,6 +730,8 @@ typedef enum _ENUM_CMD_ID_T {
     CMD_ID_SET_5G_EDGE_TXPWR_LIMIT,     /* 0x3B (Set) */
     CMD_ID_SET_RSSI_COMPENSATE,         /* 0x3C (Set) */
     CMD_ID_SET_BAND_SUPPORT = 0x3D,     /* 0x3D (Set) */
+    CMD_ID_SET_IPV6_ADDRESS = 0x4B,     /* 0x4B (Set) */
+	CMD_ID_SET_SYSTEM_SUSPEND = 0x60,	/* 0x60 (Set) */
     CMD_ID_GET_NIC_CAPABILITY = 0x80,   /* 0x80 (Query) */
     CMD_ID_GET_LINK_QUALITY,            /* 0x81 (Query) */
     CMD_ID_GET_STATISTICS,              /* 0x82 (Query) */
@@ -752,6 +754,7 @@ typedef enum _ENUM_CMD_ID_T {
     CMD_ID_DUMP_MEM,                      /* 0xc8 (Query) */
 
 	CMD_ID_CHIP_CONFIG			= 0xCA, /* 0xca (Set / Query) */	
+	CMD_ID_GET_TSF				= 0xCB, /* 0xcb (Set / Query) */
 
 #if CFG_SUPPORT_RDD_TEST_MODE
     CMD_ID_SET_RDD_CH = 0xE1,
@@ -762,6 +765,7 @@ typedef enum _ENUM_CMD_ID_T {
     CMD_ID_SET_OSC = 0xf2,
 #endif
 	CMD_ID_SET_ROAMING_INFO = 0xF3,
+	CMD_ID_ROAMING_CONTROL = 0xF4,
 
 #if CFG_SUPPORT_BUILD_DATE_CODE
     CMD_ID_GET_BUILD_DATE_CODE = 0xF8,
@@ -826,6 +830,8 @@ typedef enum _ENUM_EVENT_ID_T {
     EVENT_ID_DUMP_MEM,
     EVENT_ID_STA_STATISTICS= 0x29,            /* 0x29 (Query ) */
     EVENT_ID_STA_STATISTICS_UPDATE,           /* 0x2A (Unsolicited) */
+    EVENT_ID_CHECK_REORDER_BUBBLE,           /* 0x2B (Unsolicited) */
+    EVENT_ID_TSF_GET = 0x37,
 	EVENT_ID_TDLS = 0x80,
 	EVENT_ID_STATS_ENV = 0x81,
 
@@ -834,9 +840,7 @@ typedef enum _ENUM_EVENT_ID_T {
 #endif
     EVENT_ID_GET_AIS_BSS_INFO = 0xF9,
 	EVENT_ID_DEBUG_CODE = 0xFB,
-	EVENT_ID_RFTEST_READY = 0xFC,   /* 0xFC */
-
-    EVENT_ID_WARNING_TO_DRIVER = 0xFE,	/* 0xFE, FW warning Log send to driver */
+	EVENT_ID_RFTEST_READY = 0xFC   /* 0xFC */
 
 } ENUM_EVENT_ID_T, *P_ENUM_EVENT_ID_T;
 
@@ -1287,9 +1291,24 @@ typedef struct _IPV4_NETWORK_ADDRESS {
 typedef struct _CMD_SET_NETWORK_ADDRESS_LIST {
     UINT_8  ucNetTypeIndex;
     UINT_8  ucAddressCount;
-    UINT_8  ucReserved[2];
+	UINT_8 ucDtimSkipCount;
+	UINT_8 ucReserved[1];
     IPV4_NETWORK_ADDRESS arNetAddress[1];
 } CMD_SET_NETWORK_ADDRESS_LIST, *P_CMD_SET_NETWORK_ADDRESS_LIST;
+
+/*CMD_SET_IPV6_ADDRESS*/
+typedef struct _IPV6_NETWORK_ADDRESS {
+	UINT_8 aucIpAddr[16];
+} IPV6_NETWORK_ADDRESS, *P_IPV6_NETWORK_ADDRESS;
+
+typedef struct _CMD_SET_IPV6_NETWORK_ADDRESS_LIST
+{
+    UINT_8                 ucNetTypeIndex;
+    UINT_8                 ucAddressCount;
+	UINT_8                 ucReserved[2];
+    IPV6_NETWORK_ADDRESS   arNetAddress[1];
+} CMD_SET_IPV6_NETWORK_ADDRESS_LIST, *P_CMD_SET_IPV6_NETWORK_ADDRESS_LIST;
+
 
 typedef struct _PATTERN_DESCRIPTION {
     UINT_8      fgCheckBcA1;
@@ -1358,7 +1377,7 @@ typedef struct _CMD_SET_BSS_INFO {
     UINT_16 u2OperationalRateSet;
     UINT_16 u2BSSBasicRateSet;
     UINT_8  ucStaRecIdxOfAP;
-    UINT_8  ucReserved2;
+    UINT_8  ucStaRecNoClear;
     UINT_8  ucReserved3;
     UINT_8  ucNonHTBasicPhyType; /* For Slot Time and CWmin */
     UINT_8  ucAuthMode;
@@ -1672,7 +1691,7 @@ typedef struct _CMD_EDGE_TXPWR_LIMIT_T {
     INT_8       cBandEdgeMaxPwrCCK;
     INT_8       cBandEdgeMaxPwrOFDM20;
     INT_8       cBandEdgeMaxPwrOFDM40;
-    INT_8       cReserved;
+	INT_8 cBandEdgeCert;
 } CMD_EDGE_TXPWR_LIMIT_T, *P_CMD_EDGE_TXPWR_LIMIT_T;
 
 typedef struct _CMD_RSSI_COMPENSATE_T {
@@ -1862,12 +1881,17 @@ typedef struct _CMD_ROAMING_INFO_T {
 	UINT_32		Reserved[9];
 } CMD_ROAMING_INFO_T;
 
-typedef struct _EVENT_LOG_TO_DRIVER_T {
-	UCHAR	fileName[64];
-	UINT_32	lineNo;
-	UINT_32 WifiUpTime;
-	UCHAR 	log[896]; /* total size is aucBuffer in WIFI_EVENT_T */
-} EVENT_LOG_TO_DRIVER_T, *P_EVENT_LOG_TO_DRIVER_T;
+#define NUM_MAX_RESERVE_TSF 8
+typedef struct _CMD_TSF_GET_T {
+	UINT_32 au4LocalTsf[NUM_MAX_RESERVE_TSF][2];
+	UINT_8  ucBssBmp; /*Bit0: AIS; Bit1: P2P*/
+	UINT_8  ucReserved[3];
+} CMD_TSF_GET_T, *P_CMD_TSF_GET_T;
+
+typedef struct _WIFI_SYSTEM_SUSPEND_CMD_T {
+	BOOLEAN fgIsSystemSuspend;
+	UINT_8 reserved[3];
+} WIFI_SYSTEM_SUSPEND_CMD_T, *P_WIFI_SYSTEM_SUSPEND_CMD_T;
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -2132,6 +2156,12 @@ nicCmdEventGetBSSInfo (
     IN PUINT_8      pucEventBuf
     );
 
+VOID
+nicCmdEventTsfRead (
+    IN P_ADAPTER_T  prAdapter,
+    IN P_CMD_INFO_T prCmdInfo,
+    IN PUINT_8      pucEventBuf
+    );
 
 /*******************************************************************************
 *                              F U N C T I O N S

@@ -57,6 +57,9 @@ struct musb;
 struct musb_hw_ep;
 struct musb_ep;
 extern volatile bool usb_is_host;
+extern int musb_host_dynamic_fifo;
+extern int musb_host_dynamic_fifo_usage_msk;
+extern void musb_bug(void);
 
 /* Helper defines for struct musb->hwvers */
 #define MUSB_HWVERS_MAJOR(x)	((x >> 10) & 0x1f)

@@ -8,7 +8,7 @@
 #include "hdmicec.h"
 #include <mach/mt_boot_common.h>
 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 #include "hdmi_ca.h"
 #endif
 
@@ -280,7 +280,7 @@ static const char* cSPDDeviceStr[16] =
  "reserved",
 };  
 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 void ta_internal_hdmi_write(unsigned int u4Reg, unsigned int u4data)
 {
 	vCaHDMIWriteReg(u4Reg,u4data);
@@ -307,7 +307,7 @@ unsigned int hdmi_drv_read(unsigned short u2Reg)
 
 void hdmi_drv_write(unsigned short u2Reg, unsigned int u4Data)
 {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
     HDMI_DRV_LOG("[W]addr = 0x%04x, data = 0x%08x\n", u2Reg, u4Data);
     ta_internal_hdmi_write(HDMIDRV_BASE+u2Reg, u4Data);
 #else
@@ -478,7 +478,7 @@ unsigned char bCheckPordHotPlug(unsigned char bMode)
 void MuteHDMIAudio(void)
 {
 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   HDMI_AUDIO_FUNC();
 
   fgCaHDMIAudioUnMute(FALSE);  
@@ -515,7 +515,7 @@ void hdmi_black_pattern_set(unsigned char cs)
 void vBlackHDMIOnly(void)
 {
   HDMI_DRV_FUNC();
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   fgCaHDMIVideoUnMute(FALSE);  
 #else
   //*(unsigned int*)(0xf4014f00) = 0x41;  
@@ -605,7 +605,7 @@ void vWriteHdmiIntMask(unsigned char bMask)
 void vUnBlackHDMIOnly(void)
 {
   HDMI_DRV_FUNC();
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   fgCaHDMIVideoUnMute(TRUE);  
 #else  
   *(unsigned int*)(0xf4014f00) = 0x0;
@@ -613,7 +613,7 @@ void vUnBlackHDMIOnly(void)
 }
 void UnMuteHDMIAudio(void)
 {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   HDMI_AUDIO_FUNC();
 
   fgCaHDMIAudioUnMute(TRUE);  

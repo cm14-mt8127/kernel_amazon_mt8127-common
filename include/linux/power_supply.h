@@ -165,6 +165,10 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_present_smb,
 	/* ADB CMD Discharging */
 	POWER_SUPPLY_PROP_adjust_power,
+	/* ACOS_MOD_BEGIN {metrics_log} */
+	POWER_SUPPLY_PROP_SUSPEND_DRAIN,
+	POWER_SUPPLY_PROP_SUSPEND_REALTIME,
+	/* ACOS_MOD_END {metrics_log} */
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,

@@ -1,11 +1,11 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2013 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ * Copyright (C) 2010, 2012-2014 ARM Limited. All rights reserved.
+ * 
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <linux/list.h>
@@ -427,10 +427,7 @@ static int mali_mem_os_shrink(struct shrinker *shrinker, struct shrink_control *
 #endif
 
 	if (0 == nr) {
-		//[BUGFIX]-Mod-BEGIN by SCDTABLET.zhangku.guo@tcl.com,06/09/2015,1017702,mtk patch for fix ANR issue when TAT
-		//return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
-		return mali_mem_os_allocator.pool_count;
-		//[BUGFIX]-Mod-END by SCDTABLET.zhangku.guo@tcl.com
+		return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
 	}
 
 	if (0 == mali_mem_os_allocator.pool_count) {
@@ -457,10 +454,8 @@ static int mali_mem_os_shrink(struct shrinker *shrinker, struct shrink_control *
 		mali_mem_os_free_page(page);
 	}
 
-	//[BUGFIX]-Del-BEGIN by SCDTABLET.zhangku.guo@tcl.com,06/09/2015,1017702,mtk patch for fix ANR issue when TAT
 	/* Release some pages from page table page pool */
-	//mali_mem_os_trim_page_table_page_pool();
-	//[BUGFIX]-Del-END by SCDTABLET.zhangku.guo@tcl.com
+	mali_mem_os_trim_page_table_page_pool();
 
 	if (MALI_OS_MEMORY_KERNEL_BUFFER_SIZE_IN_PAGES > mali_mem_os_allocator.pool_count) {
 		/* Pools are empty, stop timer */
@@ -468,10 +463,7 @@ static int mali_mem_os_shrink(struct shrinker *shrinker, struct shrink_control *
 		cancel_delayed_work(&mali_mem_os_allocator.timed_shrinker);
 	}
 
-	//[BUGFIX]-Mod-BEGIN by SCDTABLET.zhangku.guo@tcl.com,06/09/2015,1017702,mtk patch for fix ANR issue when TAT
-	//return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
-	return mali_mem_os_allocator.pool_count;
-	//[BUGFIX]-Mod-END by SCDTABLET.zhangku.guo@tcl.com
+	return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
 }
 
 static void mali_mem_os_trim_pool(struct work_struct *data)

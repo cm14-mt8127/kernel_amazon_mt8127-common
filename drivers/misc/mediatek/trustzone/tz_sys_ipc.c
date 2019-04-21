@@ -157,6 +157,21 @@ TZ_RESULT KREE_ServSemaphoreDown (u32 op, u8 param[REE_SERVICE_BUFFER_SIZE])
     return TZ_RESULT_SUCCESS;
 }
 
+TZ_RESULT KREE_ServSemaphoreDownInterruptible(u32 op, u8 param[REE_SERVICE_BUFFER_SIZE])
+{
+	struct semaphore *sema;
+	unsigned long *in;
+	int *out;
+
+	in = (unsigned long *)&param[0];
+	sema = (struct semaphore *)*in;
+	out = (int *)&param[0];
+
+	*out = down_interruptible(sema);
+
+	return TZ_RESULT_SUCCESS;
+}
+
 TZ_RESULT KREE_ServSemaphoreDownTimeout (u32 op, u8 param[REE_SERVICE_BUFFER_SIZE])
 {
     struct semaphore *sema;

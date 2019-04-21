@@ -148,6 +148,26 @@ int OVLReset() {
     return 0;
 }
 
+/* porting from abc123 : power_saving*/
+int OVLSWReset(void)
+{
+	unsigned int delay_cnt = 0;
+	/* static unsigned int cnt=0; */
+	/* pr_info("[DDP] OVLReset called %d\n", cnt++); */
+
+	DISP_REG_SET(DISP_REG_OVL_RST, 0x1);	/* soft reset */
+	while ((DISP_REG_GET(DISP_REG_OVL_INTSTA) & 0x1) != 0) {
+		delay_cnt++;
+		if (delay_cnt > 10000) {
+			pr_info("[DDP] error, OVLSWReset() timeout!\n");
+			break;
+		}
+	}
+	DISP_REG_SET(DISP_REG_OVL_RST, 0x0);
+
+	return 0;
+}
+
 int OVLROI(unsigned int bgW, 
            unsigned int bgH,
            unsigned int bgColor) 
@@ -346,8 +366,10 @@ int OVLLayerConfig(unsigned int layer,
 
     if((source == OVL_LAYER_SOURCE_MEM && addr == 0))
     {
-        printk("error: source from memory, but addr is 0! \n");
-        ASSERT(0);                           // direct link support YUV444 only
+	printk("error: source from memory, but addr is 0, disable layer %d! \n", layer);
+	OVLLayerSwitch(layer, 0);
+	return 0;
+	//ASSERT(0); // direct link support YUV444 only 
     }
 
     switch (fmt) {
@@ -434,9 +456,9 @@ int OVLLayerConfig(unsigned int layer,
     	}
     	printk("OVL align 64byte:ROI(%d,%d %d,%d), (%d,%d), 0x%08x-->0x%08x, %d-->%d\n", src_x, src_y, dst_w, dst_h, dst_x, dst_w, addr, address, dst_w, width);
     }
-#else
+//#else
     if (layer_pitch && ( (layer_pitch&0x7f) != 0 || (start&0x70) >= 0x50 || (end&0x70) < 0x30 )) {
-        DISP_DBG("[DDP] warning: hw request(pitch:0x%x,star:0x%x,end:0x%x)\n", layer_pitch, start, end);
+        printk("[DDP] warning: hw request(pitch:0x%x,star:0x%x,end:0x%x)\n", layer_pitch, start, end);
     }
 #endif
     switch(layer) {

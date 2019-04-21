@@ -53,8 +53,6 @@ static char STR_HELP[] =
     "\n";
 
 extern void hdmi_log_enable(int enable);
-extern void init_hdmi_mmp_events(void);
-
 // TODO: this is a temp debug solution
 //extern void hdmi_cable_fake_plug_in(void);
 //extern int hdmi_drv_init(void);
@@ -141,10 +139,6 @@ static void process_dbg_opt(const char *opt)
         if (0 == strncmp(opt + 8, "on", 2))
         {
             hdmi_mmp_enable(1);
-        }
-        else if (0 == strncmp(opt + 8, "init", 4))
-        {
-            init_hdmi_mmp_events();
         }
         else if (0 == strncmp(opt + 8, "off", 3))
         {

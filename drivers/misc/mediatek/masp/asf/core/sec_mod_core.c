@@ -262,9 +262,9 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             {
                 return -EFAULT;
             }
-
+            
             if (hevc_blk.len > HEVC_BLK_LEN) {
-                SMSG(TRUE, "[%s] eop block size is too large!", MOD);
+                SMSG(TRUE, "[%s] eop block size is too large!\n", MOD);
                 return -EFAULT;
             }
 
@@ -296,7 +296,7 @@ long sec_core_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             }
 
             if (hevc_blk.len > HEVC_BLK_LEN) {
-                SMSG(TRUE, "[%s] dop block size is too large!", MOD);
+                SMSG(TRUE, "[%s] dop block size is too large!\n", MOD);
                 return -EFAULT;
             }
 

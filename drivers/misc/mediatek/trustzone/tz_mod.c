@@ -874,7 +874,7 @@ static long tz_client_reg_sharedmem (struct file *file, unsigned long arg)
 
     /* register it ...
        */
-    ret = kree_register_sharedmem (session, &mem_handle, (uint32_t) pin->start, pin->size, (uint32_t) map_p);
+    ret = kree_register_sharedmem (session, &mem_handle, (uint32_t) pin->start, pin->size, map_p);
     if (ret != TZ_RESULT_SUCCESS)
     {
         printk ("tz_client_reg_sharedmem fail: register shm 0x%x\n", ret);

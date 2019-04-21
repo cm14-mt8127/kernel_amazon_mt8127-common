@@ -56,6 +56,7 @@
 #include <net/netlink.h>
 #include <net/cfg80211.h>
 #include "gl_cfg80211.h"
+#include "gl_p2p_ioctl.h"
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -884,7 +885,6 @@ mtk_cfg80211_del_station (
  *         others:  failure
  */
 /*----------------------------------------------------------------------------*/
-static PARAM_SCAN_REQUEST_EXT_T rScanRequest;
 int 
 mtk_cfg80211_scan (
     struct wiphy *wiphy,
@@ -897,7 +897,8 @@ mtk_cfg80211_scan (
     P_GLUE_INFO_T prGlueInfo = NULL;
     WLAN_STATUS rStatus;
     UINT_32 u4BufLen;
-//    PARAM_SCAN_REQUEST_EXT_T rScanRequest;
+	int i;
+	struct PARAM_SCAN_REQUEST_ADV_T rScanRequest;
 
     prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
     ASSERT(prGlueInfo);
@@ -911,13 +912,18 @@ mtk_cfg80211_scan (
         return -EBUSY;
     }
 
-    if(request->n_ssids == 0) {
-        rScanRequest.rSsid.u4SsidLen = 0;
-    }
-    else if(request->n_ssids == 1) {
-        COPY_SSID(rScanRequest.rSsid.aucSsid, rScanRequest.rSsid.u4SsidLen, request->ssids[0].ssid, request->ssids[0].ssid_len);
-    }
-    else {
+	if (request->n_ssids == 0) {
+		rScanRequest.u4SsidNum = 0;
+	} else if (request->n_ssids <= SCN_SSID_MAX_NUM) {
+		rScanRequest.u4SsidNum = request->n_ssids;
+
+		for (i = 0; i < request->n_ssids; i++) {
+			COPY_SSID(rScanRequest.rSsid[i].aucSsid,
+				rScanRequest.rSsid[i].u4SsidLen,
+				request->ssids[i].ssid,
+				request->ssids[i].ssid_len);
+		}
+	} else {
 		DBGLOG(REQ, INFO, ("request->n_ssids:%d\n", request->n_ssids));
         return -EINVAL;
     }
@@ -930,23 +936,21 @@ mtk_cfg80211_scan (
         rScanRequest.u4IELength = 0;
     }
 
-    prGlueInfo->prScanRequest = request;
+	prGlueInfo->prScanRequest = request;
 
-    rStatus = kalIoctl(prGlueInfo,
-        wlanoidSetBssidListScanExt,
-        &rScanRequest,
-        sizeof(PARAM_SCAN_REQUEST_EXT_T),
-        FALSE,
-        FALSE,
-        FALSE,
-        FALSE,
-        &u4BufLen);
+	rStatus = kalIoctl(prGlueInfo,
+		wlanoidSetBssidListScanAdv,
+		&rScanRequest,
+		sizeof(struct PARAM_SCAN_REQUEST_ADV_T),
+		FALSE, FALSE, FALSE, FALSE,
+		&u4BufLen);
 
-    if (rStatus != WLAN_STATUS_SUCCESS) {
+	if (rStatus != WLAN_STATUS_SUCCESS) {
         DBGLOG(REQ, INFO, ("scan error:%x\n", rStatus));
-		prGlueInfo->prScanRequest = NULL;
         return -EINVAL;
     }
+
+    prGlueInfo->prScanRequest = request;
 
     return 0;
 }
@@ -977,7 +981,7 @@ mtk_cfg80211_connect (
     ENUM_PARAM_ENCRYPTION_STATUS_T eEncStatus;
     ENUM_PARAM_AUTH_MODE_T eAuthMode;
     UINT_32 cipher;
-    PARAM_SSID_T rNewSsid;
+    PARAM_CONNECT_T rNewSsid;
     BOOLEAN fgCarryWPSIE = FALSE;
     ENUM_PARAM_OP_MODE_T eOpMode;
 
@@ -1320,41 +1324,33 @@ mtk_cfg80211_connect (
         }
     }
 
-    if(sme->ssid_len > 0) {
-        /* connect by SSID */
-        COPY_SSID(rNewSsid.aucSsid, rNewSsid.u4SsidLen, sme->ssid, sme->ssid_len);
+	if (sme->channel) {
+		rNewSsid.u4CenterFreq = sme->channel->center_freq;
+		rNewSsid.ucSpecificChnl = 1;
+		mtk_p2p_cfg80211func_channel_format_switch(sme->channel,
+			NL80211_CHAN_NO_HT,
+			&rNewSsid.rChannelInfo,
+			&rNewSsid.eChnlSco);
+	} else {
+		rNewSsid.u4CenterFreq = 0;
+		rNewSsid.ucSpecificChnl = 0;
+	}
+	rNewSsid.pucBssid = sme->bssid;
+	rNewSsid.pucSsid = sme->ssid;
+	rNewSsid.u4SsidLen = sme->ssid_len;
+    rStatus = kalIoctl(prGlueInfo,
+            wlanoidSetConnect,
+            (PVOID) &rNewSsid,
+            sizeof(PARAM_CONNECT_T),
+            FALSE,
+            FALSE,
+            TRUE,
+            FALSE,
+            &u4BufLen);
 
-        rStatus = kalIoctl(prGlueInfo,
-                wlanoidSetSsid,
-                (PVOID) &rNewSsid,
-                sizeof(PARAM_SSID_T),
-                FALSE,
-                FALSE,
-                TRUE,
-                FALSE,
-                &u4BufLen);
-
-        if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(REQ, WARN, ("set SSID:%x\n", rStatus));
-            return -EINVAL;
-        }
-    }
-    else {
-        /* connect by BSSID */
-        rStatus = kalIoctl(prGlueInfo,
-                wlanoidSetBssid,
-                (PVOID) sme->bssid,
-                MAC_ADDR_LEN,
-                FALSE,
-                FALSE,
-                TRUE,
-                FALSE,
-                &u4BufLen);
-
-        if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(REQ, WARN, ("set BSSID:%x\n", rStatus));
-            return -EINVAL;
-        }
+    if (rStatus != WLAN_STATUS_SUCCESS) {
+        DBGLOG(REQ, WARN, ("set SSID:%x\n", rStatus));
+        return -EINVAL;
     }
 
     return 0;
@@ -1765,9 +1761,7 @@ mtk_cfg80211_mgmt_frame_register (
         }
 
         if (prGlueInfo->prAdapter != NULL){
-
-            /* prGlueInfo->ulFlag |= GLUE_FLAG_FRAME_FILTER_AIS; */
-			set_bit(GLUE_FLAG_FRAME_FILTER_AIS_BIT, &prGlueInfo->ulFlag);
+			set_bit(GLUE_FLAG_FRAME_FILTER_AIS, &prGlueInfo->ulFlag);
 
             /* wake up main thread */
             wake_up_interruptible(&prGlueInfo->waitq);
@@ -2480,6 +2474,10 @@ mtk_cfg80211_testmode_get_sta_statistics(
         u4LinkScore = 100;
     }
 
+	rQueryStaStatistics.u4NetDevRxPkts = prGlueInfo->rNetDevStats.rx_packets;
+	rQueryStaStatistics.u4NetDevRxBytes = prGlueInfo->rNetDevStats.rx_bytes;
+	rQueryStaStatistics.u4NetDevTxPkts = prGlueInfo->rNetDevStats.tx_packets;
+	rQueryStaStatistics.u4NetDevTxBytes = prGlueInfo->rNetDevStats.tx_bytes;
     
     NLA_PUT_U8(skb, NL80211_TESTMODE_STA_STATISTICS_INVALID, 0);
     NLA_PUT_U8(skb, NL80211_TESTMODE_STA_STATISTICS_VERSION, NL80211_DRIVER_TESTMODE_VERSION);
@@ -2500,6 +2498,11 @@ mtk_cfg80211_testmode_get_sta_statistics(
     NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_TOTAL_CNT, rQueryStaStatistics.u4TxTotalCount);
     NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_THRESHOLD_CNT, rQueryStaStatistics.u4TxExceedThresholdCount);
     NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_AVG_PROCESS_TIME, rQueryStaStatistics.u4TxAverageProcessTime);
+
+	NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_TX_PKTS, rQueryStaStatistics.u4NetDevTxPkts);
+	NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_TX_BYTES, rQueryStaStatistics.u4NetDevTxBytes);
+	NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_RX_PKTS, rQueryStaStatistics.u4NetDevRxPkts);
+	NLA_PUT_U32(skb, NL80211_TESTMODE_STA_STATISTICS_RX_BYTES, rQueryStaStatistics.u4NetDevRxBytes);
 
     /* Network counter */
     NLA_PUT(
@@ -2608,7 +2611,7 @@ mtk_cfg80211_testmode_sw_cmd(
 
     prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
 
-#if 1
+#if 0
         printk("--> %s()\n", __func__);
 #endif
 
@@ -2804,6 +2807,20 @@ int mtk_cfg80211_testmode_cmd(
 				if(mtk_cfg80211_testmode_hs20_cmd(wiphy, data, len))
 					fgIsValid = TRUE;
 				break;
+#endif
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+			case TESTMODE_CMD_ID_WAKEUP_STATISTICS:
+			{
+				P_NL80211_QUERY_WAKEUP_STATISTICS prWakeupSta =
+					(P_NL80211_QUERY_WAKEUP_STATISTICS)data;
+				if (copy_to_user((PUINT_8)prWakeupSta->prWakeupCount,
+					(PUINT_8)prGlueInfo->prAdapter->arWakeupStatistic,
+					sizeof(prGlueInfo->prAdapter->arWakeupStatistic))) {
+					DBGLOG(INIT, ERROR, ("copy wakepu statistics fail\n"));
+				}
+				i4Status = 0;
+				break;
+			}
 #endif
             default:
                 i4Status = -EINVAL;

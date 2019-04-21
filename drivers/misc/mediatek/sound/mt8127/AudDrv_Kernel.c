@@ -1,45 +1,14 @@
-/*
- * Copyright (C) 2007 The Android Open Source Project
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
-/*******************************************************************************
- *
- * Filename:
- * ---------
- *   AudDrv_Kernelc
- *
- * Project:
- * --------
- *   MT8127  Audio Driver Kernel Function
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- * Luke Liu
- * Chipeng Chang
- *
- *------------------------------------------------------------------------------
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
- *******************************************************************************/
-
 
 /*****************************************************************************
  *                     C O M P I L E R   F L A G S
@@ -490,7 +459,6 @@ static int AudDrv_Read_Procmem(char *buf, char **start, off_t offset, int count 
     PRINTK_AUDDRV("+AudDrv_Read_Procmem \n");
     AudDrv_Clk_On();
 
-#ifdef CONFIG_MTK_PMIC_MT6397
     len += sprintf(buf + len , "Afe_Mem_Pwr_on =0x%x\n", Afe_Mem_Pwr_on);
     len += sprintf(buf + len , "Aud_AFE_Clk_cntr = 0x%x\n", Aud_AFE_Clk_cntr);
     len += sprintf(buf + len , "Aud_ANA_Clk_cntr = 0x%x\n", Aud_ANA_Clk_cntr);
@@ -656,7 +624,37 @@ static int AudDrv_Read_Procmem(char *buf, char **start, off_t offset, int count 
     len += sprintf(buf + len , "AFE_ASRC_CON19  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON19));
     len += sprintf(buf + len , "AFE_ASRC_CON20  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON20));
     len += sprintf(buf + len , "AFE_ASRC_CON21  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON21));
+    PRINTK_AUDDRV("AudDrv_Read_Procmem len = %d\n", len);
+    AudDrv_Clk_Off();
+    PRINTK_AUDDRV("-AudDrv_Read_Procmem \n");
+    return len;
+}
 
+
+
+
+/****************************************************************************
+ * FUNCTION
+ *  AudDrv_Read_Procmem_PMIC
+ *
+ * DESCRIPTION
+ *  dump pmic digital/analog register
+ *  cat /proc/pmicaudio
+ *
+ * PARAMETERS
+ *
+ *
+ * RETURNS
+ *  length
+ *
+ ***************************************************************************** */
+static int AudDrv_Read_Procmem_PMIC(char *buf, char **start, off_t offset, int count , int *eof, void *data)
+{
+    int len = 0;
+    PRINTK_AUDDRV("+AudDrv_Read_Procmem_PMIC \n");
+    AudDrv_Clk_On();
+
+#ifdef CONFIG_MTK_PMIC_MT6397
     len += sprintf(buf + len , "UL_DL_CON0 = 0x%x\n", Ana_Get_Reg(AFE_UL_DL_CON0));
     len += sprintf(buf + len , "DL_SRC2_CON0_H = 0x%x\n", Ana_Get_Reg(AFE_DL_SRC2_CON0_H));
     len += sprintf(buf + len , "DL_SRC2_CON0_L = 0x%x\n", Ana_Get_Reg(AFE_DL_SRC2_CON0_L));
@@ -735,171 +733,6 @@ static int AudDrv_Read_Procmem(char *buf, char **start, off_t offset, int count 
     //len += sprintf(buf + len , "CLK_CFG_5 = 0x%x\n", AP_Get_Reg(CLK_CFG_5));
 
 #else
-    len += sprintf(buf + len , "Afe_Mem_Pwr_on =0x%x\n", Afe_Mem_Pwr_on);
-    len += sprintf(buf + len , "Aud_AFE_Clk_cntr = 0x%x\n", Aud_AFE_Clk_cntr);
-    len += sprintf(buf + len , "Aud_ANA_Clk_cntr = 0x%x\n", Aud_ANA_Clk_cntr);
-    len += sprintf(buf + len , "Aud_HDMI_Clk_cntr = 0x%x\n", Aud_HDMI_Clk_cntr);
-    len += sprintf(buf + len , "Aud_I2S_Clk_cntr = 0x%x\n", Aud_I2S_Clk_cntr);
-    len += sprintf(buf + len , "Aud_APLL_Tuner_Clk_cntr = 0x%x\n", Aud_APLL_Tuner_Clk_cntr);
-    len += sprintf(buf + len , "Aud_SPDIF_Clk_cntr = 0x%x\n", Aud_SPDIF_Clk_cntr);
-    len += sprintf(buf + len , "Aud_Int_Mem_Flag = 0x%x\n", Aud_Int_Mem_Flag);
-    len += sprintf(buf + len , "Aud_Ext_Mem_Flag = 0x%x\n", Aud_Ext_Mem_Flag);
-    len += sprintf(buf + len , "AuddrvSpkStatus = 0x%x\n", AuddrvSpkStatus);
-    len += sprintf(buf + len , "AUDIO_TOP_CON0  = 0x%x\n", Afe_Get_Reg(AUDIOAFE_TOP_CON0));
-    len += sprintf(buf + len , "AUDIO_TOP_CON1  = 0x%x\n", Afe_Get_Reg(AUDIO_TOP_CON1));
-    len += sprintf(buf + len , "AUDIO_TOP_CON2  = 0x%x\n", Afe_Get_Reg(AUDIO_TOP_CON2));
-    len += sprintf(buf + len , "AUDIO_TOP_CON3  = 0x%x\n", Afe_Get_Reg(AUDIO_TOP_CON3));
-    len += sprintf(buf + len , "AFE_DAC_CON0  = 0x%x\n", Afe_Get_Reg(AFE_DAC_CON0));
-    len += sprintf(buf + len , "AFE_DAC_CON1  = 0x%x\n", Afe_Get_Reg(AFE_DAC_CON1));
-    len += sprintf(buf + len , "AFE_I2S_CON  = 0x%x\n", Afe_Get_Reg(AFE_I2S_CON));
-
-    len += sprintf(buf + len , "AFE_CONN0  = 0x%x\n", Afe_Get_Reg(AFE_CONN0));
-    len += sprintf(buf + len , "AFE_CONN1  = 0x%x\n", Afe_Get_Reg(AFE_CONN1));
-    len += sprintf(buf + len , "AFE_CONN2  = 0x%x\n", Afe_Get_Reg(AFE_CONN2));
-    len += sprintf(buf + len , "AFE_CONN3  = 0x%x\n", Afe_Get_Reg(AFE_CONN3));
-    len += sprintf(buf + len , "AFE_CONN4  = 0x%x\n", Afe_Get_Reg(AFE_CONN4));
-    len += sprintf(buf + len , "AFE_I2S_CON1  = 0x%x\n", Afe_Get_Reg(AFE_I2S_CON1));
-    len += sprintf(buf + len , "AFE_I2S_CON2  = 0x%x\n", Afe_Get_Reg(AFE_I2S_CON2));
-
-    //len += sprintf(buf+len ,"AFE_MRGIF_CON  = 0x%x\n",Afe_Get_Reg(AFE_MRGIF_CON));
-    len += sprintf(buf + len , "AFE_DL1_BASE  = 0x%x\n", Afe_Get_Reg(AFE_DL1_BASE));
-    len += sprintf(buf + len , "AFE_DL1_CUR  = 0x%x\n", Afe_Get_Reg(AFE_DL1_CUR));
-    len += sprintf(buf + len , "AFE_DL1_END  = 0x%x\n", Afe_Get_Reg(AFE_DL1_END));
-    len += sprintf(buf + len , "AFE_I2S_CON3  = 0x%x\n", Afe_Get_Reg(AFE_I2S_CON3)); //
-    len += sprintf(buf + len , "AFE_DL2_BASE  = 0x%x\n", Afe_Get_Reg(AFE_DL2_BASE));
-    len += sprintf(buf + len , "AFE_DL2_CUR  = 0x%x\n", Afe_Get_Reg(AFE_DL2_CUR));
-    len += sprintf(buf + len , "AFE_DL2_END  = 0x%x\n", Afe_Get_Reg(AFE_DL2_END));
-    len += sprintf(buf + len , "AFE_AWB_BASE  = 0x%x\n", Afe_Get_Reg(AFE_AWB_BASE));
-    len += sprintf(buf + len , "AFE_AWB_END  = 0x%x\n", Afe_Get_Reg(AFE_AWB_END));
-    len += sprintf(buf + len , "AFE_AWB_CUR  = 0x%x\n", Afe_Get_Reg(AFE_AWB_CUR));
-    len += sprintf(buf + len , "AFE_VUL_BASE  = 0x%x\n", Afe_Get_Reg(AFE_VUL_BASE));
-    len += sprintf(buf + len , "AFE_VUL_END  = 0x%x\n", Afe_Get_Reg(AFE_VUL_END));
-    len += sprintf(buf + len , "AFE_VUL_CUR  = 0x%x\n", Afe_Get_Reg(AFE_VUL_CUR));
-
-
-    len += sprintf(buf + len , "MEMIF_MON0 = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MON0));
-    len += sprintf(buf + len , "MEMIF_MON1 = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MON1));
-    len += sprintf(buf + len , "MEMIF_MON2 = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MON2));
-    len += sprintf(buf + len , "MEMIF_MON4 = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MON4));
-
-    len += sprintf(buf + len , "AFE_ADDA_DL_SRC2_CON0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_DL_SRC2_CON0));
-    len += sprintf(buf + len , "AFE_ADDA_DL_SRC2_CON1  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_DL_SRC2_CON1));
-    len += sprintf(buf + len , "AFE_ADDA_UL_SRC_CON0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_UL_SRC_CON0));
-    len += sprintf(buf + len , "AFE_ADDA_UL_SRC_CON1  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_UL_SRC_CON1));
-    len += sprintf(buf + len , "AFE_ADDA_TOP_CON0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_TOP_CON0));
-    len += sprintf(buf + len , "AFE_ADDA_UL_DL_CON0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_UL_DL_CON0));
-    len += sprintf(buf + len , "AFE_ADDA_SRC_DEBUG  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_SRC_DEBUG));
-    len += sprintf(buf + len , "AFE_ADDA_SRC_DEBUG_MON0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_SRC_DEBUG_MON0));
-    len += sprintf(buf + len , "AFE_ADDA_SRC_DEBUG_MON1  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_SRC_DEBUG_MON1));
-    len += sprintf(buf + len , "AFE_ADDA_NEWIF_CFG0  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_NEWIF_CFG0));
-    len += sprintf(buf + len , "AFE_ADDA_NEWIF_CFG1  = 0x%x\n", Afe_Get_Reg(AFE_ADDA_NEWIF_CFG1));
-
-    len += sprintf(buf + len , "SIDETONE_DEBUG = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_DEBUG));
-    len += sprintf(buf + len , "SIDETONE_MON = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_MON));
-    len += sprintf(buf + len , "SIDETONE_CON0 = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_CON0));
-    len += sprintf(buf + len , "SIDETONE_COEFF = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_COEFF));
-    len += sprintf(buf + len , "SIDETONE_CON1 = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_CON1));
-    len += sprintf(buf + len , "SIDETONE_GAIN = 0x%x\n", Afe_Get_Reg(AFE_SIDETONE_GAIN));
-    len += sprintf(buf + len , "SGEN_CON0 = 0x%x\n", Afe_Get_Reg(AFE_SGEN_CON0));
-
-    len += sprintf(buf + len , "TOP_CON0 = 0x%x\n", Afe_Get_Reg(AFE_TOP_CON0));
-
-    len += sprintf(buf + len , "HDMI_OUT_CON0   = 0x%x\n", Afe_Get_Reg(AFE_HDMI_OUT_CON0));
-    len += sprintf(buf + len , "HDMI_OUT_BASE   = 0x%x\n", Afe_Get_Reg(AFE_HDMI_OUT_BASE));
-    len += sprintf(buf + len , "HDMI_OUT_CUR    = 0x%x\n", Afe_Get_Reg(AFE_HDMI_OUT_CUR));
-    len += sprintf(buf + len , "HDMI_OUT_END    = 0x%x\n", Afe_Get_Reg(AFE_HDMI_OUT_END));
-    len += sprintf(buf + len , "SPDIF_OUT_CON0  = 0x%x\n", Afe_Get_Reg(AFE_SPDIF_OUT_CON0));
-    len += sprintf(buf + len , "SPDIF_BASE      = 0x%x\n", Afe_Get_Reg(AFE_SPDIF_BASE));
-    len += sprintf(buf + len , "SPDIF_CUR       = 0x%x\n", Afe_Get_Reg(AFE_SPDIF_CUR));
-    len += sprintf(buf + len , "SPDIF_END       = 0x%x\n", Afe_Get_Reg(AFE_SPDIF_END));
-    len += sprintf(buf + len , "HDMI_CONN0      = 0x%x\n", Afe_Get_Reg(AFE_HDMI_CONN0));
-    len += sprintf(buf + len , "8CH_I2S_OUT_CON = 0x%x\n", Afe_Get_Reg(AFE_8CH_I2S_OUT_CON));
-    len += sprintf(buf + len , "IEC_CFG         = 0x%x\n", Afe_Get_Reg(AFE_IEC_CFG));
-    len += sprintf(buf + len , "IEC_NSNUM       = 0x%x\n", Afe_Get_Reg(AFE_IEC_NSNUM));
-    len += sprintf(buf + len , "IEC_BURST_INFO  = 0x%x\n", Afe_Get_Reg(AFE_IEC_BURST_INFO));
-    len += sprintf(buf + len , "IEC_BURST_LEN   = 0x%x\n", Afe_Get_Reg(AFE_IEC_BURST_LEN));
-    len += sprintf(buf + len , "IEC_NSADR       = 0x%x\n", Afe_Get_Reg(AFE_IEC_NSADR));
-    len += sprintf(buf + len , "IEC_CHL_STAT0   = 0x%x\n", Afe_Get_Reg(AFE_IEC_CHL_STAT0));
-    len += sprintf(buf + len , "IEC_CHL_STAT1   = 0x%x\n", Afe_Get_Reg(AFE_IEC_CHL_STAT1));
-    len += sprintf(buf + len , "IEC_CHR_STAT0   = 0x%x\n", Afe_Get_Reg(AFE_IEC_CHR_STAT0));
-    len += sprintf(buf + len , "IEC_CHR_STAT1   = 0x%x\n", Afe_Get_Reg(AFE_IEC_CHR_STAT1));
-
-    len += sprintf(buf + len , "AFE_PREDIS_CON0 = 0x%x\n", Afe_Get_Reg(AFE_PREDIS_CON0));
-    len += sprintf(buf + len , "AFE_PREDIS_CON1 = 0x%x\n", Afe_Get_Reg(AFE_PREDIS_CON1));
-    len += sprintf(buf + len , "AFE_MOD_PCM_BASE = 0x%x\n", Afe_Get_Reg(AFE_MOD_PCM_BASE));
-    len += sprintf(buf + len , "AFE_MOD_PCM_END = 0x%x\n", Afe_Get_Reg(AFE_MOD_PCM_END));
-    len += sprintf(buf + len , "AFE_MOD_PCM_CUR = 0x%x\n", Afe_Get_Reg(AFE_MOD_PCM_CUR));
-
-    len += sprintf(buf + len , "IRQ_MCU_CON = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_CON)); //ccc
-    len += sprintf(buf + len , "IRQ_MCU_STATUS = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_STATUS));
-    len += sprintf(buf + len , "IRQ_CLR = 0x%x\n", Afe_Get_Reg(AFE_IRQ_CLR));
-    len += sprintf(buf + len , "IRQ_MCU_CNT1 = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_CNT1));
-    len += sprintf(buf + len , "IRQ_MCU_CNT2 = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_CNT2));
-    len += sprintf(buf + len , "IRQ_MCU_MON2 = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_MON2));
-    len += sprintf(buf + len , "IRQ_MCU_CNT5 = 0x%x\n", Afe_Get_Reg(AFE_IRQ_MCU_CNT5));
-    len += sprintf(buf + len , "IRQ1_MCU_CNT_MON = 0x%x\n", Afe_Get_Reg(AFE_IRQ1_MCU_CNT_MON));
-    len += sprintf(buf + len , "IRQ2_MCU_CNT_MON = 0x%x\n", Afe_Get_Reg(AFE_IRQ2_MCU_CNT_MON));
-    len += sprintf(buf + len , "IRQ1_MCU_EN_CNT_MON = 0x%x\n", Afe_Get_Reg(AFE_IRQ1_MCU_EN_CNT_MON));
-    len += sprintf(buf + len , "IRQ5_MCU_EN_CNT_MON = 0x%x\n", Afe_Get_Reg(AFE_IRQ5_MCU_EN_CNT_MON));
-
-    //len += sprintf(buf + len , "AFE_MEMIF_MINLEN  = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MINLEN));
-    len += sprintf(buf + len , "AFE_MEMIF_MAXLEN  = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_MAXLEN));
-    len += sprintf(buf + len , "AFE_MEMIF_PBUF_SIZE  = 0x%x\n", Afe_Get_Reg(AFE_MEMIF_PBUF_SIZE));
-
-    len += sprintf(buf + len , "AFE_GAIN1_CON0  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CON0));
-    len += sprintf(buf + len , "AFE_GAIN1_CON1  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CON1));
-    len += sprintf(buf + len , "AFE_GAIN1_CON2  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CON2));
-    len += sprintf(buf + len , "AFE_GAIN1_CON3  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CON3));
-    len += sprintf(buf + len , "AFE_GAIN1_CONN  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CONN));
-    len += sprintf(buf + len , "AFE_GAIN1_CUR  = 0x%x\n", Afe_Get_Reg(AFE_GAIN1_CUR));
-
-    len += sprintf(buf + len , "AFE_GAIN2_CON0  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CON0));
-    len += sprintf(buf + len , "AFE_GAIN2_CON1  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CON1));
-    len += sprintf(buf + len , "AFE_GAIN2_CON2  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CON2));
-
-    len += sprintf(buf + len , "AFE_GAIN2_CON3  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CON3));
-    len += sprintf(buf + len , "AFE_GAIN2_CONN  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CONN));
-    len += sprintf(buf + len , "AFE_GAIN2_CUR  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CUR));
-    len += sprintf(buf + len , "AFE_GAIN2_CONN2  = 0x%x\n", Afe_Get_Reg(AFE_GAIN2_CONN2));
-
-
-    len += sprintf(buf + len , "FPGA_CFG2  = 0x%x\n", Afe_Get_Reg(FPGA_CFG2));
-    len += sprintf(buf + len , "FPGA_CFG3  = 0x%x\n", Afe_Get_Reg(FPGA_CFG3));
-    len += sprintf(buf + len , "FPGA_CFG0  = 0x%x\n", Afe_Get_Reg(FPGA_CFG0));
-    len += sprintf(buf + len , "FPGA_CFG1  = 0x%x\n", Afe_Get_Reg(FPGA_CFG1));
-    len += sprintf(buf + len , "FPGA_STC  = 0x%x\n", Afe_Get_Reg(FPGA_STC));
-
-    len += sprintf(buf + len , "AFE_ASRC_CON0  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON0));
-    len += sprintf(buf + len , "AFE_ASRC_CON1  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON1));
-    len += sprintf(buf + len , "AFE_ASRC_CON2  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON2));
-    len += sprintf(buf + len , "AFE_ASRC_CON3  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON3));
-    len += sprintf(buf + len , "AFE_ASRC_CON4  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON4));
-    len += sprintf(buf + len , "AFE_ASRC_CON5  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON5));
-    len += sprintf(buf + len , "AFE_ASRC_CON6  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON6));
-    len += sprintf(buf + len , "AFE_ASRC_CON7  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON7));
-    len += sprintf(buf + len , "AFE_ASRC_CON8  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON8));
-    len += sprintf(buf + len , "AFE_ASRC_CON9  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON9));
-    len += sprintf(buf + len , "AFE_ASRC_CON10  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON10));
-    len += sprintf(buf + len , "AFE_ASRC_CON11  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON11));
-
-    len += sprintf(buf + len , "PCM_INTF_CON1 = 0x%x\n", Afe_Get_Reg(PCM_INTF_CON1));
-    len += sprintf(buf + len , "PCM_INTF_CON2 = 0x%x\n", Afe_Get_Reg(PCM_INTF_CON2));
-    len += sprintf(buf + len , "PCM2_INTF_CON = 0x%x\n", Afe_Get_Reg(PCM2_INTF_CON));
-
-
-
-
-
-    len += sprintf(buf + len , "AFE_ASRC_CON13  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON13));
-    len += sprintf(buf + len , "AFE_ASRC_CON14  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON14));
-    len += sprintf(buf + len , "AFE_ASRC_CON15  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON15));
-    len += sprintf(buf + len , "AFE_ASRC_CON16  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON16));
-    len += sprintf(buf + len , "AFE_ASRC_CON17  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON17));
-    len += sprintf(buf + len , "AFE_ASRC_CON18  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON18));
-    len += sprintf(buf + len , "AFE_ASRC_CON19  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON19));
-    len += sprintf(buf + len , "AFE_ASRC_CON20  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON20));
-    len += sprintf(buf + len , "AFE_ASRC_CON21  = 0x%x\n", Afe_Get_Reg(AFE_ASRC_CON21));
-
     len += sprintf(buf + len , "ABB_AFE_CON0  = 0x%x\n", Ana_Get_Reg(ABB_AFE_CON0));
     len += sprintf(buf + len , "ABB_AFE_CON1  = 0x%x\n", Ana_Get_Reg(ABB_AFE_CON1));
     len += sprintf(buf + len , "ABB_AFE_CON2  = 0x%x\n", Ana_Get_Reg(ABB_AFE_CON2));
@@ -941,7 +774,6 @@ static int AudDrv_Read_Procmem(char *buf, char **start, off_t offset, int count 
     len += sprintf(buf + len , "TOP_CKPDN0  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN0));
     len += sprintf(buf + len , "TOP_CKPDN0_SET  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN0_SET));
     len += sprintf(buf + len , "TOP_CKPDN0_CLR  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN0_CLR));
-
     len += sprintf(buf + len , "TOP_CKPDN1  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN1));
     len += sprintf(buf + len , "TOP_CKPDN1_SET  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN1_SET));
     len += sprintf(buf + len , "TOP_CKPDN1_CLR  = 0x%x\n", Ana_Get_Reg(TOP_CKPDN1_CLR));
@@ -961,12 +793,13 @@ static int AudDrv_Read_Procmem(char *buf, char **start, off_t offset, int count 
     len += sprintf(buf + len , "AUDTOP_CON8  = 0x%x\n", Ana_Get_Reg(AUDTOP_CON8));
     len += sprintf(buf + len , "AUDTOP_CON9  = 0x%x\n", Ana_Get_Reg(AUDTOP_CON9));
 #endif
-    PRINTK_AUDDRV("AudDrv_Read_Procmem len = %d\n", len);
+    PRINTK_AUDDRV("AudDrv_Read_Procmem_PMIC len = %d\n", len);
 
     AudDrv_Clk_Off();
-    PRINTK_AUDDRV("-AudDrv_Read_Procmem \n");
+    PRINTK_AUDDRV("-AudDrv_Read_Procmem_PMIC \n");
     return len;
 }
+
 
 void Auddrv_Handle_Mem_context(AFE_MEM_CONTROL_T *Mem_Block)
 {
@@ -1021,7 +854,7 @@ void Auddrv_Handle_Mem_context(AFE_MEM_CONTROL_T *Mem_Block)
       Hw_Get_bytes,HW_Cur_ReadIdx,mBlock->u4DMAReadIdx,mBlock->u4WriteIdx,mBlock->pucPhysBufAddr,Mem_Block->MemIfNum);*/
 
     spin_lock_irqsave(&auddrv_ULInCtl_lock, flags);
-    
+
     mBlock->u4WriteIdx  += Hw_Get_bytes;
     mBlock->u4WriteIdx  %= mBlock->u4BufferSize;
     mBlock->u4DataRemained += Hw_Get_bytes;
@@ -3202,6 +3035,7 @@ int AudDrv_GET_UL_REMAIN_TIME(struct file *fp)
     AFE_MEM_CONTROL_T *pAfe_MEM_ConTrol = NULL;
     AFE_BLOCK_T  *Afe_Block = NULL;
     unsigned long flags;
+    unsigned long flagsUL;
     kal_uint32 samplerate = 0;
     kal_uint32 HW_Cur_ReadIdx = 0;
     kal_int32 Hw_Get_bytes = 0;
@@ -3280,6 +3114,7 @@ int AudDrv_GET_UL_REMAIN_TIME(struct file *fp)
     }
 
     spin_lock_irqsave(&auddrv_irqstatus_lock, flags);
+    spin_lock_irqsave(&auddrv_ULInCtl_lock, flagsUL);    
     // HW already fill in
     Hw_Get_bytes = (HW_Cur_ReadIdx - Afe_Block->pucPhysBufAddr) - Afe_Block->u4WriteIdx;
     if (Hw_Get_bytes < 0)
@@ -3288,7 +3123,7 @@ int AudDrv_GET_UL_REMAIN_TIME(struct file *fp)
     }
 
     HW_Remain_Size = Afe_Block->u4DataRemained + Hw_Get_bytes;
-
+    spin_unlock_irqrestore(&auddrv_ULInCtl_lock, flagsUL);
     spin_unlock_irqrestore(&auddrv_irqstatus_lock, flags);
 
     // buffer overflow
@@ -3319,6 +3154,115 @@ void AudDrv_AUDIO_REMAINING(struct file *fp, Data_Remaining *time)
 }
 
 /*****************************************************************************
+ * FUNCTION
+ *  AudDrv_AUDIO_CAPTURE_REMAINING
+ *
+ * DESCRIPTION
+ *  Get UL buffer remaining size and time stamp
+ *
+ ******************************************************************************/
+
+void AudDrv_AUDIO_CAPTURE_REMAINING(struct file *fp, Data_Remaining *time)
+{
+    //PRINTK_AUDDRV("+AUDDRV_AUDIO_CAPTURE_REMAINING ");
+
+    //get time
+    do_posix_clock_monotonic_gettime(&(time->time));
+
+    //get remain size
+    AFE_MEM_CONTROL_T *pAfe_MEM_ConTrol = NULL;
+    AFE_BLOCK_T  *Afe_Block = NULL;
+    unsigned long flags;
+    unsigned long flagsUL;
+    kal_uint32 samplerate = 0;
+    kal_uint32 HW_Cur_ReadIdx = 0;
+    kal_int32 Hw_Get_bytes = 0;
+    kal_uint32 HW_Remain_Size = 0;
+    int ret = 0;
+
+    // check which memif need to be read
+    pAfe_MEM_ConTrol = Auddrv_Find_MemIF_Fp(fp);
+    Afe_Block = &(pAfe_MEM_ConTrol->rBlock);
+    if (pAfe_MEM_ConTrol == NULL)
+    {
+        PRINTK_AUDDRV("AUDDRV_AUDIO_CAPTURE_REMAINING cannot find MEM control !!!!!!!");
+        return -1;
+    }
+    if (!Auddrv_CheckRead_MemIF_Fp(pAfe_MEM_ConTrol->MemIfNum))
+    {
+        PRINTK_AUDDRV("AUDDRV_AUDIO_CAPTURE_REMAINING cannot find matcg MemIfNum!!!");
+        return -1;
+    }
+
+    if (Afe_Block->u4BufferSize <= 0)
+    {
+        PRINTK_AUDDRV("AUDDRV_AUDIO_CAPTURE_REMAINING wrong buffer size!!!");
+        return -1;
+    }
+
+    samplerate = Afe_Get_Reg(AFE_DAC_CON1);
+
+    switch (pAfe_MEM_ConTrol->MemIfNum)
+    {
+        case MEM_VUL:
+            HW_Cur_ReadIdx = Afe_Get_Reg(AFE_VUL_CUR);
+            samplerate = (samplerate >> 16) & 0x0000000f;
+            samplerate = AudDrv_SampleRateIndexConvert(samplerate);
+            break;
+        case MEM_AWB:
+            HW_Cur_ReadIdx = Afe_Get_Reg(AFE_AWB_CUR);
+            samplerate = (samplerate >> 12) & 0x0000000f;
+            samplerate = AudDrv_SampleRateIndexConvert(samplerate);
+            break;
+        case MEM_MOD_DAI:
+            HW_Cur_ReadIdx = Afe_Get_Reg(AFE_MOD_PCM_CUR);
+            samplerate = (samplerate >> 30) & 0x00000001;
+            if (samplerate == 0)
+            {
+                samplerate = 8000;
+            }
+            else
+            {
+                samplerate = 16000;
+            }
+            break;
+    }
+
+	if (CheckSize(HW_Cur_ReadIdx))
+	{
+        return -1;
+	}
+	if (Afe_Block->pucVirtBufAddr  == NULL)
+	{
+        return -1;
+	}
+
+	spin_lock_irqsave(&auddrv_irqstatus_lock, flags);
+	spin_lock_irqsave(&auddrv_ULInCtl_lock, flagsUL);
+	// HW already fill in
+	Hw_Get_bytes = (HW_Cur_ReadIdx - Afe_Block->pucPhysBufAddr) - Afe_Block->u4WriteIdx;
+	if (Hw_Get_bytes < 0)
+	{
+        Hw_Get_bytes += Afe_Block->u4BufferSize;
+	}
+
+	HW_Remain_Size = Afe_Block->u4DataRemained + Hw_Get_bytes;
+	spin_unlock_irqrestore(&auddrv_ULInCtl_lock, flagsUL);
+	spin_unlock_irqrestore(&auddrv_irqstatus_lock, flags);
+
+	// buffer overflow
+	if (HW_Remain_Size > Afe_Block->u4BufferSize)
+	{
+        HW_Remain_Size = Afe_Block->u4BufferSize;
+	}
+
+	time->bytes_remaining = HW_Remain_Size;
+	//ret = (((HW_Remain_Size * 1000) / 4) / samplerate);
+	//PRINTK_AUDDRV("-AUDDRV_AUDIO_CAPTURE_REMAINING HW_Remain_Size=%d, samplerate=%d",HW_Remain_Size, samplerate);
+}
+
+
+/*****************************************************************************
  * FILE OPERATION FUNCTION
  *  AudDrv_ioctl
  *
@@ -3331,6 +3275,7 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
     int  ret = 0;
     Register_Control Reg_Data;
+
     switch (cmd)
     {
             PRINTK_AUDDRV("AudDrv_ioctl cmd = %u arg = %lu\n", cmd, arg);
@@ -3338,6 +3283,11 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
         {
             if (copy_from_user((void *)(&Reg_Data), (const void __user *)(arg), sizeof(Reg_Data)))
             {
+                return -EFAULT;
+            }
+            if (((Reg_Data.offset >= 0x800) && (Reg_Data.offset < 0x1000)) || (Reg_Data.offset > 0xD000))
+            {
+                PRINTK_AUDDRV("Invalid off set!\n");
                 return -EFAULT;
             }
             AudDrv_Clk_On();
@@ -3351,6 +3301,11 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
         {
             if (copy_from_user((void *)(&Reg_Data), (const void __user *)(arg), sizeof(Reg_Data)))
             {
+                return -EFAULT;
+            }
+            if (((Reg_Data.offset >= 0x800) && (Reg_Data.offset < 0x1000)) || (Reg_Data.offset > 0xD000))
+            {
+                PRINTK_AUDDRV("Invalid off set!\n");
                 return -EFAULT;
             }
             AudDrv_Clk_On();
@@ -3371,11 +3326,19 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
             {
                 return -EFAULT;
             }
-            AudDrv_Clk_On();
-            spin_lock(&auddrv_lock);
-            AP_Set_Reg(Reg_Data.offset, Reg_Data.value, Reg_Data.mask);
-            spin_unlock(&auddrv_lock);
-            AudDrv_Clk_Off();
+            if ((Reg_Data.offset >= 0x10000000) && (Reg_Data.offset < 0x12000000))
+            {
+                AudDrv_Clk_On();
+                spin_lock(&auddrv_lock);
+                AP_Set_Reg(Reg_Data.offset, Reg_Data.value, Reg_Data.mask);
+                spin_unlock(&auddrv_lock);
+                AudDrv_Clk_Off();
+            }
+            else
+            {
+                printk("Invalid registers offset!\n");
+                return -EFAULT;
+            }
             break;
         }
         case GET_AP_REG:
@@ -3385,14 +3348,22 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
             {
                 return -EFAULT;
             }
-            AudDrv_Clk_On();
-            spin_lock(&auddrv_lock);
-            Reg_Data.value = AP_Get_Reg(Reg_Data.offset);
-            spin_unlock(&auddrv_lock);
-            AudDrv_Clk_Off();
-            if (copy_to_user((void __user *)(arg), (void *)(&Reg_Data), sizeof(Reg_Data)))
+            if ((Reg_Data.offset >= 0x10000000) && (Reg_Data.offset < 0x12000000))
             {
-                return -EFAULT;
+                AudDrv_Clk_On();
+                spin_lock(&auddrv_lock);
+                Reg_Data.value = AP_Get_Reg(Reg_Data.offset);
+                spin_unlock(&auddrv_lock);
+                AudDrv_Clk_Off();
+                if (copy_to_user((void __user *)(arg), (void *)(&Reg_Data), sizeof(Reg_Data)))
+                {
+                    return -EFAULT;
+                }
+            }
+            else
+            {
+                printk("Invalid registers offset!\n");
+                return -EFAULT;   
             }
             break;
         }
@@ -4142,6 +4113,17 @@ static long AudDrv_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 
             break;
         }
+        case AUDDRV_AUDIO_CAPTURE_REMAINING:
+        {
+            Data_Remaining data;
+            AudDrv_AUDIO_CAPTURE_REMAINING(fp, &data);
+            if (copy_to_user((void __user *)(arg), (void *)(&data), sizeof(Data_Remaining)))
+            {
+                return -EFAULT;
+            }
+
+            break;
+        }
         default:
         {
             PRINTK_AUD_ERROR("AudDrv Fail IOCTL command no such ioctl cmd = %x \n", cmd);
@@ -4511,12 +4493,12 @@ ssize_t AudDrv_MEMIF_Read(struct file *fp,  char __user *data, size_t count, lof
             copy_to_user_fake(Read_Data_Ptr , read_size);
 #endif
             read_count += read_size;
-            spin_lock(&auddrv_ULInCtl_lock);
+            spin_lock_irqsave(&auddrv_ULInCtl_lock, flags);
             Afe_Block->u4DataRemained -= read_size;
             Afe_Block->u4DMAReadIdx += read_size;
             Afe_Block->u4DMAReadIdx %= Afe_Block->u4BufferSize;
             DMA_Read_Ptr = Afe_Block->u4DMAReadIdx;
-            spin_unlock(&auddrv_ULInCtl_lock);
+            spin_unlock_irqrestore(&auddrv_ULInCtl_lock, flags);
 
             Read_Data_Ptr += read_size;
             count -= read_size;
@@ -4554,12 +4536,12 @@ ssize_t AudDrv_MEMIF_Read(struct file *fp,  char __user *data, size_t count, lof
             copy_to_user_fake(Read_Data_Ptr, size_1);
 #endif
             read_count += size_1;
-            spin_lock(&auddrv_ULInCtl_lock);
+            spin_lock_irqsave(&auddrv_ULInCtl_lock, flags);
             Afe_Block->u4DataRemained -= size_1;
             Afe_Block->u4DMAReadIdx += size_1;
             Afe_Block->u4DMAReadIdx %= Afe_Block->u4BufferSize;
             DMA_Read_Ptr = Afe_Block->u4DMAReadIdx;
-            spin_unlock(&auddrv_ULInCtl_lock);
+            spin_unlock_irqrestore(&auddrv_ULInCtl_lock, flags);
             /*
             PRINTK_AUDDRV("AudDrv_MEMIF_Read finish2, copy size_1:%x, u4DMAReadIdx:0x%x, u4WriteIdx:0x%x, u4DataRemained:%x \r\n",
                 size_1,Afe_Block->u4DMAReadIdx,Afe_Block->u4WriteIdx,Afe_Block->u4DataRemained );*/
@@ -4588,11 +4570,11 @@ ssize_t AudDrv_MEMIF_Read(struct file *fp,  char __user *data, size_t count, lof
             copy_to_user_fake((Read_Data_Ptr + size_1), size_2);
 #endif
             read_count += size_2;
-            spin_lock(&auddrv_ULInCtl_lock);
+            spin_lock_irqsave(&auddrv_ULInCtl_lock, flags);
             Afe_Block->u4DataRemained -= size_2;
             Afe_Block->u4DMAReadIdx += size_2;
             DMA_Read_Ptr = Afe_Block->u4DMAReadIdx;
-            spin_unlock(&auddrv_ULInCtl_lock);
+            spin_unlock_irqrestore(&auddrv_ULInCtl_lock, flags);
 
             count -= read_size;
             Read_Data_Ptr += read_size;
@@ -4882,10 +4864,48 @@ static ssize_t audio_read_proc(struct file *fp,  char __user *data, size_t count
     
 }
 
+static ssize_t pmic_audio_read_proc(struct file *fp,  char __user *data, size_t count, loff_t *offset)
+{
+    #define AUDIOREG_CAT_LEN   (4096)
+    static bool bPrintDone = false;
+    char* stAudioInfo;
+    PRINTK_AUDDRV("pmic_audio_read_proc+\n");
+
+    if (bPrintDone == true)
+    {
+        bPrintDone = false;
+        return 0;
+    }
+
+    stAudioInfo = vmalloc(AUDIOREG_CAT_LEN);
+    if (!stAudioInfo)
+    {
+        PRINTK_AUDDRV("pmic_audio_read_proc Null stAudioInfo\n");
+        return 0;
+    }
+    AudDrv_Read_Procmem_PMIC(stAudioInfo,NULL,0,AUDIOREG_CAT_LEN,NULL,NULL);
+    if(copy_to_user(data,stAudioInfo, AUDIOREG_CAT_LEN))
+    {
+        PRINTK_AUDDRV("pmic_audio_read_proc copy_to_user fail\n");
+    }
+    vfree(stAudioInfo);
+    bPrintDone = true;
+    PRINTK_AUDDRV("pmic_audio_read_proc-\n");
+    return AUDIOREG_CAT_LEN;
+
+}
+
+
 static struct file_operations audio_proc_fops =
 {
     .read    = audio_read_proc,
 };
+
+static struct file_operations pmic_audio_proc_fops =
+{
+    .read    = pmic_audio_read_proc,
+};
+
 
 static int AudDrv_mod_init(void)
 {
@@ -4919,6 +4939,7 @@ static int AudDrv_mod_init(void)
     */
 #endif
     proc_create_data("audio",0,NULL,&audio_proc_fops,NULL);
+    proc_create_data("audiopmic",0,NULL,&pmic_audio_proc_fops,NULL);
 
 
     wake_lock_init(&Audio_wake_lock, WAKE_LOCK_SUSPEND, "Audio_WakeLock");

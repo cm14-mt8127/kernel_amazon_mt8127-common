@@ -206,6 +206,28 @@ u16 hal_rtc_get_register_status(const char * cmd)
 			return 0;
 		else
 			return 1;
+	} else if (!strcmp(cmd, "LPRST")) {
+		spar0 = rtc_read(RTC_SPAR0);
+		hal_rtc_xinfo("LPRST status(RTC_SPAR0=0x%x\n", spar0);
+
+		if (spar0 & RTC_SPAR0_LONG_PRESS_RST)
+			return 1;
+		else
+			return 0;
+	} else if (!strcmp(cmd, "ENTER_KPOC")) {
+		spar0 = rtc_read(RTC_SPAR0);
+		hal_rtc_xinfo("ENTER_KPOC status(RTC_SPAR0=0x%x\n", spar0);
+
+		if (spar0 & RTC_SPAR0_ENTER_KPOC)
+			return 1;
+		else
+			return 0;
+	} else if (!strcmp(cmd, "REBOOT_REASON")) {
+		spar0 = rtc_read(RTC_SPAR0);
+		hal_rtc_xinfo("REBOOT_REASON status(RTC_SPAR0=0x%x)\n", spar0);
+
+		return (spar0 >> RTC_SPAR0_REBOOT_REASON_SHIFT)
+					& RTC_SPAR0_REBOOT_REASON_MASK;
 	}
 	
 	return 0;
@@ -285,7 +307,7 @@ void hal_rtc_set_writeif(bool enable)
 
 void hal_rtc_mark_mode(const char *cmd)
 {
-	u16 pdn1;
+	u16 pdn1, spar0;
 
 	if (!strcmp(cmd, "recv")) {
 		pdn1 = rtc_read(RTC_PDN1) & (~RTC_PDN1_RECOVERY_MASK);
@@ -298,7 +320,29 @@ void hal_rtc_mark_mode(const char *cmd)
 	else if (!strcmp(cmd, "fast")) {
 		pdn1 = rtc_read(RTC_PDN1) & (~RTC_PDN1_FAST_BOOT);
 		rtc_write(RTC_PDN1, pdn1 | RTC_PDN1_FAST_BOOT);
+	} else if (!strcmp(cmd, "enter_kpoc")) {
+		spar0 = rtc_read(RTC_SPAR0) & (~RTC_SPAR0_ENTER_KPOC);
+		rtc_write(RTC_SPAR0, spar0 | RTC_SPAR0_ENTER_KPOC);
+	} else if (!strcmp(cmd, "clear_lprst")) {
+		spar0 = rtc_read(RTC_SPAR0) & (~RTC_SPAR0_LONG_PRESS_RST);
+		rtc_write(RTC_SPAR0, spar0);
+	} else if (!strcmp(cmd, "enter_lprst")) {
+		spar0 = rtc_read(RTC_SPAR0) & (~RTC_SPAR0_LONG_PRESS_RST);
+		rtc_write(RTC_SPAR0, spar0 | RTC_SPAR0_LONG_PRESS_RST);
+	} else if (!strcmp(cmd, "enter_sw_lprst")) {
+		spar0 = rtc_read(RTC_SPAR0) & (~RTC_SPAR0_SW_LONG_PRESS_RST);
+		rtc_write(RTC_SPAR0, spar0 | RTC_SPAR0_SW_LONG_PRESS_RST);
+	} else if (!strncmp(cmd, "reboot", 6)) {
+		u16 spar0, reason;
+		spar0 = rtc_read(RTC_SPAR0) & RTC_SPAR0_CLEAR_REBOOT_REASON;
+		reason = (cmd[6] - '0') & RTC_SPAR0_REBOOT_REASON_MASK;
+		rtc_write(RTC_SPAR0, spar0
+					| (reason << RTC_SPAR0_REBOOT_REASON_SHIFT));
+	} else if (!strcmp(cmd, "rpmbp")) {
+		spar0 = rtc_read(RTC_SPAR0) & (~RTC_SPAR0_RPMB_PROGRAM_FLAG);
+		rtc_write(RTC_SPAR0, spar0 | RTC_SPAR0_RPMB_PROGRAM_FLAG);
 	}
+
 	rtc_write_trigger();
 }
 
@@ -442,6 +486,11 @@ static void rtc_get_tick(struct rtc_time *tm) {
 	tm->tm_year = rtc_read(RTC_TC_YEA);
 }
 void hal_rtc_get_tick_time(struct rtc_time *tm) {
+	u16 bbpu;
+
+	bbpu = rtc_read(RTC_BBPU) | RTC_BBPU_KEY | RTC_BBPU_RELOAD;
+	rtc_write(RTC_BBPU, bbpu);
+	rtc_write_trigger();
 	rtc_get_tick(tm);
 	if (rtc_read(RTC_TC_SEC) < tm->tm_sec) {	/* SEC has carried */
 		rtc_get_tick(tm);
@@ -493,12 +542,12 @@ void hal_rtc_get_alarm_time(struct rtc_time *tm, struct rtc_wkalrm *alm) {
 	u16 irqen, pdn2;
 
 	irqen = rtc_read(RTC_IRQ_EN);
-	tm->tm_sec  = rtc_read(RTC_AL_SEC);
+	tm->tm_sec  = rtc_read(RTC_AL_SEC) & RTC_AL_SEC_MASK;
 	tm->tm_min  = rtc_read(RTC_AL_MIN);
 	tm->tm_hour = rtc_read(RTC_AL_HOU) & RTC_AL_HOU_MASK;
 	tm->tm_mday = rtc_read(RTC_AL_DOM) & RTC_AL_DOM_MASK;
 	tm->tm_mon  = rtc_read(RTC_AL_MTH) & RTC_AL_MTH_MASK;
-	tm->tm_year = rtc_read(RTC_AL_YEA);
+	tm->tm_year = rtc_read(RTC_AL_YEA) & RTC_AL_YEA_MASK;
 	pdn2 = rtc_read(RTC_PDN2);
 	alm->enabled = !!(irqen & RTC_IRQ_EN_AL);
 	alm->pending = !!(pdn2 & RTC_PDN2_PWRON_ALARM);	/* return Power-On Alarm bit */
@@ -512,12 +561,12 @@ void hal_rtc_set_alarm_time(struct rtc_time *tm) {
 		hal_rtc_xinfo("a = %d\n",(rtc_read(RTC_AL_MTH)& (RTC_NEW_SPARE3))|tm->tm_mon);
 		hal_rtc_xinfo("b = %d\n",(rtc_read(RTC_AL_DOM)& (RTC_NEW_SPARE1))|tm->tm_mday);
 		hal_rtc_xinfo("c = %d\n",(rtc_read(RTC_AL_HOU)& (RTC_NEW_SPARE_FG_MASK))|tm->tm_hour);
-		rtc_write(RTC_AL_YEA, tm->tm_year);
+	rtc_write(RTC_AL_YEA, (rtc_read(RTC_AL_YEA) & ~(RTC_AL_YEA_MASK)) | (tm->tm_year & RTC_AL_YEA_MASK));
 		rtc_write(RTC_AL_MTH, (rtc_read(RTC_AL_MTH) & (RTC_NEW_SPARE3))|tm->tm_mon);
 		rtc_write(RTC_AL_DOM, (rtc_read(RTC_AL_DOM) & (RTC_NEW_SPARE1))|tm->tm_mday);
 		rtc_write(RTC_AL_HOU, (rtc_read(RTC_AL_HOU) & (RTC_NEW_SPARE_FG_MASK))|tm->tm_hour);
 		rtc_write(RTC_AL_MIN, tm->tm_min);
-		rtc_write(RTC_AL_SEC, tm->tm_sec);
+	rtc_write(RTC_AL_SEC, rtc_read(RTC_AL_SEC) & (~RTC_AL_SEC_MASK) | (tm->tm_sec & RTC_AL_SEC_MASK));
 		rtc_write(RTC_AL_MASK, RTC_AL_MASK_DOW);		/* mask DOW */
 		rtc_write_trigger();
 		irqen = rtc_read(RTC_IRQ_EN) | RTC_IRQ_EN_ONESHOT_AL;
@@ -525,7 +574,8 @@ void hal_rtc_set_alarm_time(struct rtc_time *tm) {
 		rtc_write_trigger();
 	}
 
-void hal_rtc_clear_alarm(void) {
+void hal_rtc_clear_alarm(struct rtc_time *tm)
+{
 	u16 irqsta, irqen, pdn2;
 	
 	irqen = rtc_read(RTC_IRQ_EN) & ~RTC_IRQ_EN_AL;
@@ -534,6 +584,13 @@ void hal_rtc_clear_alarm(void) {
 	rtc_write(RTC_PDN2, pdn2);
 	rtc_write_trigger();
 	irqsta = rtc_read(RTC_IRQ_STA);		/* read clear */
+
+	rtc_write(RTC_AL_YEA, (rtc_read(RTC_AL_YEA) & ~(RTC_AL_YEA_MASK)) | (tm->tm_year & RTC_AL_YEA_MASK));
+	rtc_write(RTC_AL_MTH, (rtc_read(RTC_AL_MTH)&0xff00)|tm->tm_mon);
+	rtc_write(RTC_AL_DOM, (rtc_read(RTC_AL_DOM)&0xff00)|tm->tm_mday);
+	rtc_write(RTC_AL_HOU, (rtc_read(RTC_AL_HOU)&0xff00)|tm->tm_hour);
+	rtc_write(RTC_AL_MIN, tm->tm_min);
+	rtc_write(RTC_AL_SEC, tm->tm_sec);
 }
 
 void hal_rtc_set_lp_irq(void) {

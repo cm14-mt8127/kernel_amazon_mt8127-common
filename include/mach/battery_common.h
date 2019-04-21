@@ -22,8 +22,12 @@
  ****************************************************************************/
 /* #define MAX_CHARGING_TIME             1*60*60         // 1hr */
 /* #define MAX_CHARGING_TIME                   8*60*60   // 8hr */
-/* #define MAX_CHARGING_TIME                   12*60*60  // 12hr */
+#ifdef CONFIG_AUSTIN_PROJECT
+#define MAX_CHARGING_TIME                   12*60*60  /* 12hr */
+#else
 #define MAX_CHARGING_TIME                   24*60*60	/* 24hr */
+#endif
+
 
 #define MAX_POSTFULL_SAFETY_TIME		1*30*60	/* 30mins */
 #define MAX_PreCC_CHARGING_TIME		1*30*60	/* 0.5hr */
@@ -102,18 +106,22 @@ typedef enum {
 	TEMP_ABOVE_POS_60
 } temp_state_enum;
 
-
-#define TEMP_POS_60_THRESHOLD  50
-#define TEMP_POS_60_THRES_MINUS_X_DEGREE 47
+#define TEMP_POS_60_THRESHOLD  60
+#define TEMP_POS_60_THRES_MINUS_X_DEGREE 60
 
 #define TEMP_POS_45_THRESHOLD  45
-#define TEMP_POS_45_THRES_MINUS_X_DEGREE 39
+#define TEMP_POS_45_THRES_MINUS_X_DEGREE 45
 
+#ifdef CONFIG_AUSTIN_PROJECT
+#define TEMP_POS_10_THRESHOLD  15
+#define TEMP_POS_10_THRES_PLUS_X_DEGREE 15
+#else
 #define TEMP_POS_10_THRESHOLD  10
-#define TEMP_POS_10_THRES_PLUS_X_DEGREE 16
+#define TEMP_POS_10_THRES_PLUS_X_DEGREE 10
+#endif
 
 #define TEMP_POS_0_THRESHOLD  0
-#define TEMP_POS_0_THRES_PLUS_X_DEGREE 6
+#define TEMP_POS_0_THRES_PLUS_X_DEGREE 0
 
 #ifdef CONFIG_MTK_FAN5405_SUPPORT
 #define TEMP_NEG_10_THRESHOLD  0
@@ -136,12 +144,21 @@ typedef enum {
 } batt_temp_state_enum;
 
 /*****************************************************************************
+ *  Test Mode
+ ****************************************************************************/
+typedef enum {
+	TESTMODE_NONE = 0,
+	TESTMODE_DISABLE_CHARGING,
+	TESTMODE_ENABLE_CHARGING,
+} batt_test_mode_enum;
+
+/*****************************************************************************
  *  structure
  ****************************************************************************/
 typedef struct {
 	kal_bool bat_exist;
 	kal_bool bat_full;
-	INT32 bat_charging_state;
+	INT32 bat_charging_state; /* use leading 16bit for test mode use */
 	UINT32 bat_vol;
 	kal_bool bat_in_recharging_state;
 	kal_uint32 Vsense;
@@ -164,6 +181,7 @@ typedef struct {
 	UINT32 nPercent_ZCV;
 	UINT32 nPrecent_UI_SOC_check_point;
 	UINT32 ZCV;
+	kal_bool bat_in_charging_enable;
 } PMU_ChargerStruct;
 
 /*****************************************************************************
@@ -175,6 +193,12 @@ extern kal_bool g_ftm_battery_flag;
 extern int charging_level_data[1];
 extern kal_bool g_call_state;
 extern kal_bool g_charging_full_reset_bat_meter;
+extern signed int g_custom_charging_current;
+extern signed int g_custom_charging_cv;
+#ifdef CONFIG_AUSTIN_PROJECT
+extern unsigned int g_custom_charging_mode;
+#endif
+
 #if defined(CONFIG_MTK_PUMP_EXPRESS_SUPPORT) || defined(CONFIG_MTK_PUMP_EXPRESS_PLUS_SUPPORT)
 extern kal_bool ta_check_chr_type;
 extern kal_bool ta_cable_out_occur;

@@ -537,6 +537,7 @@
 #include <linux/inetdevice.h>   /* struct in_device */
 
 #include <linux/ip.h>           /* struct iphdr */
+#include <net/ipv6.h>
 
 #include <linux/string.h>       /* for memcpy()/memset() function */
 #include <linux/stddef.h>       /* for offsetof() macro */
@@ -995,6 +996,7 @@ enum TestModeCmdType {
 	TESTMODE_CMD_ID_WAPI = 2,
 	TESTMODE_CMD_ID_HS20 = 3,
 	TESTMODE_CMD_ID_POORLINK = 4,
+	TESTMODE_CMD_ID_WAKEUP_STATISTICS = 8,
 	TESTMODE_CMD_ID_STATISTICS = 0x10,
 	TESTMODE_CMD_ID_LINK_DETECT = 0x20,
 	/* old test mode command id, compatible with exist testmode command */
@@ -1066,6 +1068,21 @@ struct wpa_driver_hs20_data_s {
 #endif /* CFG_SUPPORT_HOTSPOT_2_0 */
 
 #endif
+
+typedef struct _COUNTRY_POWER_TABLE {
+	UINT_8 auCountryCode[2];	/* ISO/IEC 3166-1 two-character country codes  */
+	TX_PWR_PARAM_T rTxPwr;
+	UINT_8 ucTxPwrValid;
+	BANDEDGE_2G_T r2GBandEdgePwr;
+	UINT_8 ucSupport5GBand;
+	BANDEDGE_5G_T r5GBandEdgePwr;
+} COUNTRY_POWER_TABLE, *P_COUNTRY_POWER_TABLE;
+
+struct board_id_power_table_map {
+	char board_id[5];
+	COUNTRY_POWER_TABLE *power_table;
+	int tbl_size;
+};
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -1217,17 +1234,17 @@ struct wpa_driver_hs20_data_s {
 ********************************************************************************
 */
 #ifdef WLAN_INCLUDE_PROC
-INT_32
-procRemoveProcfs (
-    struct net_device *prDev,
-    char *pucDevName
-    );
-
+INT_32 procRemoveProcfs(VOID);
+INT_32 procCreateFsEntry(P_GLUE_INFO_T prGlueInfo);
+INT_32 procInitFs(VOID);
+INT_32 procUninitProcFs(VOID);
+#if 0
 INT_32
 procInitProcfs (
     struct net_device *prDev,
     char *pucDevName
     );
+#endif
 #endif /* WLAN_INCLUDE_PROC */
 
 #if CFG_ENABLE_BT_OVER_WIFI
@@ -1286,9 +1303,18 @@ p2pSetMulticastListWorkQueueWrapper(
     P_GLUE_INFO_T prGlueInfo
     );
 
-
+INT_32 wlanRegulatoryHint(PUINT_8 uCountryCode);
+P_COUNTRY_POWER_TABLE wlanGetUpdatedPowerTable(P_UINT_8 paucCountry);
 
 #endif
+
+int glRegisterPlatformDev(void);
+int glUnregisterPlatformDev(void);
+int glWlanSetSuspendFlag(void);
+int glWlanGetSuspendFlag(void);
+int glWlanClearSuspendFlag(void);
+int glIndicateWoWPacket(void *data);
+int glWlanSetIndicateWoWFlag(void);
 
 /*******************************************************************************
 *                              F U N C T I O N S

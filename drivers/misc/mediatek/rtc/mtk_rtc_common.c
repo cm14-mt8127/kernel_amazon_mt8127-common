@@ -1,4 +1,5 @@
 /*
+
  * Copyright (C) 2010 MediaTek, Inc.
  *
  *
@@ -63,6 +64,7 @@
 #include <mach/system.h>
 #include <mach/mt_boot.h>
 #endif
+#include <mach/mt_rtc_hw.h>
 #include <rtc-mt.h>		/* custom file */
 /* #include <linux/printk.h> */
 
@@ -231,6 +233,56 @@ bool crystal_exist_status(void)
 }
 EXPORT_SYMBOL(crystal_exist_status);
 
+static unsigned long rtc_lock_flags;
+void rtc_acquire_lock(void)
+{
+	spin_lock_irqsave(&rtc_lock, rtc_lock_flags);
+}
+EXPORT_SYMBOL(rtc_acquire_lock);
+
+void rtc_release_lock(void)
+{
+	spin_unlock_irqrestore(&rtc_lock, rtc_lock_flags);
+}
+EXPORT_SYMBOL(rtc_release_lock);
+
+bool rtc_lprst_detected(void)
+{
+	unsigned long flags;
+	u16 ret;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	ret = hal_rtc_get_register_status("LPRST");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+
+	return ret;
+}
+
+bool rtc_enter_kpoc_detected(void)
+{
+	unsigned long flags;
+	u16 ret;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	ret = hal_rtc_get_register_status("ENTER_KPOC");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+
+	return ret;
+}
+
+int rtc_get_reboot_reason(void)
+{
+	unsigned long flags;
+	u16 ret;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	ret = hal_rtc_get_register_status("REBOOT_REASON");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL(rtc_get_reboot_reason);
+
 /*
 * Only for GPS to check the status.
 * Others do not use this API
@@ -348,6 +400,15 @@ void rtc_mark_kpoc(void)
 	hal_rtc_mark_mode("kpoc");
 	spin_unlock_irqrestore(&rtc_lock, flags);
 }
+
+void rtc_mark_enter_kpoc(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode("enter_kpoc");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
 #endif
 void rtc_mark_fast(void)
 {
@@ -355,6 +416,55 @@ void rtc_mark_fast(void)
 
 	spin_lock_irqsave(&rtc_lock, flags);
 	hal_rtc_mark_mode("fast");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+
+void rtc_mark_clear_lprst(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode("clear_lprst");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+
+void rtc_mark_enter_lprst(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode("enter_lprst");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+
+void rtc_mark_enter_sw_lprst(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode("enter_sw_lprst");
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+
+void rtc_mark_reboot_reason(int reason)
+{
+	unsigned long flags;
+	char buf[8];
+
+	strcpy(buf, "reboot?");
+	buf[6] = (reason & RTC_SPAR0_REBOOT_REASON_MASK) + '0';
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode(buf);
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+EXPORT_SYMBOL(rtc_mark_reboot_reason);
+
+void rtc_mark_rpmbp(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&rtc_lock, flags);
+	hal_rtc_mark_mode("rpmbp");
 	spin_unlock_irqrestore(&rtc_lock, flags);
 }
 
@@ -413,6 +523,10 @@ static void rtc_handler(void)
 		spin_unlock(&rtc_lock);
 		return;
 	}
+	if (unlikely(NULL == rtc)) {
+		spin_unlock(&rtc_lock);
+		return;
+	}
 #if RTC_RELPWR_WHEN_XRST
 	/* set AUTO bit because AUTO = 0 when PWREN = 1 and alarm occurs */
 	hal_rtc_reload_power();
@@ -449,7 +563,12 @@ static void rtc_handler(void)
 			pwron_alm = true;
 #endif
 		} else if (now_time < time) {	/* set power-on alarm */
+			if (tm.tm_sec == 0) {
+				tm.tm_sec = 59;
+				tm.tm_min -= 1;
+			} else {
 			tm.tm_sec -= 1;
+			}
 			hal_rtc_set_alarm_time(&tm);
 		}
 	}
@@ -608,7 +727,7 @@ static int rtc_ops_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	}
 
 	/* disable alarm and clear Power-On Alarm bit */
-	hal_rtc_clear_alarm();
+	hal_rtc_clear_alarm(tm);
 
 	if (alm->enabled) {
 		hal_rtc_set_alarm_time(tm);

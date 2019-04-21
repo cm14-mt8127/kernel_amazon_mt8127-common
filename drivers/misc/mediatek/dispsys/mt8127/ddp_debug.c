@@ -101,8 +101,6 @@ static char STR_HELP[] =
     "ACTION\n"
     "       regr:addr\n"
     "\n"
-    "       regw:addr,value\n"
-    "\n"
     "       dbg_log:0|1\n"
     "\n"
     "       irq_log:0|1\n"
@@ -186,27 +184,11 @@ static void process_dbg_opt(const char *opt)
         char *p = (char *)opt + 5;
         unsigned int addr = (unsigned int) simple_strtoul(p, &p, 16);
 
-        if (addr >= 0xf4000000 && addr <= 0xf5000000)
+        if (addr) 
         {
             unsigned int regVal = DISP_REG_GET(addr);
             DISP_MSG("regr: 0x%08X = 0x%08X\n", addr, regVal);
             sprintf(buf, "regr: 0x%08X = 0x%08X\n", addr, regVal);
-        } else {
-            goto Error;
-        }
-    }
-    else if (0 == strncmp(opt, "regw:", 5))
-    {
-        char *p = (char *)opt + 5;
-        unsigned int addr = (unsigned int) simple_strtoul(p, &p, 16);
-        unsigned int val = (unsigned int) simple_strtoul(p + 1, &p, 16);
-        if (addr >= 0xf4000000 && addr <= 0xf5000000)
-        {
-            unsigned int regVal;
-            DISP_REG_SET(addr, val);
-            regVal = DISP_REG_GET(addr);
-            DISP_DBG("regw: 0x%08X, 0x%08X = 0x%08X\n", addr, val, regVal);
-            sprintf(buf, "regw: 0x%08X, 0x%08X = 0x%08X\n", addr, val, regVal);
         } else {
             goto Error;
         }
@@ -306,6 +288,9 @@ static void process_dbg_opt(const char *opt)
             for (i = 0; i < LUMA_HIST_BIN; i++)
             {
                 DISP_DBG("LUMA_HIST_%02d: %d\n", i, hist[i]);
+#if 1 //def monica_porting
+				if (strlen(dbg_buf) <= 2018)
+#endif
                 sprintf(dbg_buf + strlen(dbg_buf), "LUMA_HIST_%2d: %d\n", i, hist[i]);
             }
         }
@@ -319,10 +304,16 @@ static void process_dbg_opt(const char *opt)
             ReleaseUpdateMutex();
 
             DISP_DBG("pwmDuty: %lu\n", param.pwmDuty);
+#if 1 //def monica_porting
+			if (strlen(dbg_buf) <= 2018)
+#endif
             sprintf(dbg_buf + strlen(dbg_buf), "pwmDuty: %lu\n", param.pwmDuty);
             for (i = 0; i < LUMA_CURVE_POINT; i++)
             {
                 DISP_DBG("lumaCurve[%02d]: %lu\n", i, param.lumaCurve[i]);
+#if 1 //def monica_porting
+				if (strlen(dbg_buf) <= 2018)
+#endif
                 sprintf(dbg_buf + strlen(dbg_buf), "lumaCurve[%02d]: %lu\n", i, param.lumaCurve[i]);
             }
         }

@@ -131,7 +131,6 @@ static size_t ram_console_buffer_size;
 
 static DEFINE_SPINLOCK(ram_console_lock);
 
-static atomic_t rc_in_fiq = ATOMIC_INIT(0);
 
 #ifdef __aarch64__
 static void *_memcpy(void *dest, const void *src, size_t count)
@@ -350,7 +349,6 @@ void aee_sram_fiq_save_bin(const char *msg, size_t len)
 		len -= len % 4;
 	}
 
-	atomic_set(&rc_in_fiq, 1);
 
 	while ((delay > 0) && (spin_is_locked(&ram_console_lock))) {
 		udelay(1);
@@ -373,8 +371,6 @@ void aee_sram_fiq_save_bin(const char *msg, size_t len)
 
 void aee_disable_ram_console_write(void)
 {
-	atomic_set(&rc_in_fiq, 1);
-	return;
 }
 
 void aee_sram_fiq_log(const char *msg)
@@ -386,7 +382,6 @@ void aee_sram_fiq_log(const char *msg)
 		return;
 	}
 
-	atomic_set(&rc_in_fiq, 1);
 
 	while ((delay > 0) && (spin_is_locked(&ram_console_lock))) {
 		udelay(1);
@@ -401,8 +396,6 @@ void ram_console_write(struct console *console, const char *s, unsigned int coun
 {
 	unsigned long flags;
 
-	if (atomic_read(&rc_in_fiq))
-		return;
 
 	spin_lock_irqsave(&ram_console_lock, flags);
 
@@ -455,6 +448,12 @@ static void __init ram_console_save_old(struct ram_console_buffer *buffer)
 		header_size = buffer->off_console;
 	else
 		header_size = buffer->off_linux + ALIGN(sizeof(struct last_reboot_reason), 64);
+
+	if (header_size > 8192) {
+		pr_err("ram_console: invalid head_size[%x], skip saving old log\n", header_size);
+		return;
+	}
+
 	pr_err("ram_console: old_header[%p], buffer[%p], header_size[%x]\n", ram_console_old_header, buffer, header_size);
 	memcpy(ram_console_old_header, buffer, header_size);
 	if (ram_console_old_header->off_pl == 0 || ram_console_old_header->off_pl + ALIGN(ram_console_old_header->sz_pl, 64) != ram_console_old_header->off_lpl) {
@@ -466,18 +465,18 @@ static void __init ram_console_save_old(struct ram_console_buffer *buffer)
 	}
 	pr_err("ram_console:bin_log_count[%x]\n", buffer->bin_log_count);
 	if (buffer->bin_log_count == 0) {
-		ram_console_old_log_init_buffer = kmalloc(total_size, GFP_KERNEL);
+		ram_console_old_log_init_buffer = kmalloc(old_log_size, GFP_KERNEL);
 		if (ram_console_old_log_init_buffer == NULL) {
 			pr_err("ram_console: failed to allocate old buffer\n");
 			return;
 		}
 
 		ram_console_old_log = ram_console_old_log_init_buffer;
-		ram_console_old_log_size = total_size;
+		ram_console_old_log_size = old_log_size;
 
 		memcpy(ram_console_old_log_init_buffer,
-		       rc_console + buffer->start, buffer->size - buffer->start);
-		memcpy(ram_console_old_log_init_buffer + buffer->size - buffer->start,
+		       rc_console + buffer->start, old_log_size - buffer->start);
+		memcpy(ram_console_old_log_init_buffer + old_log_size - buffer->start,
 		       rc_console, buffer->start);
 	} else {
 		bin_log_size = buffer->bin_log_count * 5 / 4;	/* bin: 12 34 56 78-->ascill: 78654321z */
@@ -546,23 +545,29 @@ static int __init ram_console_init(struct ram_console_buffer *buffer, size_t buf
 	if (ram_console_old_header == 0) {
 		pr_err("ram_console: failed to kmalloc 0x%zx\n", buffer_size);
 	}
+
 	if (buffer->sig != REBOOT_REASON_SIG) {
 		pr_err("ram_console: sig mismatch(0x%08x)\n", buffer->sig);
 		memset((void*)buffer, 0, buffer_size);
 		buffer->sig = REBOOT_REASON_SIG;
 	}
-	if (buffer->off_console != 0 && buffer->off_linux + ALIGN(sizeof(struct last_reboot_reason), 64) == buffer->off_console) {
-		pr_err("ram_console: log size 0x%x, start 0x%x\n", buffer->size, buffer->start);
+	if ((buffer->off_console != 0 && buffer->off_linux + ALIGN(sizeof(struct last_reboot_reason), 64) == buffer->off_console) &&
+		(buffer->size != 0)) {
+		pr_err("ram_console: log size 0x%x, start 0x%x, off_console 0x%x, buffer_size 0x%x\n", buffer->size, buffer->start, buffer->off_console, buffer_size);
 		ram_console_save_old(buffer);
 	} else {
+		pr_err("ram_console: no valid old log is found\n");
 		if (buffer->sz_lk != 0 && buffer->off_lk + ALIGN(buffer->sz_lk, 64) == buffer->off_llk)
 			buffer->off_linux = buffer->off_llk + ALIGN(buffer->sz_lk, 64);
 		else
 			buffer->off_linux = 512; /* OTA:leave enough space for pl/lk */
+
+		/* Avoid invalid off_linux overflows buffer */
+		buffer->off_linux = min(buffer->off_linux, (uint32_t)((char*)buffer + (buffer_size / 2)));
 		buffer->off_console = buffer->off_linux + ALIGN(sizeof(struct last_reboot_reason), 64);
 	}
 	ram_console_buffer_size = buffer_size - buffer->off_console;
-	memset((void*)buffer + buffer->off_linux, 0, buffer_size - buffer->off_linux);
+	memset((char*)buffer + buffer->off_linux, 0, buffer_size - buffer->off_linux);
 
 	register_console(&ram_console);
 
@@ -725,23 +730,26 @@ static int __init ram_console_late_init(void)
 
 
 	str_real_len =
-	    sprintf(ram_console_header_buffer, "ram console header, hw_status: %u, fiq step %u.\n",
-		    LAST_RRPL_VAL(wdt_status), LAST_RRR_VAL(fiq_step));
+	    sprintf(ram_console_header_buffer, "ram console header, hw_status: %u, fiq step %u, dpidle %u.\n",
+		    LAST_RRPL_VAL(wdt_status), LAST_RRR_VAL(fiq_step), LAST_RRR_VAL(deepidle_data));
 
 	str_real_len +=
 	    sprintf(ram_console_header_buffer + str_real_len, "bin log %d.\n",
 		    ram_console_old_header->bin_log_count);
 
-	ram_console_old_log = kmalloc(ram_console_old_log_size + str_real_len, GFP_KERNEL);
+	ram_console_old_log = kmalloc(ram_console_old_log_size + str_real_len + 1, GFP_KERNEL);
 	if (ram_console_old_log == NULL) {
 		pr_err("ram_console: failed to allocate buffer for old log\n");
 		ram_console_old_log_size = 0;
 		kfree(ram_console_header_buffer);
 		return 0;
 	}
-	memcpy(ram_console_old_log, ram_console_header_buffer, str_real_len);
-	memcpy(ram_console_old_log + str_real_len,
+	memcpy(ram_console_old_log,
 	       ram_console_old_log_init_buffer, ram_console_old_log_size);
+	memcpy(ram_console_old_log + ram_console_old_log_size, ram_console_header_buffer, str_real_len);
+
+	/* append string terminator at the end of buffer */
+	ram_console_old_log[ram_console_old_log_size + str_real_len] = 0;
 
 	kfree(ram_console_header_buffer);
 	kfree(ram_console_old_log_init_buffer);

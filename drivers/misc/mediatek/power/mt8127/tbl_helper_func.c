@@ -21,6 +21,10 @@
 #include "bq24296.h"
 #endif
 
+#ifdef CONFIG_MTK_SN2871_SUPPORT
+#include "sn2871.h"
+#endif
+
 #ifdef CONFIG_MTK_NCP1851_SUPPORT
 #include "ncp1851.h"
 #endif
@@ -65,12 +69,32 @@ void tbl_charger_otg_vbus(int mode)
         bq24297_set_en_hiz(0x0);
 #endif
 
-#ifdef CONFIG_MTK_BQ24296_SUPPORT
+#if defined(CONFIG_MTK_BQ24296_SUPPORT) && defined(CONFIG_MTK_SN2871_SUPPORT)
+	if (bq24296_is_found == KAL_TRUE) {
         bq24296_set_chg_config(0x0); //disable charge
         bq24296_set_otg_config(0x1); //OTG
         bq24296_set_boostv(0x7); //boost voltage 4.998V
         bq24296_set_boost_lim(0x1); //1.5A on VBUS
         bq24296_set_en_hiz(0x0);
+	} else if (sn2871_is_found == KAL_TRUE) {
+        sn2871_chg_en(0x0); //OTG
+        sn2871_otg_en(0x1); //OTG
+        sn2871_set_boost_vlim(0x7); //boost voltage 4.998V
+        sn2871_set_boost_ilim(0x3); //1.4A on VBUS
+        sn2871_set_en_hiz(0x0);
+	} else {
+        bq24296_set_chg_config(0x0); //disable charge
+        bq24296_set_otg_config(0x1); //OTG
+        bq24296_set_boostv(0x7); //boost voltage 4.998V
+        bq24296_set_boost_lim(0x1); //1.5A on VBUS
+        bq24296_set_en_hiz(0x0);
+	}
+#elif defined(CONFIG_MTK_BQ24296_SUPPORT)
+	bq24296_set_chg_config(0x0); //disable charge
+	bq24296_set_otg_config(0x1); //OTG
+	bq24296_set_boostv(0x7); //boost voltage 4.998V
+	bq24296_set_boost_lim(0x1); //1.5A on VBUS
+	bq24296_set_en_hiz(0x0);
 #endif
 
 #ifdef CONFIG_MTK_NCP1851_SUPPORT
@@ -104,9 +128,20 @@ void tbl_charger_otg_vbus(int mode)
         bq24297_set_otg_config(0x0); //OTG & Charge disabled
 #endif
 
-#ifdef CONFIG_MTK_BQ24296_SUPPORT
+#if defined(CONFIG_MTK_BQ24296_SUPPORT) && defined(CONFIG_MTK_SN2871_SUPPORT)
+	if (bq24296_is_found == KAL_TRUE) {
         bq24296_set_otg_config(0x0); //OTG disabled
         bq24296_set_chg_config(0x0); //Charge disabled
+	} else if (sn2871_is_found == KAL_TRUE) {
+		sn2871_otg_en(0x0);
+		sn2871_chg_en(0x0);
+	} else {
+		bq24296_set_otg_config(0x0); //OTG disabled
+		bq24296_set_chg_config(0x0); //Charge disabled
+	}
+#elif defined(CONFIG_MTK_BQ24296_SUPPORT)
+	bq24296_set_otg_config(0x0); //OTG disabled
+	bq24296_set_chg_config(0x0); //Charge disabled
 #endif
 
 #ifdef CONFIG_MTK_NCP1851_SUPPORT

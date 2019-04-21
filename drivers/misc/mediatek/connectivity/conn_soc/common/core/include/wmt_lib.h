@@ -79,7 +79,6 @@ when mtk_wcn_wmt_func_on is called by wifi through rfkill)
 #define MAX_GPIO_CTRL_TIME (2000) /* [FixMe][GeorgeKuo] a temp value */
 
 #define MAX_PATCH_NUM 10
-
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
@@ -311,6 +310,7 @@ extern PUINT8 wmt_lib_get_cpupcr_xml_format(PUINT32 len);
 extern INT32 wmt_lib_register_thermal_ctrl_cb(thermal_query_ctrl_cb thermal_ctrl);
 extern UINT32 wmt_lib_set_host_assert_info(UINT32 type,UINT32 reason,UINT32 en);
 extern INT8 wmt_lib_co_clock_get(VOID);
+extern INT32 wmt_lib_trigger_reset(VOID);
 #if CFG_WMT_LTE_COEX_HANDLING
 extern MTK_WCN_BOOL wmt_lib_handle_idc_msg(ipc_ilm_t *idc_infor);
 #endif

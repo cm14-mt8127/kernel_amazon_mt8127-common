@@ -297,6 +297,7 @@ mtk_wcn_wmt_func_ctrl_for_plat (UINT32 on,
     ENUM_WMTDRV_TYPE_T type);
 
 extern INT32 mtk_wcn_wmt_system_state_reset(VOID);
+extern MTK_WCN_BOOL mtk_wcn_wmt_do_reset(ENUM_WMTDRV_TYPE_T type);
 
 #ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 extern VOID mtk_wcn_wmt_exp_init(VOID);

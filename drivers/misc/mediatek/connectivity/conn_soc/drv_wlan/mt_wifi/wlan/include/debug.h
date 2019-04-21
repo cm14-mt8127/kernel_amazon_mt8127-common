@@ -200,6 +200,7 @@ typedef enum _ENUM_DBG_MODULE_T {
     DBG_WAPI_IDX,           /* WAPI */
     DBG_ROAMING_IDX,        /* ROAMING */
 	DBG_TDLS_IDX,			/* TDLS */ /* CFG_SUPPORT_TDLS */
+	DBG_OID_IDX,
 
     DBG_MODULE_NUM          /* Notice the XLOG check */
 } ENUM_DBG_MODULE_T;
@@ -277,32 +278,32 @@ typedef enum _ENUM_DBG_MODULE_T {
     /* The following macros are used for future debug message. */
     /* TODO(Kevin): We should remove INITLOG/ERRORLOG/WARNLOG macro sooner or later */
     #define INITLOG(_Fmt) \
-    { \
+    do { \
         if (aucDebugModule[DBG_INIT_IDX] & DBG_CLASS_TRACE) { \
             LOG_FUNC("%s: ", __FUNCTION__); \
             LOG_FUNC _Fmt; \
         } \
-    }
+    } while (0)
 
     #define ERRORLOG(_Fmt) \
-    { \
+    do { \
         if (aucDebugModule[DBG_INIT_IDX] & DBG_CLASS_ERROR) { \
             LOG_FUNC("**Error[%s:%d]-", __FILE__, __LINE__); \
             LOG_FUNC _Fmt; \
         } \
-    }
+    } while (0)
 
     #define WARNLOG(_Fmt) \
-    { \
+    do { \
         if (aucDebugModule[DBG_INIT_IDX] & DBG_CLASS_WARN) { \
             LOG_FUNC("**Warning[%s:%d]-", __FILE__, __LINE__); \
             LOG_FUNC _Fmt; \
         } \
-    }
+    } while (0)
 
     /*lint -save -e960 Multiple use of '#/##' */
     #define DBGLOG(_Module, _Class, _Fmt) \
-        { \
+    do { \
             if (aucDebugModule[DBG_##_Module##_IDX] & DBG_CLASS_##_Class) { \
                 if (DBG_CLASS_##_Class == DBG_CLASS_ERROR) { \
                     LOG_FUNC_TIME("[wlan] **Error[%s:%d]-", __FILE__, __LINE__); \
@@ -317,23 +318,23 @@ typedef enum _ENUM_DBG_MODULE_T {
                 } \
                 LOG_FUNC _Fmt; \
             } \
-        }
+    } while (0)
 
     #define DBGLOG_MEM8(_Module, _Class, _StartAddr, _Length) \
-        { \
+    do { \
             if (aucDebugModule[DBG_##_Module##_IDX] & DBG_CLASS_##_Class) { \
                 LOG_FUNC("%s: (" #_Module " " #_Class ")\n", __FUNCTION__); \
                 dumpMemory8((PUINT_8) (_StartAddr), (UINT_32) (_Length)); \
             } \
-        }
+    } while (0)
 
     #define DBGLOG_MEM32(_Module, _Class, _StartAddr, _Length) \
-        { \
+    do { \
             if (aucDebugModule[DBG_##_Module##_IDX] & DBG_CLASS_##_Class) { \
                 LOG_FUNC("%s: (" #_Module " " #_Class ")\n", __FUNCTION__); \
                 dumpMemory32((PUINT_32) (_StartAddr), (UINT_32) (_Length)); \
             } \
-        }
+    } while (0)
     /*lint -restore */
 
     /*lint -save -e961 use of '#undef' is discouraged */
@@ -375,7 +376,7 @@ typedef enum _ENUM_DBG_MODULE_T {
 
 #if defined(LINUX)
     #define DBGLOG(_Module, _Class, _Fmt) \
-    { \
+    do { \
         if (aucDebugModule[DBG_##_Module##_IDX] & DBG_CLASS_##_Class) { \
             if (DBG_CLASS_##_Class == DBG_CLASS_ERROR) { \
                 LOG_FUNC_TIME("[wlan] **Error[%s:%d]-", __FILE__, __LINE__); \
@@ -390,7 +391,7 @@ typedef enum _ENUM_DBG_MODULE_T {
             } \
             LOG_FUNC _Fmt; \
         } \
-    }
+    } while (0)
 #else
     #define DBGLOG(_Module, _Class, _Fmt)
 #endif

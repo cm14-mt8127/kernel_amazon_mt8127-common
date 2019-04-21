@@ -244,19 +244,19 @@ static struct i2c_driver TMP103_HW_i2c_driver = {
 static char cmd_buf[10];
 static ssize_t TMP103_HW_Write_Proc(struct file *file, const char *buf, unsigned long len, void *data)
 {
-		int ret;
-	  int i_par=0;
-	  
-	  ret = copy_from_user(cmd_buf, buf, len);
-	  if (ret < 0)return -1;
+	int i_par=0;
+	 
+	len = (len < (sizeof(cmd_buf) - 1)) ? len : (sizeof(cmd_buf) - 1);
+	if (copy_from_user(cmd_buf, buf, len))
+		return -1;
 	  	
-	  cmd_buf[len] = '\0';
-	  printk("[****TMP103_HW_Write_Proc****] %s\n", cmd_buf);
+	cmd_buf[len] = '\0';
+	printk("[****TMP103_HW_Write_Proc****] %s\n", cmd_buf);
 
-		sscanf(cmd_buf, "%d ", &i_par);
-		i_enable_dbg = i_par;
+	sscanf(cmd_buf, "%d ", &i_par);
+	i_enable_dbg = i_par;
 		
-    return -1;
+	return -1;
 }
 
 static int TMP103_HW_Read_Proc(char *buf, char **start, off_t off, int count, int *eof, void *data)

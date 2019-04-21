@@ -55,7 +55,7 @@ typedef struct {
 
 // map_p: 0 = no remap, 1 = remap
 TZ_RESULT kree_register_sharedmem (KREE_SESSION_HANDLE session, KREE_SHAREDMEM_HANDLE *mem_handle, 
-    uint32_t start, uint32_t size, uint32_t map_p);
+    uint32_t start, uint32_t size, void *map_p);
 
 TZ_RESULT kree_unregister_sharedmem (KREE_SESSION_HANDLE session, KREE_SHAREDMEM_HANDLE mem_handle);    
 

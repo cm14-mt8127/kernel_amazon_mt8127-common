@@ -140,8 +140,7 @@ static const UINT_16     g_u2CountryGroup1[] =
 {
     COUNTRY_CODE_AS,    COUNTRY_CODE_AI,    COUNTRY_CODE_BM,    COUNTRY_CODE_CA,
     COUNTRY_CODE_KY,    COUNTRY_CODE_GU,    COUNTRY_CODE_FM,    COUNTRY_CODE_PR,
-    COUNTRY_CODE_US,    COUNTRY_CODE_VI,
-
+    COUNTRY_CODE_US,    COUNTRY_CODE_VI,    COUNTRY_CODE_EL,    COUNTRY_CODE_PZ,
 };
 static const UINT_16     g_u2CountryGroup2[] = {
     COUNTRY_CODE_AR,    COUNTRY_CODE_AU,    COUNTRY_CODE_AZ,    COUNTRY_CODE_BW,
@@ -181,7 +180,7 @@ static const UINT_16     g_u2CountryGroup5[] =
     COUNTRY_CODE_TR,    COUNTRY_CODE_TC,    COUNTRY_CODE_GB,    COUNTRY_CODE_VA,
     COUNTRY_CODE_FR
 };
-static const UINT_16     g_u2CountryGroup6[] = {COUNTRY_CODE_JP};
+static const UINT_16     g_u2CountryGroup6[] = {COUNTRY_CODE_JP,     COUNTRY_CODE_UK};
 static const UINT_16     g_u2CountryGroup7[] =
 {
     COUNTRY_CODE_AM,    COUNTRY_CODE_IL,    COUNTRY_CODE_KW,    COUNTRY_CODE_MA,
@@ -237,8 +236,12 @@ static const UINT_16     g_u2CountryGroup21[] =
     COUNTRY_CODE_UDF
 };
 
+static const UINT_16     g_u2CountryGroup22[] =
+{
+    COUNTRY_CODE_WW
+};
 
-#define REG_DOMAIN_DEF_IDX        20  /* EU (Europe Union) */
+#define REG_DOMAIN_DEF_IDX        22  /* WW (World Wide) */
 
 DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
     {
@@ -259,8 +262,10 @@ DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
             {  81, BAND_2G4, CHNL_SPAN_5,    1,  11,  FALSE }, /* CH_SET_2G4_1_11 */
 
             { 115, BAND_5G,  CHNL_SPAN_20,  36,   4,  FALSE }, /* CH_SET_UNII_LOW_36_48 */
+#if !CFG_CUSTOM_REG
             { 118, BAND_5G,  CHNL_SPAN_20,  52,   4,  FALSE }, /* CH_SET_UNII_MID_52_64 */
             { 121, BAND_5G,  CHNL_SPAN_20, 100,  12,  FALSE }, /* CH_SET_UNII_WW_100_144 */
+#endif
             { 125, BAND_5G,  CHNL_SPAN_20, 149,   5,  FALSE }, /* CH_SET_UNII_UPPER_149_165 */
             {   0, BAND_NULL,           0,   0,   0,  FALSE }
         }
@@ -307,8 +312,10 @@ DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
             {  81, BAND_2G4, CHNL_SPAN_5,    1,  13,  FALSE }, /* CH_SET_2G4_1_13 */
 
             { 115, BAND_5G,  CHNL_SPAN_20,  36,   4,  FALSE }, /* CH_SET_UNII_LOW_36_48 */
+#if !CFG_CUSTOM_REG
             { 118, BAND_5G,  CHNL_SPAN_20,  52,   4,  FALSE }, /* CH_SET_UNII_MID_52_64 */
             { 121, BAND_5G,  CHNL_SPAN_20, 100,  11,  FALSE }, /* CH_SET_UNII_WW_100_140 */
+#endif
             { 125, BAND_NULL,           0,   0,   0,  FALSE }, /* CH_SET_UNII_UPPER_NA */
             {   0, BAND_NULL,           0,   0,   0,  FALSE }
         }
@@ -317,11 +324,13 @@ DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
         (PUINT_16) g_u2CountryGroup6, sizeof(g_u2CountryGroup6) / 2,
         {
             {  81, BAND_2G4, CHNL_SPAN_5,    1,  13,  FALSE }, /* CH_SET_2G4_1_13 */
-            {  82, BAND_2G4, CHNL_SPAN_5,   14,   1,  FALSE }, /* CH_SET_2G4_14_14 */
             { 115, BAND_5G,  CHNL_SPAN_20,  36,   4,  FALSE }, /* CH_SET_UNII_LOW_36_48 */
+#if !CFG_CUSTOM_REG
             { 118, BAND_5G,  CHNL_SPAN_20,  52,   4,  FALSE }, /* CH_SET_UNII_MID_52_64 */
             { 121, BAND_5G,  CHNL_SPAN_20, 100,  11,  FALSE }, /* CH_SET_UNII_WW_100_140 */
+#endif
             { 125, BAND_NULL,           0,   0,   0,  FALSE }, /* CH_SET_UNII_UPPER_NA*/
+	    {   0, BAND_NULL,           0,   0,   0,  FALSE }
         }
     },
     {
@@ -487,8 +496,10 @@ DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
             {  81, BAND_2G4, CHNL_SPAN_5,    1,  13,  FALSE }, /* CH_SET_2G4_1_13 */
 
             { 115, BAND_5G,  CHNL_SPAN_20,  36,   4,  FALSE }, /* CH_SET_UNII_LOW_36_48 */
+#if !CFG_CUSTOM_REG
             { 118, BAND_5G,  CHNL_SPAN_20,  52,   4,  FALSE }, /* CH_SET_UNII_MID_52_64 */
             { 121, BAND_5G,  CHNL_SPAN_20, 100,  12,  FALSE }, /* CH_SET_UNII_WW_100_144 */
+#endif
             { 125, BAND_5G,  CHNL_SPAN_20, 149,   7,  FALSE }, /* CH_SET_UNII_UPPER_149_173 */
             {   0, BAND_NULL,           0,   0,   0,  FALSE }
         }
@@ -505,47 +516,113 @@ DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
 			{ 125, BAND_5G,  CHNL_SPAN_20, 149,   0,  FALSE },
 			{	0, BAND_NULL,			0,	 0,   0,  FALSE }
 		}
+	},
+	{
+		/* Note: World Wide Region now, add CH14 by default according to Amazon's request */
+		(PUINT_16) g_u2CountryGroup22, sizeof(g_u2CountryGroup22) / 2,
+		{
+			{  81, BAND_2G4, CHNL_SPAN_5,	 1,  13,  FALSE }, /* CH_SET_2G4_1_14 */
+
+			{ 115, BAND_5G,  CHNL_SPAN_20,	36,   4,  FALSE },
+#if !CFG_CUSTOM_REG
+			{ 118, BAND_5G,  CHNL_SPAN_20,	52,   4,  FALSE },
+			{ 121, BAND_5G,  CHNL_SPAN_20, 100,   12,  FALSE },
+#endif
+			{ 125, BAND_5G,  CHNL_SPAN_20, 149,   5,  FALSE },
+			{	0, BAND_NULL,			0,	 0,   0,  FALSE }
+		}
 	}
 };
 
 
 #define REG_DOMAIN_PASSIVE_DEF_IDX	0
+#define REG_DOMAIN_PASSIVE_GROUP_NUM \
+	(sizeof(arSupportedRegDomains_Passive) / sizeof(DOMAIN_INFO_ENTRY))
 
 static const UINT_16     g_u2CountryGroup0_Passive[] =
 {
 	COUNTRY_CODE_UDF
 };
 
+#if CFG_CUSTOM_REG
+static UINT_16 g_u2CountryGroup1_Passive[] = {
+	COUNTRY_CODE_WW
+};
+#endif
+
+/*
+ * Passive scan setting example
+ * static UINT_16 g_u2CountryGroup1_Passive[] = {
+ *	COUNTRY_CODE_TW
+ * };
+ */
+
 DOMAIN_INFO_ENTRY arSupportedRegDomains_Passive[] = {
 	{
-        /* default passive channel table is empty */
-		g_u2CountryGroup0_Passive,	 0,
-		{
-			{  81, BAND_2G4, CHNL_SPAN_5,	11,   0,  0 }, /* CH_SET_2G4_1_14 */
-			{  82, BAND_2G4, CHNL_SPAN_5,	5,	  0,  0 },
-		
-			{ 115, BAND_5G,  CHNL_SPAN_20,	36,   0,  0 }, /* CH_SET_UNII_LOW_36_48 */
-			{ 118, BAND_5G,  CHNL_SPAN_20,	52,   0,  0 }, /* CH_SET_UNII_MID_52_64 */
-			{ 121, BAND_5G,  CHNL_SPAN_20, 100,   0,  0 }, /* CH_SET_UNII_WW_100_140 */
-			{ 125, BAND_5G,  CHNL_SPAN_20, 149,   0,  0 }, /* CH_SET_UNII_UPPER_149_173 */
-		}
-	},
+	 /* default passive scan channel table is empty */
+	 COUNTRY_CODE_NULL, 0,
+	 {
+	  {81, BAND_2G4, CHNL_SPAN_5, 11, 0, 0},	/* CH_SET_2G4_1_14 */
+	  {82, BAND_2G4, CHNL_SPAN_5, 5, 0, 0},
+
+	  {115, BAND_5G, CHNL_SPAN_20, 36, 0, 0},	/* CH_SET_UNII_LOW_36_48 */
+	  {118, BAND_5G, CHNL_SPAN_20, 52, 0, 0},	/* CH_SET_UNII_MID_52_64 */
+	  {121, BAND_5G, CHNL_SPAN_20, 100, 0, 0},	/* CH_SET_UNII_WW_100_140 */
+	  {125, BAND_5G, CHNL_SPAN_20, 149, 0, 0},	/* CH_SET_UNII_UPPER_149_173 */
+	  }
+	 },
 
 	{
-		COUNTRY_CODE_NULL,	 0,
+	 /* User Defined passive scan channel table */
+	 g_u2CountryGroup0_Passive, 0,
+	 {
+	  {81, BAND_2G4, CHNL_SPAN_5, 12, 1, 0},	/* CH_SET_2G4_1_14 */
+	  {82, BAND_2G4, CHNL_SPAN_5, 5, 0, 0},
+
+	  {115, BAND_5G, CHNL_SPAN_20, 36, 0, 0},	/* CH_SET_UNII_LOW_36_48 */
+	  {118, BAND_5G, CHNL_SPAN_20, 52, 0, 0},	/* CH_SET_UNII_MID_52_64 */
+	  {121, BAND_5G, CHNL_SPAN_20, 100, 0, 0},	/* CH_SET_UNII_WW_100_140 */
+	  {125, BAND_5G, CHNL_SPAN_20, 149, 0, 0},	/* CH_SET_UNII_UPPER_149_173 */
+	  }
+	 },
+
+#if CFG_CUSTOM_REG
+	{
+		g_u2CountryGroup1_Passive,
+		ARRAY_SIZE(g_u2CountryGroup1_Passive),
 		{
-			{  81, BAND_2G4, CHNL_SPAN_5,	12,   1,  0 }, /* CH_SET_2G4_1_14 */
-			{  82, BAND_2G4, CHNL_SPAN_5,	5,	  0,  0 },
-		
-			{ 115, BAND_5G,  CHNL_SPAN_20,	36,   0,  0 }, /* CH_SET_UNII_LOW_36_48 */
-			{ 118, BAND_5G,  CHNL_SPAN_20,	52,   0,  0 }, /* CH_SET_UNII_MID_52_64 */
-			{ 121, BAND_5G,  CHNL_SPAN_20, 100,   0,  0 }, /* CH_SET_UNII_WW_100_140 */
-			{ 125, BAND_5G,  CHNL_SPAN_20, 149,   0,  0 }, /* CH_SET_UNII_UPPER_149_173 */
+			{81, BAND_2G4, CHNL_SPAN_5, 1, 0, 0},
+			{82, BAND_2G4, CHNL_SPAN_5, 12, 2, 0},
+			{115, BAND_5G, CHNL_SPAN_20, 36, 0, 0},
+			{118, BAND_5G, CHNL_SPAN_20, 52, 0, 0},
+			{121, BAND_5G, CHNL_SPAN_20, 100, 0, 0},
+			{125, BAND_5G, CHNL_SPAN_20, 149, 5, 0},
 		}
-    }
+	},
+#endif
+
+	/*
+	 * Passive scan setting example
+	 * 1-11 active
+	 * 12-14 passive
+	 * 36-48 passive
+	 * 52-64 passive
+	 * 100-140 passive
+	 * 146-165 active
+	 *	{
+	 *		g_u2CountryGroup1_Passive, 1,
+	 *		{
+	 *			{81, BAND_2G4, CHNL_SPAN_5, 1, 0, 0},
+	 *			{82, BAND_2G4, CHNL_SPAN_5, 12, 3, 0},
+	 *			{115, BAND_5G, CHNL_SPAN_20, 36, 4, 0},
+	 *			{118, BAND_5G, CHNL_SPAN_20, 52, 4, 0},
+	 *			{121, BAND_5G, CHNL_SPAN_20, 100, 11, 0},
+	 *			{125, BAND_5G, CHNL_SPAN_20, 149, 0, 0},
+	 *		}
+	 *	},
+	 */
 
 };
-
 
 #if 0
 COUNTRY_CH_SET_T arCountryChSets[] = {
@@ -601,6 +678,19 @@ COUNTRY_CH_SET_T arCountryChSets[] = {
 };
 #endif
 
+#if CFG_CUSTOM_REG
+static struct reg_mapping support_region[] = {
+	{ COUNTRY_CODE_WW, REGION_CODE_WW },
+	{ COUNTRY_CODE_US, REGION_CODE_FCC },
+	{ COUNTRY_CODE_JP, REGION_CODE_JP },
+	{ COUNTRY_CODE_FR, REGION_CODE_CE },
+	{ COUNTRY_CODE_DE, REGION_CODE_CE },
+	{ COUNTRY_CODE_IT, REGION_CODE_CE },
+	{ COUNTRY_CODE_ES, REGION_CODE_CE },
+	{ COUNTRY_CODE_GB, REGION_CODE_CE },
+	{ COUNTRY_CODE_FR, REGION_CODE_CE },
+};
+#endif
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -678,6 +768,7 @@ rlmDomainGetDomainInfo (
     P_ADAPTER_T     prAdapter
     )
 {
+#define REG_DOMAIN_DEF_IDX          22	/* WW:world wide */
 #define REG_DOMAIN_GROUP_NUM \
         (sizeof(arSupportedRegDomains) / sizeof(DOMAIN_INFO_ENTRY))
 
@@ -732,10 +823,14 @@ rlmDomainGetDomainInfo (
 
 	/* If no matched countryCode */
 	if (i >= REG_DOMAIN_GROUP_NUM){
+#if 0
 		if (prAdapter->prDomainInfo) /* use previous NVRAM setting */
 			return prAdapter->prDomainInfo;
 		else	/* if never set before, use EU */
-			prDomainInfo = &arSupportedRegDomains[REG_DOMAIN_DEF_IDX];	
+			prDomainInfo = &arSupportedRegDomains[REG_DOMAIN_DEF_IDX];
+#else
+			prDomainInfo = &arSupportedRegDomains[REG_DOMAIN_DEF_IDX];
+#endif
 	}
 	
 
@@ -889,7 +984,8 @@ VOID rlmDomainPassiveScanSendCmd(
 	P_CMD_SET_DOMAIN_INFO_T prCmd;
     WLAN_STATUS             rStatus;
     P_DOMAIN_SUBBAND_INFO   prSubBand;
-    UINT_8                  i;	
+	UINT_16 u2TargetCountryCode;
+	UINT_8 i, j;
 
 
 	prCmd = cnmMemAlloc(prAdapter, RAM_TYPE_BUF, sizeof(CMD_SET_DOMAIN_INFO_T));
@@ -913,12 +1009,21 @@ VOID rlmDomainPassiveScanSendCmd(
 
 	DBGLOG(RLM, INFO, ("rlmDomainPassiveScanSendCmd(), CountryCode = %x\n", prAdapter->rWifiVar.rConnSettings.u2CountryCode));
 
-	if (prAdapter->rWifiVar.rConnSettings.u2CountryCode == COUNTRY_CODE_UDF){
-		prDomainInfo = &arSupportedRegDomains_Passive[1];
+	u2TargetCountryCode = prAdapter->rWifiVar.rConnSettings.u2CountryCode;
+
+	for (i = 0; i < REG_DOMAIN_PASSIVE_GROUP_NUM; i++) {
+		prDomainInfo = &arSupportedRegDomains_Passive[i];
+
+		for (j = 0; j < prDomainInfo->u4CountryNum; j++) {
+			if (prDomainInfo->pu2CountryGroup[j] == u2TargetCountryCode)
+				break;
+		}
+		if (j < prDomainInfo->u4CountryNum)
+			break;	/* Found */
 	}
-	else{
-		prDomainInfo = &arSupportedRegDomains_Passive[0];
-	}
+
+	if (i >= REG_DOMAIN_PASSIVE_GROUP_NUM)
+		prDomainInfo = &arSupportedRegDomains_Passive[REG_DOMAIN_PASSIVE_DEF_IDX];
 
 	for (i = 0; i < 6; i++) {
 	   prSubBand = &prDomainInfo->rSubBand[i];
@@ -996,3 +1101,32 @@ rlmDomainIsLegalChannel (
     return FALSE;
 }
 
+#if CFG_CUSTOM_REG
+UINT_16 rlm_get_support_country(UINT_16 country)
+{
+	UINT_16 ret = COUNTRY_CODE_WW;
+	UINT_32 i;
+
+	for (i = 0; i < ARRAY_SIZE(support_region); i++) {
+		if (country == support_region[i].country_code)
+			return country;
+	}
+	DBGLOG(RLM, INFO, ("Country:%x is not support.Replaced with WW\n",
+	       country));
+	return ret;
+}
+
+UINT_16 rlm_get_region(UINT_16 country)
+{
+	UINT_16 ret = REGION_CODE_WW;
+	UINT_32 i;
+
+	for (i = 0; i < ARRAY_SIZE(support_region); i++) {
+		if (country == support_region[i].country_code)
+			return support_region[i].region;
+	}
+	DBGLOG(RLM, INFO, ("Country:%x is not support.Replaced with WW\n",
+	       country));
+	return ret;
+}
+#endif

@@ -771,6 +771,7 @@ cnmBss40mBwPermitted (
 {
     P_BSS_INFO_T    prBssInfo;
     UINT_8          i;
+	P_BSS_DESC_T    prBssDesc = NULL;
 
     /* Note: To support real-time decision instead of current activated-time,
      *       the STA roaming case shall be considered about synchronization
@@ -788,6 +789,18 @@ cnmBss40mBwPermitted (
         }
     }
 
+	if (eNetTypeIdx == NETWORK_TYPE_AIS_INDEX)
+		prBssDesc = prAdapter->rWifiVar.rAisFsmInfo.prTargetBssDesc;
+	else if ((eNetTypeIdx == NETWORK_TYPE_P2P_INDEX) && (prAdapter->rWifiVar.prP2pFsmInfo))
+		prBssDesc = prAdapter->rWifiVar.prP2pFsmInfo->prTargetBss;
+	if (prBssDesc) {
+#if (CFG_FORCE_USE_20BW == 1)
+		if (prBssDesc->eBand == BAND_2G4)
+			return FALSE;
+#endif
+		if (prBssDesc->eSco == CHNL_EXT_SCN)
+			return FALSE;
+	}
     return TRUE;
 }
 

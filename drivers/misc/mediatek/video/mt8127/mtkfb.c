@@ -73,6 +73,11 @@ static u32 MTK_FB_PAGES = 0;
 static u32 fb_xres_update = 0;
 static u32 fb_yres_update = 0;
 
+#define SHOW_LCM_NAME
+#ifdef SHOW_LCM_NAME
+static char lcm_name[256] = {0};
+#endif
+
 #define MTK_FB_XRESV (ALIGN_TO(MTK_FB_XRES, disphal_get_fb_alignment()))
 #define MTK_FB_YRESV (ALIGN_TO(MTK_FB_YRES, disphal_get_fb_alignment()) * MTK_FB_PAGES) /* For page flipping */
 #define MTK_FB_BYPP  ((MTK_FB_BPP + 7) >> 3)
@@ -105,10 +110,6 @@ static size_t mtkfb_log_on = false;
         pr_err("[MTKFB] mt8127 "fmt, ##arg); \
     }while (0)
 #define PRNERR(fmt, args...)   DISP_LOG_PRINT(ANDROID_LOG_INFO, "MTKFB", fmt, ## args);
-/* [PLATFORM]-Add-BEGIN by TCTSZ.yaohui.zeng, 2015/04/15,MTK patch,fix FB suspend/resume DSI issue*/
-extern BOOL _IsEngineBusy(void);
-extern wait_queue_head_t _dsi_wait_vm_done_queue;
-/* [PLATFORM]-Add-END by TCTSZ.yaohui.zeng, 2015/04/15*/
 
 void mtkfb_log_enable(int enable)
 {
@@ -147,8 +148,7 @@ unsigned int decouple_size = 0;
 
 extern unsigned int g_fb_pattern_en;
 extern int fb_pattern(struct mtkfb_device *fbdev, struct fb_overlay_config *fb_config);
-extern wait_queue_head_t _dsi_wait_vm_done_queue;
-extern BOOL _IsEngineBusy(void);
+
 /* This mutex is used to prevent tearing due to page flipping when adbd is
    reading the front buffer
 */
@@ -167,7 +167,7 @@ unsigned int PanDispSettingDirty = 0;
 unsigned int PanDispSettingApplied = 0;
 
 DECLARE_WAIT_QUEUE_HEAD(reg_update_wq);
-
+DECLARE_WAIT_QUEUE_HEAD(suspend_done_wq);
 unsigned int need_esd_check = 0;
 DECLARE_WAIT_QUEUE_HEAD(esd_check_wq);
 
@@ -177,6 +177,8 @@ extern wait_queue_head_t disp_done_wq;
 DEFINE_MUTEX(ScreenCaptureMutex);
 
 BOOL is_early_suspended = FALSE;
+BOOL is_early_suspended_done = FALSE;
+
 static int sem_flipping_cnt = 1;
 static int sem_early_suspend_cnt = 1;
 static int sem_overlay_buffer_cnt = 1;
@@ -209,6 +211,7 @@ extern void	MTK_HDMI_Set_Security_Output(int enable);
 /* temporary solution for hdmi svp p1, always mute hdmi for svp */
 void MTK_HDMI_Set_Security_Output_SVP_P1(int enable);
 #endif
+extern void wait_dsi_engine_notbusy(void);
 
 // ---------------------------------------------------------------------------
 //  Timer Routines
@@ -566,14 +569,14 @@ static BOOL BL_set_level_resume = FALSE;
 int mtkfb_set_backlight_level(unsigned int level)
 {
     MTKFB_FUNC();
-    pr_info("mtkfb_set_backlight_level:%d\n", level);
+    printk("mtkfb_set_backlight_level:%d\n", level);
     if (down_interruptible(&sem_flipping)) {
-        pr_info("[FB Driver] can't get semaphore:%d\n", __LINE__);
+        printk("[FB Driver] can't get semaphore:%d\n", __LINE__);
         return -ERESTARTSYS;
     }
     sem_flipping_cnt--;
     if (down_interruptible(&sem_early_suspend)) {
-        pr_info("[FB Driver] can't get semaphore:%d\n", __LINE__);
+        printk("[FB Driver] can't get semaphore:%d\n", __LINE__);
         sem_flipping_cnt++;
         up(&sem_flipping);
         return -ERESTARTSYS;
@@ -583,7 +586,7 @@ int mtkfb_set_backlight_level(unsigned int level)
     if (is_early_suspended){
         BL_level = level;
         BL_set_level_resume = TRUE;
-        pr_info("[FB driver] set backlight level but FB has been suspended\n");
+        printk("[FB driver] set backlight level but FB has been suspended\n");
         goto End;
         }
     DISP_SetBacklight(level);
@@ -851,18 +854,15 @@ static int mtkfb_pan_display_impl(struct fb_var_screeninfo *var, struct fb_info 
         pr_info("[mtkfb] pan display set va=0x%x, pa=0x%x \n",(unsigned int)vaStart,paStart);
         Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
 
-        if(get_boot_mode() != FACTORY_BOOT)
-        {
-        	layerInfo.layer_id = 1;
-        	layerInfo.layer_enable = FALSE;
-        	Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
-        	layerInfo.layer_id = 2;
-        	layerInfo.layer_enable = FALSE;
-        	Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
-        	layerInfo.layer_id = 3;
-        	layerInfo.layer_enable = FALSE;
-        	Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
-        }
+        layerInfo.layer_id = 1;
+        layerInfo.layer_enable = FALSE;
+        Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
+        layerInfo.layer_id = 2;
+        layerInfo.layer_enable = FALSE;
+        Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
+        layerInfo.layer_id = 3;
+        layerInfo.layer_enable = FALSE;
+        Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layerInfo);
     }
     #else
     mutex_lock(&OverlaySettingMutex);
@@ -1443,6 +1443,7 @@ out:
 		/* ion handles */
 		if (ion_handles[i]) {
 			ion_free(fbdev->ion_client, ion_handles[i]);
+			//printk("free ion_handles[%d] = %p\n",i,ion_handles[i]);
 			ion_handles[i] = NULL;
 		}
         /* fences */
@@ -1452,8 +1453,8 @@ out:
             fences[i] = NULL;
 		}
 	}
-
-    kfree(work);
+    if(work != NULL)
+      kfree(work);
 
     mutex_lock(&fbdev->timeline_lock);
 	sw_sync_timeline_inc(fbdev->timeline, 1);
@@ -1605,7 +1606,8 @@ err:
     config->fence = -1;
     if (fd >=0)
         put_unused_fd(fd);
-    kfree(work);
+    if(work != NULL)
+      kfree(work);
 
 out:
     up(&sem_early_suspend);
@@ -1620,21 +1622,13 @@ static int mtkfb_set_overlay_layer(struct mtkfb_device *fbdev, struct fb_overlay
     unsigned int layerpitch;
     unsigned int layerbpp;
 #endif    
-    unsigned int id = layerInfo->layer_id;
+    unsigned int id = (layerInfo->layer_id >= OVL_LAYER_NUM ? 0 : layerInfo->layer_id);
     int enable = layerInfo->layer_enable ? 1 : 0;
     int ret = 0;
 
     MTKFB_FUNC();
     MSG_FUNC_ENTER();
     MMProfileLogEx(MTKFB_MMP_Events.SetOverlayLayer, MMProfileFlagStart, (id<<16)|enable, (unsigned int)layerInfo->src_phy_addr);
-
-    // Check id is valid
-    if ((id < 0) || (id >= DDP_OVL_LAYER_MUN))
-    {
-        MTKFB_LOG("Invalid layer id:%d\n", id);
-        ret = -EFAULT;
-        goto LeaveOverlayMode;
-    }
 
     //BUG: check layer 3 format
     if((layerInfo->layer_id == 3) && (layerInfo->src_fmt != MTK_FB_FORMAT_ARGB8888))
@@ -1993,7 +1987,7 @@ LeaveOverlayMode:
 static int mtkfb_get_overlay_layer_info(struct fb_overlay_layer_info* layerInfo)
 {
     DISP_LAYER_INFO layer;
-    if ((layerInfo->layer_id < 0) || (layerInfo->layer_id >= DDP_OVL_LAYER_MUN))
+    if (layerInfo->layer_id >= DDP_OVL_LAYER_MUN)
     {
          return 0;
     }
@@ -2032,78 +2026,6 @@ static atomic_t capture_ui_layer_only = ATOMIC_INIT(0); /* when capturing frameb
 void mtkfb_capture_fb_only(bool enable)
 {
     atomic_set(&capture_ui_layer_only, enable);
-}
-
-static int mtkfb_capture_framebuffer(struct fb_info *info, unsigned int pvbuf)
-{
-    int ret = 0;
-    MMProfileLogEx(MTKFB_MMP_Events.CaptureFramebuffer, MMProfileFlagStart, pvbuf, 0);
-    MTKFB_FUNC();
-    if (down_interruptible(&sem_flipping)) {
-        pr_info("[FB Driver] can't get semaphore:%d\n", __LINE__);
-        MMProfileLogEx(MTKFB_MMP_Events.CaptureFramebuffer, MMProfileFlagEnd, 0, 1);
-        return -ERESTARTSYS;
-    }
-    sem_flipping_cnt--;
-    mutex_lock(&ScreenCaptureMutex);
-
-    /** LCD registers can't be R/W when its clock is gated in early suspend
-        mode; power on/off LCD to modify register values before/after func.
-    */
-    if (is_early_suspended)
-    {
-        // Turn on engine clock.
-        disp_path_clock_on("mtkfb");
-    }
-
-    if (atomic_read(&capture_ui_layer_only))
-    {
-        unsigned int w_xres = (unsigned short)fb_layer_context.src_width;
-        unsigned int h_yres = (unsigned short)fb_layer_context.src_height;
-        unsigned int pixel_bpp = info->var.bits_per_pixel / 8; // bpp is either 32 or 16, can not be other value
-        unsigned int w_fb = (unsigned int)fb_layer_context.src_pitch;
-        unsigned int fbsize = w_fb * h_yres * pixel_bpp; // frame buffer size
-        unsigned int fbaddress = info->fix.smem_start + info->var.yoffset * info->fix.line_length; //physical address
-        unsigned int mem_off_x = (unsigned short)fb_layer_context.src_offset_x;
-        unsigned int mem_off_y = (unsigned short)fb_layer_context.src_offset_y;
-        unsigned int fbv = 0;
-        fbaddress += (mem_off_y * w_fb + mem_off_x) * pixel_bpp;
-        fbv = (unsigned int)ioremap_nocache(fbaddress, fbsize);
-        MTKFB_LOG("[FB Driver], w_xres = %d, h_yres = %d, w_fb = %d, pixel_bpp = %d, fbsize = %d, fbaddress = 0x%08x\n", w_xres, h_yres, w_fb, pixel_bpp, fbsize, fbaddress);
-        if (!fbv)
-        {
-            MTKFB_LOG("[FB Driver], Unable to allocate memory for frame buffer: address=0x%08x, size=0x%08x\n", \
-                    fbaddress, fbsize);
-            goto EXIT;
-        }
-        {
-            unsigned int i;
-            for(i = 0;i < h_yres; i++)
-            {
-                memcpy((void *)(pvbuf + i * w_xres * pixel_bpp), (void *)(fbv + i * w_fb * pixel_bpp), w_xres * pixel_bpp);
-            }
-        }
-        iounmap((void *)fbv);
-    }
-    else
-        DISP_Capture_Framebuffer(pvbuf, info->var.bits_per_pixel, is_early_suspended);
-
-
-EXIT:
-    if (is_early_suspended)
-    {
-        // Turn off engine clock.
-        //DISP_CHECK_RET(DISP_PowerEnable(FALSE));
-        disp_path_clock_off("mtkfb");
-    }
-
-    mutex_unlock(&ScreenCaptureMutex);
-    sem_flipping_cnt++;
-    up(&sem_flipping);
-    MSG_FUNC_LEAVE();
-    MMProfileLogEx(MTKFB_MMP_Events.CaptureFramebuffer, MMProfileFlagEnd, 0, 0);
-
-    return ret;
 }
 
 
@@ -2221,8 +2143,6 @@ static char *_mtkfb_ioctl_spy(unsigned int cmd)
             return "MTKFB_TRIG_OVERLAY_OUT";
          case MTKFB_SET_VIDEO_LAYERS:
             return "MTKFB_SET_VIDEO_LAYERS";
-         case MTKFB_CAPTURE_FRAMEBUFFER:
-            return "MTKFB_CAPTURE_FRAMEBUFFER";
          case MTKFB_CONFIG_IMMEDIATE_UPDATE:
             return "MTKFB_CONFIG_IMMEDIATE_UPDATE";
          case MTKFB_SET_MULTIPLE_LAYERS:
@@ -2305,8 +2225,6 @@ static char *_mtkfb_ioctl_spy(unsigned int cmd)
             return "MTKFB_GET_MAX_DISPLAY_COUNT";
          case  MTKFB_SET_FB_LAYER_SECURE:
             return "MTKFB_SET_FB_LAYER_SECURE";
-         case  MTKFB_META_RESTORE_SCREEN:
-            return "MTKFB_META_RESTORE_SCREEN";
          case  MTKFB_ERROR_INDEX_UPDATE_TIMEOUT:
             return "MTKFB_ERROR_INDEX_UPDATE_TIMEOUT";
          case  MTKFB_ERROR_INDEX_UPDATE_TIMEOUT_AEE:
@@ -2331,12 +2249,12 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
     void __user *argp = (void __user *)arg;
     DISP_STATUS ret = 0;
     int r = 0, i;
-
+	int wait_cnt = 0;
     MTKFB_FUNC();
     /// M: dump debug mmprofile log info
     MMProfileLogEx(MTKFB_MMP_Events.IOCtrl, MMProfileFlagPulse, _IOC_NR(cmd), arg);
-    pr_info("mtkfb_ioctl, info=0x%08x, cmd=0x%08x(%s), arg=0x%08x\n", (unsigned int)info, 
-        (unsigned int)cmd, _mtkfb_ioctl_spy(cmd), (unsigned int)arg);
+    //pr_info("mtkfb_ioctl, info=0x%08x, cmd=0x%08x(%s), arg=0x%08x\n", (unsigned int)info, 
+        //(unsigned int)cmd, _mtkfb_ioctl_spy(cmd), (unsigned int)arg);
 
     switch (cmd)
     {
@@ -2387,6 +2305,7 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
     case MTKFB_SET_OVERLAY_LAYER:
     {
         struct fb_overlay_layer layerInfo;
+        memset((void *)&layerInfo, 0, sizeof(layerInfo));
         MTKFB_LOG(" mtkfb_ioctl():MTKFB_SET_OVERLAY_LAYER\n");
 
         if (copy_from_user(&layerInfo, (void __user *)arg, sizeof(layerInfo))) {
@@ -2448,30 +2367,38 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
     case MTKFB_POWEROFF:
     {
         MTKFB_FUNC();
-        
         mt65xx_leds_brightness_set(MT65XX_LED_TYPE_LCD, LED_OFF);
-        
+        printk("[IOCTL] FB_POWEROFF\n");
+
         if (!lcd_fps)
                 msleep(30);
             else
                 msleep(2*100000/lcd_fps); // Delay 2 frames.
-        
-        if(is_early_suspended) 
-        {
-            MTKFB_LOG("[FB driver] MTKFB_POWEROFF ioctl,device had been suspended\n");
-            return r;
-        }
+
         if (down_interruptible(&sem_early_suspend))
         {
             pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
             return -ERESTARTSYS;
         }
-
+		if(is_early_suspended){
+			up(&sem_early_suspend);
+			ret = wait_event_interruptible_timeout(suspend_done_wq, is_early_suspended_done, HZ/10);
+			is_early_suspended_done = FALSE;
+            printk("[MTKFB_POWEROFF] ret, already early_suspended\n");
+            return r;
+		}
+		is_early_suspended_done = FALSE;
         is_early_suspended = TRUE;
-        up(&sem_early_suspend);
 #ifndef NONFLUSH
+        up(&sem_early_suspend);
         /* Wait until queued compositions are applied */
         flush_workqueue(((struct mtkfb_device *)info->par)->update_ovls_wq);
+		if (down_interruptible(&sem_early_suspend))
+        {
+            is_early_suspended = FALSE;
+            pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+            return -ERESTARTSYS;
+        }
 #else
 		/* Do not flush work queue, becuase this will cause fence disorder */
 		/* disable all layer */
@@ -2490,43 +2417,46 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
 			config.layers[2].layer_id = 2;
 			config.layers[2].layer_enable = 0;
 			config.layers[2].fence_fd = -1;
-			config.layers[2].ion_fd = -1;				 
+			config.layers[2].ion_fd = -1;
 			config.layers[3].layer_id = 3;
 			config.layers[3].layer_enable = 0;
 			config.layers[3].fence_fd = -1;
 			config.layers[3].ion_fd = -1;
 
+			up(&sem_early_suspend);
 			mtkfb_queue_overlay_config((struct mtkfb_device *)info->par, &config);
-
 			if (config.fence != -1) {
 					fence = sync_fence_fdget(config.fence);
 					if (sync_fence_wait(fence, 1000) < 0)
 							pr_err("MTKFB_POWEROFF error waiting for fence to signal\n");
 					sync_fence_put(fence);
 					put_unused_fd(config.fence);
-					}
+			}
+		}
+        printk("[IOCTL] FB_POWEROFF started\n");
+		if (down_interruptible(&sem_early_suspend))
+		{
+			pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+			is_early_suspended = FALSE;
+			return -ERESTARTSYS;
 		}
 #endif
-        if (down_interruptible(&sem_early_suspend))
-        {
-            pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
-            return -ERESTARTSYS;
-        }
+		DISP_PrepareSuspend();
+		wait_dsi_engine_notbusy();
 
-        DISP_PrepareSuspend();
-        // Wait for disp finished.
-        /* [PLATFORM]-Mod-BEGIN by TCTSZ.yaohui.zeng, 2015/04/15,MTK patch,fix FB suspend/resume DSI issue*/
-        if(wait_event_interruptible_timeout(_dsi_wait_vm_done_queue, !_IsEngineBusy(), HZ/10)==0 )
-        {
-            pr_info("[FB Driver] Wait disp finished timeout in early_suspend\n");
-        }
-		/* [PLATFORM]-Mod-END by TCTSZ.yaohui.zeng, 2015/04/15*/
+        disp_path_clock_off("mtkfb");  /* porting from abc123 */
         DISP_CHECK_RET(DISP_PauseVsync(TRUE));
         DISP_CHECK_RET(DISP_PanelEnable(FALSE));
         DISP_CHECK_RET(DISP_PowerEnable(FALSE));
-        disp_path_clock_off("mtkfb");
+        /*disp_path_clock_off("mtkfb");*/		/* porting from abc123 */
+
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+				Disp_Ovl_Engine_clock_off();
+#endif
 
         MMProfileLog(MTKFB_MMP_Events.EarlySuspend, MMProfileFlagStart);
+		is_early_suspended_done = TRUE;
+		wake_up_interruptible(&suspend_done_wq);
 
         up(&sem_early_suspend);
 
@@ -2536,19 +2466,30 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
     case MTKFB_POWERON:
     {
         MTKFB_FUNC();
-        if(!is_early_suspended) return r;
+	    printk("[IOCTL] FB_POWERON\n");
         if (down_interruptible(&sem_early_suspend))
         {
             pr_info("[FB Driver] can't get semaphore in mtkfb_late_resume()\n");
             return -ERESTARTSYS;
         }
+        if(!is_early_suspended)
+		{
+			up(&sem_early_suspend);
+            printk("[FB driver] MTKFB_POWERON ioctl,device had been resumed\n");
+			return r;
+        }
         disp_path_clock_on("mtkfb");
+#if 1 //def monica_porting
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+				Disp_Ovl_Engine_clock_on();
+#endif
+#endif
         DISP_CHECK_RET(DISP_PauseVsync(FALSE));
         DISP_CHECK_RET(DISP_PowerEnable(TRUE));
         DISP_CHECK_RET(DISP_PanelEnable(TRUE));
 
         is_early_suspended = FALSE;
-        
+
 		if (is_ipoh_bootup) {    //ALPS01279263 CL2317283
 			DISP_StartConfigUpdate();
 		} else {
@@ -2585,22 +2526,6 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
         ret = DISP_ConfigImmediateUpdate((BOOL)arg);
         sem_early_suspend_cnt++;
         up(&sem_early_suspend);
-        return (r);
-    }
-
-    case MTKFB_CAPTURE_FRAMEBUFFER:
-    {
-        unsigned int pbuf = 0;
-        if (copy_from_user(&pbuf, (void __user *)arg, sizeof(pbuf)))
-        {
-            MTKFB_LOG("[FB]: copy_from_user failed! line:%d \n", __LINE__);
-            r = -EFAULT;
-        }
-        else
-        {
-            mtkfb_capture_framebuffer(info, pbuf);
-        }
-
         return (r);
     }
 
@@ -2697,18 +2622,6 @@ static int mtkfb_ioctl(struct file *file, struct fb_info *info, unsigned int cmd
         hdmi_setorientation((int)arg);
 #endif
         return 0;
-    }
-    case MTKFB_META_RESTORE_SCREEN:
-    {
-        struct fb_var_screeninfo var;
-
-        if (copy_from_user(&var, argp, sizeof(var)))
-            return -EFAULT;
-
-        info->var.yoffset = var.yoffset;
-        init_framebuffer(info);
-
-        return mtkfb_pan_display_impl(&var, info);
     }
 
     case MTKFB_GET_INTERFACE_TYPE:
@@ -3061,6 +2974,17 @@ static void mtkfb_free_resources(struct mtkfb_device *fbdev, int state)
 
 extern char* saved_command_line;
 char mtkfb_lcm_name[256] = {0};
+
+#ifdef SHOW_LCM_NAME
+static ssize_t show_lcm_name(struct device *dev, struct device_attribute *attr,
+                    char *buf)
+{
+    MTKFB_MSG("[mtk-tpd]vendor name: %s\n", lcm_name);
+    return sprintf(buf, "%s\n", lcm_name);
+}
+static DEVICE_ATTR(Lcm_Name, 0444, show_lcm_name, NULL);
+#endif
+
 BOOL mtkfb_find_lcm_driver(void)
 {
     BOOL ret = FALSE;
@@ -3169,6 +3093,8 @@ static void mtkfb_fb_565_to_8888(struct fb_info *fb_info)
     }
     //printf("[boot_logo_updater] loop copy color over\n");
 
+	__cpuc_flush_kern_all();
+
     mtkfb_fbinfo_modify(fb_info);
     wait_ret = wait_event_interruptible_timeout(reg_update_wq, atomic_read(&OverlaySettingApplied), HZ/10);
     MTKFB_LOG("[WaitQ] wait_event_interruptible() ret = %d, %d\n", wait_ret, __LINE__);
@@ -3199,6 +3125,7 @@ static int mtkfb_probe(struct device *dev)
     int                    init_state;
     int                    r = 0;
     char *p = NULL;
+    char *q = NULL;
     MSG_FUNC_ENTER();
 
 
@@ -3380,6 +3307,25 @@ static int mtkfb_probe(struct device *dev)
     MSG(INFO, "MTK framebuffer initialized vram=%lu\n", fbdev->fb_size_in_byte);
 
     MSG_FUNC_LEAVE();
+
+#ifdef SHOW_LCM_NAME
+    p = strstr(saved_command_line, "lcm=");
+
+    if(p != NULL) {
+        // we can't find lcm string in the command line
+        p += 4;
+        if((p - saved_command_line) < strlen(saved_command_line+1)) {
+            q = p;
+            while(*q != ' ' && *q != '\0')
+                q++;
+
+            device_create_file(&pdev->dev, &dev_attr_Lcm_Name);
+            memset((void*)lcm_name, 0, sizeof(lcm_name));
+            strncpy((char*)lcm_name, (char*)p, (int)(q-p));
+        }
+    }
+#endif
+
     return 0;
 
 cleanup:
@@ -3424,7 +3370,9 @@ EXPORT_SYMBOL(mtkfb_is_suspend);
 static void mtkfb_shutdown(struct device *pdev)
 {
     MTKFB_LOG("[FB Driver] mtkfb_shutdown()\n");
+	disp_bls_shutdown(1);
     mt65xx_leds_brightness_set(MT65XX_LED_TYPE_LCD, LED_OFF);
+    /*disp_bls_contrl_directly(0);*/
     if (!lcd_fps)
         msleep(30);
     else
@@ -3442,13 +3390,9 @@ static void mtkfb_shutdown(struct device *pdev)
     sem_early_suspend_cnt--;
 
     is_early_suspended = TRUE;
-
-    /* [FIXBUG]-Mod-BEGIN by TCTSZ.leo.guo, PR#1000254 2015/05/18, Fix FB suspend/resume DSI cause recovery reboot failed issue*/
     DISP_PrepareSuspend();
-    if(wait_event_interruptible_timeout(_dsi_wait_vm_done_queue, !_IsEngineBusy(), HZ/10) == 0)
-		pr_err("[FB Driver] Wait disp finished timeout in early_suspend\n");
-    /* [FIXBUG]-Mod-END by TCTSZ.leo.guo, 2015/05/18*/
 
+	wait_dsi_engine_notbusy();
     DISP_CHECK_RET(DISP_PanelEnable(FALSE));
     DISP_CHECK_RET(DISP_PowerEnable(FALSE));
 
@@ -3502,6 +3446,7 @@ void mtkfb_clear_lcm(void)
         msleep(400000/lcd_fps);
     DISP_WaitForLCDNotBusy();
     
+#if 0
     mutex_lock(&OverlaySettingMutex);
     for(i=0;i<DDP_OVL_LAYER_MUN;i++)
     {
@@ -3523,15 +3468,89 @@ void mtkfb_clear_lcm(void)
     atomic_set(&OverlaySettingApplied, 0);
     #endif
     mutex_unlock(&OverlaySettingMutex);
+#endif
+}
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+void mtkfb_clear_lcm_test(void)
+{
+    int i;
+    unsigned int layer_status[DDP_OVL_LAYER_MUN]={0};
+    mutex_lock(&OverlaySettingMutex);
+    for(i=0;i<DDP_OVL_LAYER_MUN;i++)
+    {
+        #if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+        // TODO save status
+        {
+            struct fb_overlay_layer layer= {0};
+            
+            layer_status[i] = disp_ovl_engine.Instance[mtkfb_instance].cached_layer_config[i].layer_en;
+            layer.layer_id = i;
+            Disp_Ovl_Engine_Get_layer_info(mtkfb_instance, &layer);
+            layer.layer_enable = 0;
+            Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layer);
+            
+        }
+        #else
+        layer_status[i] = cached_layer_config[i].layer_en;
+        cached_layer_config[i].layer_en = 0;
+        cached_layer_config[i].isDirty = 1;
+        #endif
+    }
+    #if !defined(MTK_OVERLAY_ENGINE_SUPPORT)
+    atomic_set(&OverlaySettingDirtyFlag, 1);
+    atomic_set(&OverlaySettingApplied, 0);
+    #endif
+    mutex_unlock(&OverlaySettingMutex);
+
+    DISP_CHECK_RET(DISP_UpdateScreen(0, 0, fb_xres_update, fb_yres_update));
+    DISP_CHECK_RET(DISP_UpdateScreen(0, 0, fb_xres_update, fb_yres_update));
+    
+    #if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+    Disp_Ovl_Engine_Wait_Overlay_Complete(mtkfb_instance, 1000);
+    #endif
+    if (!lcd_fps)
+        msleep(60);
+    else
+        msleep(400000/lcd_fps);
+    DISP_WaitForLCDNotBusy();
+    
+#if 1
+    mutex_lock(&OverlaySettingMutex);
+    for(i=0;i<DDP_OVL_LAYER_MUN;i++)
+    {
+        #if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+        {
+            struct fb_overlay_layer layer= {0};
+            layer.layer_id = i;
+            Disp_Ovl_Engine_Get_layer_info(mtkfb_instance, &layer);
+            layer.layer_enable = layer_status[i];
+            Disp_Ovl_Engine_Set_layer_info(mtkfb_instance, &layer);
+        }
+        #else
+        cached_layer_config[i].layer_en = layer_status[i];
+        cached_layer_config[i].isDirty = 1;
+        #endif
+    }
+    #if !defined(MTK_OVERLAY_ENGINE_SUPPORT)
+    atomic_set(&OverlaySettingDirtyFlag, 1);
+    atomic_set(&OverlaySettingApplied, 0);
+    #endif
+    mutex_unlock(&OverlaySettingMutex);
+#endif
 }
 
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void mtkfb_early_suspend(struct early_suspend *h)
+void mtkfb_early_suspend_test()
 {
+    struct fb_overlay_config config;
+    struct sync_fence *fence;
+	int wait_cnt = 0;
+	int ret;
+
     MSG_FUNC_ENTER();
 
-    pr_info("[FB Driver] enter early_suspend\n");
+    printk("[FB Driver] enter early_suspend_test\n");
 
 
     mutex_lock(&ScreenCaptureMutex);
@@ -3539,7 +3558,7 @@ static void mtkfb_early_suspend(struct early_suspend *h)
 
     mt65xx_leds_brightness_set(MT65XX_LED_TYPE_LCD, LED_OFF);
     if (down_interruptible(&sem_early_suspend)) {
-        pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+        printk("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
         mutex_unlock(&ScreenCaptureMutex);
         return;
     }
@@ -3547,36 +3566,202 @@ static void mtkfb_early_suspend(struct early_suspend *h)
     sem_early_suspend_cnt--;
 
     if(is_early_suspended){
-        is_early_suspended = TRUE;
         sem_early_suspend_cnt++;
         up(&sem_early_suspend);
-        MTKFB_LOG("[FB driver] has been suspended\n");
+		printk("[mtkfb_early_suspend] waiting for the IOCTL power off done\n");
+		ret = wait_event_interruptible_timeout(suspend_done_wq, is_early_suspended_done, HZ/10);
+		is_early_suspended_done = FALSE;
+        printk("[FB driver] ret, suspended by IOCTL\n");
         mutex_unlock(&ScreenCaptureMutex);
         return;
     }
 
     MMProfileLog(MTKFB_MMP_Events.EarlySuspend, MMProfileFlagStart);
+	is_early_suspended_done = FALSE;
     is_early_suspended = TRUE;
 
     if (!lcd_fps)
         msleep(30);
     else
         msleep(2*100000/lcd_fps); // Delay 2 frames.
+#if 1
+    mutex_unlock(&ScreenCaptureMutex);
+    /* Do not flush work queue, becuase this will cause fence disorder */
+    /* disable all layer */
+    printk("mtkfb_early_suspend wait all frame done 111\n");
 
-    DISP_PrepareSuspend();
+	config.layers[0].layer_id = 0;
+    config.layers[0].layer_enable = 0;
+    config.layers[0].fence_fd = -1;
+    config.layers[0].ion_fd = -1;
+    config.layers[1].layer_id = 1;
+    config.layers[1].layer_enable = 0;
+    config.layers[1].fence_fd = -1;
+    config.layers[1].ion_fd = -1;
+    config.layers[2].layer_id = 2;
+    config.layers[2].layer_enable = 0;
+    config.layers[2].fence_fd = -1;
+    config.layers[2].ion_fd = -1;
+    config.layers[3].layer_id = 3;
+    config.layers[3].layer_enable = 0;
+    config.layers[3].fence_fd = -1;
+    config.layers[3].ion_fd = -1;
 
-    // Wait for disp finished.
-    if (wait_event_interruptible_timeout(_dsi_wait_vm_done_queue, !_IsEngineBusy(), HZ/10) == 0)
-    {
-        pr_info("[FB Driver] Wait disp finished timeout in early_suspend\n");
+    sem_early_suspend_cnt++;
+    up(&sem_early_suspend);
+
+    mtkfb_queue_overlay_config((struct mtkfb_device *)mtkfb_fbi->par, &config);
+
+   if (config.fence != -1) {
+      fence = sync_fence_fdget(config.fence);
+	  if (fence!=0 && sync_fence_wait(fence, 1000) < 0)
+        pr_err("mtkfb_early_suspend error waiting for fence to signal\n");
+      sync_fence_put(fence);
+      put_unused_fd(config.fence);
     }
+    if (down_interruptible(&sem_early_suspend)) {
+      pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+	  is_early_suspended = FALSE;
+      mutex_unlock(&ScreenCaptureMutex);
+      return;
+    }
+    sem_early_suspend_cnt--;
+#endif
+    DISP_PrepareSuspend();
+	wait_dsi_engine_notbusy();
     DISP_CHECK_RET(DISP_PanelEnable(FALSE));
     DISP_CHECK_RET(DISP_PowerEnable(FALSE));
     DISP_CHECK_RET(DISP_PauseVsync(TRUE));
 
     disp_path_clock_off("mtkfb");
+#if 1 //def monica_porting
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+	Disp_Ovl_Engine_clock_off();
+#endif
+#endif
 
     sem_early_suspend_cnt++;
+	is_early_suspended_done = TRUE;
+	wake_up_interruptible(&suspend_done_wq);
+    up(&sem_early_suspend);
+    mutex_unlock(&ScreenCaptureMutex);
+
+    /* Here we should flush composition workqueue but there's no
+     * clean and easy way to get the device handle. Because early suspend
+     * struct is not a member of fbdev, and global variables are used instead,
+     * we can't just use container_of ...
+     * As we flush in blank/POWEROFF IOCTL from HWC, this is not a practical issue.
+     *
+     * flush_workqueue(((struct mtkfb_device *)dev)->update_ovls_wq);
+     */
+
+    pr_info("[FB Driver] leave early_suspend\n");
+
+    MSG_FUNC_LEAVE();
+}
+
+static void mtkfb_early_suspend(struct early_suspend *h)
+{
+    struct fb_overlay_config config;
+    struct sync_fence *fence;
+	int wait_cnt = 0;
+	int ret;
+
+    MSG_FUNC_ENTER();
+
+    printk("[FB Driver] enter early_suspend\n");
+
+
+    mutex_lock(&ScreenCaptureMutex);
+
+
+    mt65xx_leds_brightness_set(MT65XX_LED_TYPE_LCD, LED_OFF);
+    if (down_interruptible(&sem_early_suspend)) {
+        printk("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+        mutex_unlock(&ScreenCaptureMutex);
+        return;
+    }
+
+    sem_early_suspend_cnt--;
+
+    if(is_early_suspended){
+        sem_early_suspend_cnt++;
+        up(&sem_early_suspend);
+		printk("[mtkfb_early_suspend] waiting for the IOCTL power off done\n");
+		ret = wait_event_interruptible_timeout(suspend_done_wq, is_early_suspended_done, HZ/10);
+		is_early_suspended_done = FALSE;
+        printk("[FB driver] ret, suspended by IOCTL\n");
+        mutex_unlock(&ScreenCaptureMutex);
+        return;
+    }
+
+    MMProfileLog(MTKFB_MMP_Events.EarlySuspend, MMProfileFlagStart);
+	is_early_suspended_done = FALSE;
+    is_early_suspended = TRUE;
+
+    if (!lcd_fps)
+        msleep(30);
+    else
+        msleep(2*100000/lcd_fps); // Delay 2 frames.
+#if 1
+    //mutex_unlock(&ScreenCaptureMutex);
+    /* Do not flush work queue, becuase this will cause fence disorder */
+    /* disable all layer */
+    printk("mtkfb_early_suspend wait all frame done\n");
+
+    config.layers[0].layer_id = 0;
+    config.layers[0].layer_enable = 0;
+    config.layers[0].fence_fd = -1;
+    config.layers[0].ion_fd = -1;
+    config.layers[1].layer_id = 1;
+    config.layers[1].layer_enable = 0;
+    config.layers[1].fence_fd = -1;
+    config.layers[1].ion_fd = -1;
+    config.layers[2].layer_id = 2;
+    config.layers[2].layer_enable = 0;
+    config.layers[2].fence_fd = -1;
+    config.layers[2].ion_fd = -1;
+    config.layers[3].layer_id = 3;
+    config.layers[3].layer_enable = 0;
+    config.layers[3].fence_fd = -1;
+    config.layers[3].ion_fd = -1;
+
+    sem_early_suspend_cnt++;
+    up(&sem_early_suspend);
+
+    mtkfb_queue_overlay_config((struct mtkfb_device *)mtkfb_fbi->par, &config);
+
+    if (config.fence != -1) {
+      fence = sync_fence_fdget(config.fence);
+	  if (sync_fence_wait(fence, 1000) < 0)
+        pr_err("mtkfb_early_suspend error waiting for fence to signal\n");
+      sync_fence_put(fence);
+      put_unused_fd(config.fence);
+    }
+    if (down_interruptible(&sem_early_suspend)) {
+      pr_info("[FB Driver] can't get semaphore in mtkfb_early_suspend()\n");
+	  is_early_suspended = FALSE;
+      mutex_unlock(&ScreenCaptureMutex);
+      return;
+    }
+    sem_early_suspend_cnt--;
+#endif
+    DISP_PrepareSuspend();
+	wait_dsi_engine_notbusy();
+    DISP_CHECK_RET(DISP_PanelEnable(FALSE));
+    DISP_CHECK_RET(DISP_PowerEnable(FALSE));
+    DISP_CHECK_RET(DISP_PauseVsync(TRUE));
+
+    disp_path_clock_off("mtkfb");
+#if 1 //def monica_porting
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+	Disp_Ovl_Engine_clock_off();
+#endif
+#endif
+
+    sem_early_suspend_cnt++;
+	is_early_suspended_done = TRUE;
+	wake_up_interruptible(&suspend_done_wq);
     up(&sem_early_suspend);
     mutex_unlock(&ScreenCaptureMutex);
 
@@ -3606,12 +3791,11 @@ static int mtkfb_resume(struct device *pdev)
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-static void mtkfb_late_resume(struct early_suspend *h)
+void mtkfb_late_resume_test()
 {
     MSG_FUNC_ENTER();
 
-    pr_info("[FB Driver] enter late_resume\n");
-
+    printk("[FB Driver] enter late_resume_test\n");
     mutex_lock(&ScreenCaptureMutex);
     if (down_interruptible(&sem_early_suspend)) {
         pr_info("[FB Driver] can't get semaphore in mtkfb_late_resume()\n");
@@ -3623,7 +3807,7 @@ static void mtkfb_late_resume(struct early_suspend *h)
         is_early_suspended = false;
         sem_early_suspend_cnt++;
         up(&sem_early_suspend);
-        MTKFB_LOG("[FB driver] has been resumed\n");
+        printk("[FB driver] has been resumed\n");
         mutex_unlock(&ScreenCaptureMutex);
         return;
     }
@@ -3636,6 +3820,85 @@ static void mtkfb_late_resume(struct early_suspend *h)
     }
     else
         disp_path_clock_on("mtkfb");
+#if 1 //def monica_porting
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+		Disp_Ovl_Engine_clock_on();
+#endif
+#endif
+    pr_info("[FB LR] 1\n");
+    DISP_CHECK_RET(DISP_PauseVsync(FALSE));
+    pr_info("[FB LR] 2\n");
+    DISP_CHECK_RET(DISP_PowerEnable(TRUE));
+    pr_info("[FB LR] 3\n");
+    DISP_CHECK_RET(DISP_PanelEnable(TRUE));
+    pr_info("[FB LR] 4\n");
+
+    is_early_suspended = FALSE;
+
+   	if (is_ipoh_bootup)
+    {
+        DISP_StartConfigUpdate();
+        is_ipoh_bootup =false;
+    }
+    else
+    {
+        mtkfb_clear_lcm_test();
+    }
+
+    sem_early_suspend_cnt++;
+    up(&sem_early_suspend);
+    mutex_unlock(&ScreenCaptureMutex);
+    if(BL_set_level_resume){
+        mtkfb_set_backlight_level(BL_level);
+        BL_set_level_resume = FALSE;
+	}
+//#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+//#ifdef CONFIG_MTK_LEDS
+	//if (!disp_ovl_engine.bCouple)
+		mt65xx_leds_brightness_set(MT65XX_LED_TYPE_LCD, LED_HALF);
+//#endif
+//#endif
+    pr_info("[FB Driver] leave late_resume\n");
+
+    MSG_FUNC_LEAVE();
+}
+
+
+static void mtkfb_late_resume(struct early_suspend *h)
+{
+    MSG_FUNC_ENTER();
+
+    printk("[FB Driver] enter late_resume\n");
+
+    mutex_lock(&ScreenCaptureMutex);
+    if (down_interruptible(&sem_early_suspend)) {
+        pr_info("[FB Driver] can't get semaphore in mtkfb_late_resume()\n");
+        mutex_unlock(&ScreenCaptureMutex);
+        return;
+    }
+    sem_early_suspend_cnt--;
+    if(!is_early_suspended){
+        is_early_suspended = false;
+        sem_early_suspend_cnt++;
+        up(&sem_early_suspend);
+        printk("[FB driver] has been resumed\n");
+        mutex_unlock(&ScreenCaptureMutex);
+        return;
+    }
+
+    MMProfileLog(MTKFB_MMP_Events.EarlySuspend, MMProfileFlagEnd);
+    if (is_ipoh_bootup)
+    {
+        atomic_set(&OverlaySettingDirtyFlag, 0);
+        disp_path_clock_on("ipoh_mtkfb");
+    }
+    else
+        disp_path_clock_on("mtkfb");
+#if 1 //def monica_porting
+#if defined(MTK_OVERLAY_ENGINE_SUPPORT)
+		Disp_Ovl_Engine_clock_on();
+#endif
+#endif
     pr_info("[FB LR] 1\n");
     DISP_CHECK_RET(DISP_PauseVsync(FALSE));
     pr_info("[FB LR] 2\n");

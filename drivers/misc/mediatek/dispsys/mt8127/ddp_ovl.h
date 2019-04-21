@@ -17,6 +17,9 @@ int OVLStop(void);
 // reset overlay module
 int OVLReset(void);
 
+/*porting from abc123 : power_saving; SW reset overlay module */
+int OVLSWReset(void);
+
 // set region of interest
 int OVLROI(unsigned int bgW, 
                unsigned int bgH,                                                      // region size

@@ -658,6 +658,16 @@
 
 #define ROAMING_NO_SWING_RCPI_STEP              (10)
 
+#if AMZN_5GHZ_PREF
+#define RSSI_HI_5GHZ    (-60)
+#define RSSI_MED_5GHZ   (-67)
+#define RSSI_LO_5GHZ    (-70)
+
+#define PREF_HI_5GHZ    (20)
+#define PREF_MED_5GHZ   (15)
+#define PREF_LO_5GHZ    (3)
+#endif /* end AMZN_5GHZ_PREF */
+
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -667,6 +677,14 @@
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+#if AMZN_5GHZ_PREF
+INT_32 rssiRangeHi = RSSI_HI_5GHZ;
+INT_32 rssiRangeMed = RSSI_MED_5GHZ;
+INT_32 rssiRangeLo = RSSI_LO_5GHZ;
+UINT_8 pref5GhzHi = PREF_HI_5GHZ;
+UINT_8 pref5GhzMed = PREF_MED_5GHZ;
+UINT_8 pref5GhzLo = PREF_LO_5GHZ;
+#endif /* end AMZN_5GHZ_PREF */
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -687,6 +705,50 @@
 *                              F U N C T I O N S
 ********************************************************************************
 */
+#if AMZN_5GHZ_PREF
+INT_32 adptClntAdjust5gPref(P_BSS_DESC_T prBssDesc)
+{
+	INT_32 rssi = RCPI_TO_dBm(prBssDesc->ucRCPI);
+	DBGLOG(SCN, INFO, ("adptClntAdjust5gPref:: enter band=%d RSSI = %d\n",
+		prBssDesc->eBand, rssi));
+	if (prBssDesc->eBand == BAND_5G) {
+		if (rssi > rssiRangeHi)
+			rssi += pref5GhzHi;
+		else if (rssi > rssiRangeMed)
+			rssi += pref5GhzMed;
+		else if (rssi > rssiRangeLo)
+			rssi += pref5GhzLo;
+	}
+	/* Reduce chances of roam ping-pong */
+	if (prBssDesc->fgIsConnected)
+		rssi += (ROAMING_NO_SWING_RCPI_STEP >> 1);
+
+	DBGLOG(SCN, INFO, ("adptClntAdjust5gPref:: exit RSSI = %d\n", rssi));
+	return rssi;
+}
+
+VOID scanSet5gRoamingPreference(INT_32 rangeHi, INT_32 rangeMed,
+	INT_32 rangeLow, UINT_8 pref5gHi, UINT_8 pref5gMed, UINT_8 pref5gLo)
+{
+	rssiRangeHi = rangeHi;
+	rssiRangeMed = rangeMed;
+	rssiRangeLo = rangeLow;
+	pref5GhzHi = pref5gHi;
+	pref5GhzMed = pref5gMed;
+	pref5GhzLo = pref5gLo;
+}
+VOID scanGet5gRoamingPreference(PINT_32 rangeHi, PINT_32 rangeMed,
+	PINT_32 rangeLow, PUINT_8 pref5gHi, PUINT_8 pref5gMed, PUINT_8 pref5gLo)
+{
+	*rangeHi = rssiRangeHi;
+	*rangeMed = rssiRangeMed;
+	*rangeLow = rssiRangeLo;
+	*pref5gHi = pref5GhzHi;
+	*pref5gMed = pref5GhzMed;
+	*pref5gLo = pref5GhzLo;
+}
+#endif /* end AMZN_5GHZ_PREF */
+
 /*----------------------------------------------------------------------------*/
 /*!
 * @brief This function is used by SCN to initialize its variables
@@ -1276,6 +1338,18 @@ scanRemoveBssDescsByPolicy (
                 }
             }
 
+		if (prConnSettings->fgIsConnReqIssued &&
+			(EQUAL_SSID(prBssDesc->aucSSID, prBssDesc->ucSSIDLen,
+				prConnSettings->aucSSID, prConnSettings->ucSSIDLen))) {
+			/* Don't remove specific BSSID which driver are going to connect. */
+			DBGLOG(SCN, LOUD,
+				("Don't free scan BSS Descriptori"
+				" due to it is the target BSS!!\n"));
+			continue;
+			/* prBssDescWeakest won't be the SSID trying to connect. */
+		}
+
+
             if (!prBssDescWeakest) { /* 1st element */
                 prBssDescWeakest = prBssDesc;
                 continue;
@@ -1288,8 +1362,18 @@ scanRemoveBssDescsByPolicy (
         }
 
         if ((u4SameSSIDCount >= SCN_BSS_DESC_SAME_SSID_THRESHOLD) &&
-            (prBssDescWeakestSameSSID)) {
-            prBssDescWeakest = prBssDescWeakestSameSSID;
+						(prBssDescWeakestSameSSID)) {
+		if (prConnSettings->fgIsConnByBssidIssued &&
+			(EQUAL_MAC_ADDR(prBssDescWeakestSameSSID->aucBSSID,
+						prConnSettings->aucBSSID))) {
+			DBGLOG(SCN, LOUD, ("Can't age this BSS Desc,"
+					"due to this is target BSSID!!\n"));
+		} else {
+			DBGLOG(SCN, LOUD,
+				("Release weakest BSS descriptor"
+				"due to same SSID & not BSSID connect!!\n"));
+			prBssDescWeakest = prBssDescWeakestSameSSID;
+		}
         }
 
         if (prBssDescWeakest) {
@@ -1587,7 +1671,7 @@ scanAddToBssDesc (
     UINT_8 ucHwChannelNum = 0;
     UINT_8 ucIeDsChannelNum = 0;
     UINT_8 ucIeHtChannelNum = 0;
-    BOOLEAN fgIsValidSsid = FALSE, fgEscape = FALSE;
+    BOOLEAN fgIsValidSsid = FALSE, fgEscape = FALSE, fgIsCopy = FALSE;
     PARAM_SSID_T rSsid;
     UINT_64 u8Timestamp;
 	BOOLEAN fgIsNewBssDesc = FALSE;
@@ -1776,9 +1860,11 @@ scanAddToBssDesc (
         }
     }
 #if 1
-	
+	if ((prBssDesc->u2RawLength == 0) || (fgIsValidSsid)) {
 		prBssDesc->u2RawLength = prSwRfb->u2PacketLen;
 		kalMemCopy(prBssDesc->aucRawBuf, prWlanBeaconFrame, prBssDesc->u2RawLength);
+		fgIsCopy = TRUE;
+	}
 #endif
 
     /* NOTE: Keep consistency of Scan Record during JOIN process */
@@ -1811,9 +1897,12 @@ scanAddToBssDesc (
     else {
         prBssDesc->fgIsIEOverflow = FALSE;
     }
-    prBssDesc->u2IELength = u2IELength;
 
-    kalMemCopy(prBssDesc->aucIEBuf, prWlanBeaconFrame->aucInfoElem, u2IELength);
+	if (fgIsCopy) {
+    		prBssDesc->u2IELength = u2IELength;
+
+    		kalMemCopy(prBssDesc->aucIEBuf, prWlanBeaconFrame->aucInfoElem, u2IELength);
+	}
 
     //4 <2.2> reset prBssDesc variables in case that AP has been reconfigured
     prBssDesc->fgIsERPPresent = FALSE;
@@ -2105,37 +2194,29 @@ scanAddToBssDesc (
             prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_HT;
         }
 
-        /* if not 11n only */
-        if (!(prBssDesc->u2BSSBasicRateSet & RATE_SET_BIT_HT_PHY)) {
-            /* check if support 11g */
-            if ((prBssDesc->u2OperationalRateSet & RATE_SET_OFDM) ||
-                    prBssDesc->fgIsERPPresent) {
-                prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_ERP;
-            }
+		/* check if support 11g */
+		if ((prBssDesc->u2OperationalRateSet & RATE_SET_OFDM) ||
+			prBssDesc->fgIsERPPresent) {
+			prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_ERP;
+		}
 
-            /* if not 11g only */
-            if (!(prBssDesc->u2BSSBasicRateSet & RATE_SET_OFDM)) {
-                /* check if support 11b */
-                if ((prBssDesc->u2OperationalRateSet & RATE_SET_HR_DSSS)) {
-                    prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_HR_DSSS;
-                }
-            }
-        }
-    }
-    else { /* (BAND_5G == prBssDesc->eBande) */
-        /* check if support 11n */
-        if (prBssDesc->fgIsHTPresent) {
-            prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_HT;
-        }
+		/* if not 11g only */
+		if (!(prBssDesc->u2BSSBasicRateSet & RATE_SET_OFDM)) {
+			/* check if support 11b */
+			if ((prBssDesc->u2OperationalRateSet & RATE_SET_HR_DSSS)) {
+				prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_HR_DSSS;
+			}
+		}
+	} else { /* (BAND_5G == prBssDesc->eBande) */
+		/* check if support 11n */
+		if (prBssDesc->fgIsHTPresent) {
+			prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_HT;
+		}
 
-        /* if not 11n only */
-        if (!(prBssDesc->u2BSSBasicRateSet & RATE_SET_BIT_HT_PHY)) {
-            /* Support 11a definitely */
-            prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_OFDM;
-
-            ASSERT(!(prBssDesc->u2OperationalRateSet & RATE_SET_HR_DSSS));
-        }
-    }
+		/* Support 11a definitely */
+		prBssDesc->ucPhyTypeSet |= PHY_TYPE_BIT_OFDM;
+		ASSERT(!(prBssDesc->u2OperationalRateSet & RATE_SET_HR_DSSS));
+	}
 
 
     //4 <6> Update BSS_DESC_T's Last Update TimeStamp.
@@ -2423,7 +2504,6 @@ scanReportBss2Cfg80211 (
 										prBssDesc->ucChannelNum,
 										RCPI_TO_dBm(prBssDesc->ucRCPI));
 						kalMemZero(prBssDesc->aucRawBuf,CFG_RAW_BUFFER_SIZE);
-
 						prBssDesc->u2RawLength=0;
 
 #if CFG_ENABLE_WIFI_DIRECT
@@ -3251,41 +3331,122 @@ scanSearchBssDescByPolicy (
 
 
             //4 <6E> Condition - Choose the one with better RCPI(RSSI).
-            if (fgIsFindBestRSSI) {
+#if AMZN_5GHZ_PREF
+			if (fgIsFindBestRSSI) {
+				INT_32 pAdjRssi = adptClntAdjust5gPref(prPrimaryBssDesc);
+				INT_32 cAdjRssi = adptClntAdjust5gPref(prCandidateBssDesc);
+				/* TODO(Kevin): We shouldn't compare the actual value, we should
+				* allow some acceptable tolerance of some RSSI percentage here.
+				*/
+				DBGLOG(SCN, TRACE,
+					("Candidate [%pM]: RCPI = %d, joinFailCnt=%d, Primary [%pM]: RCPI = %d, joinFailCnt=%d\n",
+					prCandidateBssDesc->aucBSSID,
+					prCandidateBssDesc->ucRCPI, prCandidateBssDesc->ucJoinFailureCount,
+					prPrimaryBssDesc->aucBSSID,
+					prPrimaryBssDesc->ucRCPI, prPrimaryBssDesc->ucJoinFailureCount));
+
+				ASSERT(!(prCandidateBssDesc->fgIsConnected && prPrimaryBssDesc->fgIsConnected));
+				if (prPrimaryBssDesc->ucJoinFailureCount > SCN_BSS_JOIN_FAIL_THRESOLD) {
+					/* give a chance to do join if join fail before
+					* SCN_BSS_DECRASE_JOIN_FAIL_CNT_SEC seconds
+					*/
+					if (CHECK_FOR_TIMEOUT(rCurrentTime, prBssDesc->rJoinFailTime,
+						SEC_TO_SYSTIME(SCN_BSS_JOIN_FAIL_CNT_RESET_SEC))) {
+						prBssDesc->ucJoinFailureCount -= SCN_BSS_JOIN_FAIL_RESET_STEP;
+						DBGLOG(SCN, INFO,
+							("decrease join fail count for Bss %pM to %u, timeout second %d\n",
+							prBssDesc->aucBSSID, prBssDesc->ucJoinFailureCount,
+							SCN_BSS_JOIN_FAIL_CNT_RESET_SEC));
+
+					}
+				}
+				/* NOTE: To prevent SWING, we do roaming only if target AP
+				* has at least 5dBm larger than us.
+				*/
+				if (prCandidateBssDesc->fgIsConnected) {
+					if ((cAdjRssi <= pAdjRssi)
+						&& prPrimaryBssDesc->ucJoinFailureCount <= SCN_BSS_JOIN_FAIL_THRESOLD) {
+
+						prCandidateBssDesc = prPrimaryBssDesc;
+						prCandidateStaRec = prPrimaryStaRec;
+						continue;
+					}
+				}
+				else if (prPrimaryBssDesc->fgIsConnected) {
+					if ((cAdjRssi < pAdjRssi)
+						|| (prCandidateBssDesc->ucJoinFailureCount > SCN_BSS_JOIN_FAIL_THRESOLD)) {
+
+						prCandidateBssDesc = prPrimaryBssDesc;
+						prCandidateStaRec = prPrimaryStaRec;
+						continue;
+					}
+				}
+				else if (prPrimaryBssDesc->ucJoinFailureCount > SCN_BSS_JOIN_FAIL_THRESOLD)
+					continue;
+				else if (prCandidateBssDesc->ucJoinFailureCount > SCN_BSS_JOIN_FAIL_THRESOLD ||
+					(cAdjRssi < pAdjRssi)) {
+
+					prCandidateBssDesc = prPrimaryBssDesc;
+					prCandidateStaRec = prPrimaryStaRec;
+					continue;
+				}
+			}
+#else /* AMZN_5GHZ_PREF */
+			if (fgIsFindBestRSSI) {
                 /* TODO(Kevin): We shouldn't compare the actual value, we should
                  * allow some acceptable tolerance of some RSSI percentage here.
                  */
-                DBGLOG(SCN, TRACE, ("Candidate ["MACSTR"]: RCPI = %d, Primary ["MACSTR"]: RCPI = %d\n",
-                    MAC2STR(prCandidateBssDesc->aucBSSID), prCandidateBssDesc->ucRCPI,
-                    MAC2STR(prPrimaryBssDesc->aucBSSID), prPrimaryBssDesc->ucRCPI));
+			DBGLOG(SCN, TRACE,
+			("Candidate [%pM]: RCPI = %d, joinFailCnt=%d, Primary [%pM]: RCPI = %d, joinFailCnt=%d\n",
+					prCandidateBssDesc->aucBSSID,
+					prCandidateBssDesc->ucRCPI, prCandidateBssDesc->ucJoinFailureCount,
+					prPrimaryBssDesc->aucBSSID,
+					prPrimaryBssDesc->ucRCPI, prPrimaryBssDesc->ucJoinFailureCount));
 
                 ASSERT(!(prCandidateBssDesc->fgIsConnected &&
                          prPrimaryBssDesc->fgIsConnected));
 
-                /* NOTE: To prevent SWING, we do roaming only if target AP has at least 5dBm larger than us. */
+ 		if (prPrimaryBssDesc->ucJoinFailureCount >= SCN_BSS_JOIN_FAIL_THRESOLD) {
+			/* give a chance to do join if join fail before
+			 * SCN_BSS_DECRASE_JOIN_FAIL_CNT_SEC seconds
+			 */
+			if (CHECK_FOR_TIMEOUT(rCurrentTime, prBssDesc->rJoinFailTime,
+					SEC_TO_SYSTIME(SCN_BSS_JOIN_FAIL_CNT_RESET_SEC))) {
+				prBssDesc->ucJoinFailureCount = SCN_BSS_JOIN_FAIL_THRESOLD -
+								SCN_BSS_JOIN_FAIL_RESET_STEP;
+				DBGLOG(SCN, INFO,
+				("decrease join fail count for Bss %pM to %u, timeout second %d\n",
+					prBssDesc->aucBSSID, prBssDesc->ucJoinFailureCount,
+					SCN_BSS_JOIN_FAIL_CNT_RESET_SEC));
+			}
+		}
+               /* NOTE: To prevent SWING, we do roaming only if target AP has at least 5dBm larger than us. */
                 if (prCandidateBssDesc->fgIsConnected) {
-                    if (prCandidateBssDesc->ucRCPI + ROAMING_NO_SWING_RCPI_STEP <= prPrimaryBssDesc->ucRCPI) {
+                    if (prCandidateBssDesc->ucRCPI + ROAMING_NO_SWING_RCPI_STEP <= prPrimaryBssDesc->ucRCPI &&
+				prPrimaryBssDesc->ucJoinFailureCount < SCN_BSS_JOIN_FAIL_THRESOLD) {
 
                         prCandidateBssDesc = prPrimaryBssDesc;
                         prCandidateStaRec = prPrimaryStaRec;
                         continue;
                     }
-                }
-                else if (prPrimaryBssDesc->fgIsConnected) {
-                    if (prCandidateBssDesc->ucRCPI < prPrimaryBssDesc->ucRCPI + ROAMING_NO_SWING_RCPI_STEP) {
-
+                } else if (prPrimaryBssDesc->fgIsConnected) {
+                    if (prCandidateBssDesc->ucRCPI < prPrimaryBssDesc->ucRCPI + ROAMING_NO_SWING_RCPI_STEP ||
+						(prCandidateBssDesc->ucJoinFailureCount >=
+						SCN_BSS_JOIN_FAIL_THRESOLD)) {
                         prCandidateBssDesc = prPrimaryBssDesc;
                         prCandidateStaRec = prPrimaryStaRec;
                         continue;
                     }
-                }
-                else if (prCandidateBssDesc->ucRCPI < prPrimaryBssDesc->ucRCPI) {
-                    prCandidateBssDesc = prPrimaryBssDesc;
-                    prCandidateStaRec = prPrimaryStaRec;
-                    continue;
-                }
+                } else if (prPrimaryBssDesc->ucJoinFailureCount >= SCN_BSS_JOIN_FAIL_THRESOLD)
+				continue;
+			else if (prCandidateBssDesc->ucJoinFailureCount >= SCN_BSS_JOIN_FAIL_THRESOLD ||
+				prCandidateBssDesc->ucRCPI < prPrimaryBssDesc->ucRCPI) {
+				prCandidateBssDesc = prPrimaryBssDesc;
+				prCandidateStaRec = prPrimaryStaRec;
+				continue;
+			}
             }
-
+#endif /* end AMZN_5GHZ_PREF */
 #if 0
             /* If reach here, that means they have the same Encryption Score, and
              * both RSSI value are close too.

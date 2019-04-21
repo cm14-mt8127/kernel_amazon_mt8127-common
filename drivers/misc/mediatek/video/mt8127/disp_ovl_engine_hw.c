@@ -66,6 +66,10 @@ void disp_ovl_engine_hw_ovl_wdma_irq_handler(unsigned int param)
 {
 	DISP_OVL_ENGINE_DBG("disp_ovl_engine_hw_ovl_wdma_irq_handler\n");
     MMProfileLogEx(MTKFB_MMP_Events.hw_ovl_wdma_irq_handler, MMProfileFlagPulse, param, 0);
+	/* porting from abc123 */
+	disp_module_clock_off(DISP_MODULE_WDMA, "DDP");
+	disp_module_clock_off(DISP_MODULE_OVL, "DDP");
+	disp_module_clock_off(DISP_MODULE_SMI, "DDP");
 
     if(g_ovl_wdma_irq_ignore)
     {
@@ -73,8 +77,9 @@ void disp_ovl_engine_hw_ovl_wdma_irq_handler(unsigned int param)
 		return;
     }
 	
-    if(disp_ovl_engine_hw_irq_callback != NULL)
-		disp_ovl_engine_hw_irq_callback(param);
+    //only check wdma frame done irq bit
+		if(disp_ovl_engine_hw_irq_callback != NULL)
+        disp_ovl_engine_hw_irq_callback(param&0x01);
 }
 
 void disp_ovl_engine_hw_ovl_rdma_irq_handler(unsigned int param)
@@ -127,6 +132,11 @@ void disp_ovl_engine_trigger_hw_overlay_decouple(void)
 
     DISP_OVL_ENGINE_DBG("disp_ovl_engine_trigger_hw_overlay_decouple\n");
     MMProfileLogEx(MTKFB_MMP_Events.trigger_hw_overlay_decouple, MMProfileFlagStart, 0, 0);
+
+	/* porting from abc123*/
+	disp_module_clock_on(DISP_MODULE_SMI, "DDP");
+	disp_module_clock_on(DISP_MODULE_OVL, "DDP");
+	disp_module_clock_on(DISP_MODULE_WDMA, "DDP");
 
     //OVLReset();
 	//WDMAReset(1);
@@ -303,7 +313,11 @@ void disp_ovl_engine_direct_link_overlay(void)
     {
         //disp_path_release_mutex();
     }
-
+	/*porting from abc123*/
+	/*if (disp_ovl_engine.OvlBufAddr[disp_ovl_engine.RdmaRdIdx] != 0) {
+		disp_module_clock_off(DISP_MODULE_GAMMA, "OVL");
+		disp_module_clock_off(DISP_MODULE_WDMA, "OVL");
+	}*/
     /*************************************************/
     // Ultra config    
 
@@ -346,8 +360,9 @@ static void disp_ovl_engine_565_to_888(void *src_va, void *dst_va)
             *d++ = ((src_rgb565 & 0x7E0) >> 3);
             *d++ = ((src_rgb565 & 0xF800) >> 8);
         }
-        //s += (ALIGN_TO(xres, disphal_get_fb_alignment()) - xres);
+        s += (ALIGN_TO(xres, disphal_get_fb_alignment()) - xres);
     }
+	__cpuc_flush_dcache_area(dst_va, ((xres * yres * 3) + 63) & ~63);	/* porting from abc123 */
 }
 
 int disp_ovl_engine_indirect_link_overlay(void *fb_va, void *fb_pa)
@@ -360,6 +375,7 @@ int disp_ovl_engine_indirect_link_overlay(void *fb_va, void *fb_pa)
       */
     int lcm_width, lcm_height;
     int buffer_bpp;
+    unsigned int width, height, bpp;
     int layer_id;
     int tmpBufferSize;
     int i, temp_va = 0;
@@ -446,8 +462,20 @@ int disp_ovl_engine_indirect_link_overlay(void *fb_va, void *fb_pa)
             
             disp_ovl_engine.OvlBufSecurity[i] = FALSE;
         }
-    }    
-    
+	//allocate secured
+	width = DISP_GetScreenWidth();
+	height = DISP_GetScreenHeight();
+	bpp = 3;//(DISP_GetScreenBpp() + 7) >> 3;
+	disp_ovl_engine.PreservedSecOvlBuf[0] =
+  	  (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
+	disp_ovl_engine.PreservedSecOvlBuf[1] =
+	  (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
+	disp_ovl_engine.PreservedSecOvlBuf[2] =
+	  (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
+	disp_ovl_engine.PreservedSecOvlBuf[3] =
+	  (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
+    }
+
     // config m4u port
     DISP_OVL_ENGINE_DBG("config m4u start\n\n");
     portStruct.ePortID = DISP_OVL_0;	
@@ -503,14 +531,22 @@ int disp_ovl_engine_indirect_link_overlay(void *fb_va, void *fb_pa)
     config.outFormat = RDMA_OUTPUT_FORMAT_ARGB; 
     disp_register_irq(DISP_MODULE_RDMA0, _rdma0_irq_handler);
     DISP_WaitVSYNC();
+	//disp_update_mutex();  /* porting from abc123 */
     disp_path_get_mutex();
     RDMASetTargetLine(0, lcm_height*4/5);
-    disp_path_config(&config);
+    disp_path_config_internal_mutex(&config);
+    disp_path_config_internal_setting(&config);	/* porting from abc123 */
     disp_path_release_mutex();
     disp_path_wait_reg_update(0);
 
     //disp_dump_reg(DISP_MODULE_MUTEX);
     MMProfileLogEx(MTKFB_MMP_Events.indirect_link_overlay, MMProfileFlagEnd, 0, 0);
+
+	/* porting from abc123; wait RDMA0 & WDMA1 ready */
+	DISP_WaitVSYNC();
+	/* prevent OVL stay in error state & unceasingly throw error IRQ */
+	//OVLStop();
+	/*disp_module_clock_off(DISP_MODULE_OVL, "DDP");*/
 
     printk("indirect link overlay leave\n");
 
@@ -544,6 +580,10 @@ int disp_ovl_engine_trigger_hw_overlay_couple(void)
     // overlay output to internal buffer
     if (atomic_read(&disp_ovl_engine_params.OverlaySettingDirtyFlag))
     {        
+		disp_module_clock_on(DISP_MODULE_SMI, "DDP");
+		disp_module_clock_on(DISP_MODULE_OVL, "DDP");
+		disp_module_clock_on(DISP_MODULE_WDMA, "DDP");
+
         // update OvlWrIdx except screen capture case
         if (disp_ovl_engine_params.MemOutConfig.dirty == 0)
         {
@@ -600,14 +640,15 @@ int disp_ovl_engine_trigger_hw_overlay_couple(void)
             if(OvlSecureNew)
             {
                 // Allocate secure buffer
-                disp_ovl_engine.OvlBufAddr[disp_ovl_engine.OvlWrIdx] = 
-                    (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
+                disp_ovl_engine.OvlBufAddr[disp_ovl_engine.OvlWrIdx] =
+                   disp_ovl_engine.PreservedSecOvlBuf[disp_ovl_engine.OvlWrIdx];
+		    // (unsigned int)disp_ovl_engine_hw_allocate_secure_memory(width * height * bpp);
                 disp_ovl_engine.OvlBufSecurity[disp_ovl_engine.OvlWrIdx] = TRUE;
-            } 
+            }
             else
             {
                 // Free secure buffer
-                disp_ovl_engine_hw_free_secure_memory((void *)(disp_ovl_engine.OvlBufAddr[disp_ovl_engine.OvlWrIdx]));
+                //disp_ovl_engine_hw_free_secure_memory((void *)(disp_ovl_engine.OvlBufAddr[disp_ovl_engine.OvlWrIdx]));
                 disp_ovl_engine.OvlBufAddr[disp_ovl_engine.OvlWrIdx] = 
                     disp_ovl_engine.Ovlmva + (width * height * bpp) * disp_ovl_engine.OvlWrIdx;
                 disp_ovl_engine.OvlBufSecurity[disp_ovl_engine.OvlWrIdx] = FALSE;

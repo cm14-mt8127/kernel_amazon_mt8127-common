@@ -22,10 +22,11 @@ void kree_pm_cpu_lowpower(volatile int *ppen_release, int logical_cpuid)
     MTEEC_PARAM param[4];
     TZ_RESULT ret;
 
-    param[0].value.a = (unsigned int)ppen_release;
+    param[0].mem.buffer = (void *)ppen_release;
+    param[0].mem.size = sizeof(unsigned int);
     param[1].value.a = logical_cpuid;
     ret = KREE_TeeServiceCall(pm_session, TZCMD_PM_CPU_LOWPOWER,
-                              TZ_ParamTypes2(TZPT_VALUE_INPUT, TZPT_VALUE_INPUT),
+                              TZ_ParamTypes2(TZPT_MEM_INPUT, TZPT_VALUE_INPUT),
                               param);
     if (ret != TZ_RESULT_SUCCESS)
     {

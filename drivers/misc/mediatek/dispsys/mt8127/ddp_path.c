@@ -20,6 +20,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/atomic.h>
 
 #include <linux/xlog.h>
 #include <asm/io.h>
@@ -63,6 +64,8 @@ extern unsigned int gMemOutSecure;
 extern unsigned int gBitbltSecure;
 
 #define DISP_INDEX_OFFSET 0x0  // must be consistent with ddp_rdma.c
+
+static atomic_t g_clock_on = ATOMIC_INIT(0);
 
 unsigned int gMutexID = 0;
 unsigned int gMemOutMutexID = 1;
@@ -1544,6 +1547,18 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
 	fb_height = pConfig->srcROI.height;
     return disp_path_config_(pConfig, gMutexID);
 }
+/* porting from abc123 : power_saving*/
+int disp_path_config_internal_setting(struct disp_path_config_struct *pConfig)
+{
+	fb_width = pConfig->srcROI.width;
+	fb_height = pConfig->srcROI.height;
+	return disp_path_config_setting(pConfig, gMutexID);
+}
+
+int disp_path_config_internal_mutex(struct disp_path_config_struct *pConfig)
+{
+	return disp_path_config_mutex(pConfig, gMutexID);
+}
 
 DISP_MODULE_ENUM g_dst_module;
 
@@ -1932,6 +1947,7 @@ static int disp_reg_backup(void)
 	//disp_bls_backup();
 
 	// OVL
+#if 1
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
     // When backup OVL registers, consider secure case
     if (0 == gOvlSecure)
@@ -2054,7 +2070,7 @@ static int disp_reg_backup(void)
         }
 	}
 #endif // CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
-
+#endif
 	// RDMA, RDMA1
 	for (index = 0; index < 1; index++) {   //Donot back up RDMA1. It's only for HDMI using
 		reg_backup(DISP_REG_RDMA_INT_ENABLE        + index*DISP_INDEX_OFFSET);
@@ -2089,6 +2105,7 @@ static int disp_reg_backup(void)
 		reg_backup(DISP_REG_RDMA_DUMMY             + index*DISP_INDEX_OFFSET);
 		reg_backup(DISP_REG_RDMA_DEBUG_OUT_SEL     + index*DISP_INDEX_OFFSET);
 	}
+#if 1
 	// WDMA    
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
     // when backup WDMA 1 registers, consider secure case
@@ -2147,7 +2164,7 @@ static int disp_reg_backup(void)
 #endif // CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 
 	DISP_MSG("disp_reg_backup() end, *pRegBackup=0x%x, reg_offset=%d \n", *pRegBackup, reg_offset);
-
+#endif
 	return 0;
 }
 
@@ -2170,7 +2187,7 @@ static int disp_reg_restore(void)
     disp_mutex_restore();
     // BLS
     //disp_bls_restore();
-
+#if 1
     // OVL
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
     // when restoring OVL registers, consider secure case
@@ -2293,7 +2310,7 @@ static int disp_reg_restore(void)
         }
     }
 #endif // CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
-
+#endif
     
     // RDMA, RDMA1
     for (index = 0; index < 1; index++) {   //Donot restore RDMA1. It's only for HDMI using.
@@ -2329,6 +2346,8 @@ static int disp_reg_restore(void)
     	reg_restore(DISP_REG_RDMA_DUMMY             + index*DISP_INDEX_OFFSET);
     	reg_restore(DISP_REG_RDMA_DEBUG_OUT_SEL     + index*DISP_INDEX_OFFSET);
     }
+#if 1
+//WDMA
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 	//pr_err("disp_reg_resotre gMemOutSecure=%d", gMemOutSecure);
 	// when restoring WDMA 1 registers, consider secure case
@@ -2383,7 +2402,7 @@ static int disp_reg_restore(void)
         }
     }
 #endif // CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
-
+#endif
     //DISP_MSG("disp_reg_restore() release mutex \n");
     //disp_path_release_mutex();
     DISP_MSG("disp_reg_restore() done \n");
@@ -2534,8 +2553,9 @@ int disp_intr_disable_and_clear(void)
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, 0);
 
     disp_unregister_rdma1_irq();
-    //clear bls interrupt status	
+    //clear bls interrupt status
     DISP_REG_SET(DISP_REG_BLS_INTSTA, 0);
+
     return 0;	  
 }
 
@@ -2560,38 +2580,49 @@ int disp_rdma1_intr_disable_and_clear(void)
 
 int disp_path_clock_on(char* name)
 {
+	bool bRDMAOff = 0;
+
+	if (atomic_read(&g_clock_on)) {
+		if (NULL == name)
+			name = "";
+		DISP_MSG("calling disp_path_power_on when power is already on, caller:%s \n", name);
+		return 0;
+	}
+
+	atomic_inc(&g_clock_on);
+
     if(name != NULL)
     {
         DISP_MSG("disp_path_power_on, caller:%s \n", name);
     }
 
     enable_clock(MT_CG_DISP0_SMI_COMMON   , "DDP");
-    DISP_MSG("%s %d\n", __FUNCTION__, __LINE__);
     enable_clock(MT_CG_DISP0_SMI_LARB0   , "DDP");
-    DISP_MSG("%s %d\n", __FUNCTION__, __LINE__);
     //enable_clock(MT_CG_DISP0_MUTEX   , "DDP");
     enable_clock(MT_CG_DISP0_MUTEX_32K   , "DDP");
+	DISP_MSG("%s %d DISP CG:%x\n", __FUNCTION__, __LINE__, DISP_REG_GET(DISP_REG_CONFIG_MMSYS_CG_CON0));
     //enable_clock(MT_CG_DISP0_MM_CMDQ , "DDP");
-//    //enable_clock(MT_CG_DISP0_CMDQ_SMI    , "DDP");
+	//enable_clock(MT_CG_DISP0_CMDQ_SMI    , "DDP");
     
-//    enable_clock(MT_CG_DISP0_ROT_ENGINE  , "DDP");    
-//    enable_clock(MT_CG_DISP0_ROT_SMI     , "DDP");
-//    enable_clock(MT_CG_DISP0_SCL         , "DDP");
-//    enable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");
-//    //enable_clock(MT_CG_DISP0_WDMA0_SMI   , "DDP");
+	//enable_clock(MT_CG_DISP0_ROT_ENGINE  , "DDP");    
+	//enable_clock(MT_CG_DISP0_ROT_SMI     , "DDP");
+	//enable_clock(MT_CG_DISP0_SCL         , "DDP");
+	//enable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");
+	//enable_clock(MT_CG_DISP0_WDMA0_SMI   , "DDP");
 
-    enable_clock(MT_CG_DISP0_DISP_OVL  , "DDP");
+    //enable_clock(MT_CG_DISP0_DISP_OVL  , "DDP");		/* porting from abc123 : power_saving*/
     //enable_clock(MT_CG_DISP0_OVL_SMI     , "DDP");
     enable_clock(MT_CG_DISP0_DISP_COLOR       , "DDP");
-//    enable_clock(MT_CG_DISP0_2DSHP       , "DDP");
+	//enable_clock(MT_CG_DISP0_2DSHP       , "DDP");
     enable_clock(MT_CG_DISP0_DISP_BLS         , "DDP");
-    enable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");
+    //enable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");		/* porting from abc123 : power_saving*/
     //enable_clock(MT_CG_DISP0_WDMA0_SMI   , "DDP");
     //enable_clock(MT_CG_DISP0_RDMA0_ENGINE, "DDP");
     //enable_clock(MT_CG_DISP0_RDMA0_SMI   , "DDP");
     //enable_clock(MT_CG_DISP0_RDMA0_OUTPUT, "DDP");
     
     enable_clock(MT_CG_DISP0_DISP_RDMA, "DDP");
+	bRDMAOff = 1;
     //enable_clock(MT_CG_DISP0_DISP_RMDA1, "DDP");
     //enable_clock(MT_CG_DISP0_RDMA1_SMI   , "DDP");
     //enable_clock(MT_CG_DISP0_RDMA1_OUTPUT, "DDP");
@@ -2608,6 +2639,15 @@ int disp_path_clock_on(char* name)
     enable_clock(MT_CG_DISP0_MDP_BLS_26M         , "DDP");
 //#endif
 
+
+	/* porting from abc123: DE request RDMA reset before engine enable */
+	/* prevent reset RDMA interruptedly during RDMA working */
+	//when boot up, skip it, orelse it will cause screen flash issue.
+	/*if(*pRegBackup != DDP_UNBACKED_REG_MEM)
+	{
+		if (bRDMAOff == 1)
+			RDMAReset(0);
+	}*/
     // restore ddp related registers
     if (strncmp(name, "ipoh_mtkfb", 10))
     {
@@ -2636,6 +2676,16 @@ int disp_path_clock_on(char* name)
 
 int disp_path_clock_off(char* name)
 {
+
+	if (!atomic_read(&g_clock_on)) {
+		if (NULL == name)
+			name = "";
+		DISP_MSG("calling disp_path_power_off when power is already off, caller:%s \n", name);
+		return 0;
+	}
+
+	atomic_dec(&g_clock_on);
+
     if(name != NULL)
     {
         DISP_MSG("disp_path_power_off, caller:%s \n", name);
@@ -2644,6 +2694,10 @@ int disp_path_clock_off(char* name)
     // disable intr and clear intr status
     disp_intr_disable_and_clear();
     
+	/* porting from abc123: */
+	/* DE request RDMA engine enable after DSI, so disable before backup register */
+	//RDMADisable(0);   //this line causes reboot
+	
     // backup ddp related registers
     disp_reg_backup();
 
@@ -2665,6 +2719,8 @@ int disp_path_clock_off(char* name)
     // Better to reset DMA engine before disable their clock
     RDMAStop(0);
     RDMAReset(0);
+/* porting from abc123 */
+/*
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
 	if (0 == (gOvlLayerSecure[0]|gOvlLayerSecure[1]|gOvlLayerSecure[2]|gOvlLayerSecure[3]))
 	{
@@ -2701,10 +2757,11 @@ int disp_path_clock_off(char* name)
 
     disable_clock(MT_CG_DISP0_DISP_OVL  , "DDP");
     //disable_clock(MT_CG_DISP0_OVL_SMI     , "DDP");
+*/
     disable_clock(MT_CG_DISP0_DISP_COLOR       , "DDP");
-//    disable_clock(MT_CG_DISP0_2DSHP       , "DDP");
+	//disable_clock(MT_CG_DISP0_2DSHP       , "DDP");
     disable_clock(MT_CG_DISP0_DISP_BLS         , "DDP");
-    disable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");
+    //disable_clock(MT_CG_DISP0_DISP_WDMA, "DDP");		/* porting from abc123 */
     //disable_clock(MT_CG_DISP0_WDMA0_SMI   , "DDP");
     //disable_clock(MT_CG_DISP0_RDMA0_ENGINE, "DDP");
     //disable_clock(MT_CG_DISP0_RDMA0_SMI   , "DDP");
@@ -2743,9 +2800,16 @@ int disp_path_clock_off(char* name)
     //disable_clock(MT_CG_DISP0_G2D_ENGINE  , "DDP");
     //disable_clock(MT_CG_DISP0_G2D_SMI     , "DDP");
 
-    //DISP_MSG("DISP CG:%x\n", DISP_REG_GET(DISP_REG_CONFIG_MMSYS_CG_CON0));
+    DISP_MSG("DISP CG:%x\n", DISP_REG_GET(DISP_REG_CONFIG_MMSYS_CG_CON0));
     return 0;
 }
+
+/* porting from abc123 */
+int disp_path_rdma_start(unsigned idx)
+{
+	return RDMAStart(idx);
+}
+
 #else
 
 static int disp_path_clock_on(char* name)
@@ -2998,13 +3062,14 @@ int disp_path_config_layer_ovl_engine(OVL_CONFIG_STRUCT* pOvlConfig,int OvlSecur
     if(!gOvlEngineControl)
 		return 0;
 
-    //OVLStop();
+	OVLStop();		/*monica_porting3; originally removed fro 8127 but 8135 has it */
 
     _DISP_DumpLayer(pOvlConfig);
 
     disp_path_config_layer_(pOvlConfig,OvlSecure);
 
-    //OVLStart();
+	OVLSWReset();	/* porting from abc123; */
+   	OVLStart();  	/* porting from abc123; originally removed fro 8127 but 8135 has it */
 
     return 0;
 }
@@ -3172,7 +3237,8 @@ int disp_path_config_OVL_WDMA(struct disp_path_config_mem_out_struct* pConfig, i
 		{
             // config wdma1
             WDMAReset(1);
-            WDMAConfig(1,
+	        if(pConfig->outFormat != eYUV_420_3P){
+            	WDMAConfig(1,
                        WDMA_INPUT_FORMAT_ARGB,
                        pConfig->srcROI.width,
                        pConfig->srcROI.height,
@@ -3182,35 +3248,56 @@ int disp_path_config_OVL_WDMA(struct disp_path_config_mem_out_struct* pConfig, i
                        pConfig->srcROI.height,
                        pConfig->outFormat,
                        pConfig->dstAddr,
-                       (pConfig->dstPitch)?pConfig->dstPitch:pConfig->srcROI.width,
+	                   pConfig->srcROI.width,   ///pitch
                        1,
                        0);
-			
-	        if(pConfig->outFormat == eYUV_420_3P) {
-				unsigned int picSz, uAddr, vAddr, width_align, height_align;
-				width_align = ALIGN_TO(pConfig->srcROI.width, 16);
-				height_align = ALIGN_TO(pConfig->srcROI.height, 16);
-				picSz = width_align * height_align;
-				uAddr = pConfig->dstAddr + picSz;					
-				if (pConfig->dstPitch)
-					vAddr = uAddr + ((ALIGN_TO(pConfig->dstPitch>>1, 16)*height_align)>>1);
-				else
-					vAddr = uAddr + ((ALIGN_TO(pConfig->srcROI.width>>1, 16)*height_align)>>1);	
+			}
+			else{
+				unsigned int picSz, uAddr, vAddr, height_align, width_align;
+				height_align = pConfig->srcROI.height; //((pConfig->srcROI.height + (16-1)) & (~(16-1)));
+				width_align = ((pConfig->srcROI.width + (16-1)) & (~(16-1)));
+				picSz = /*pConfig->srcROI.width*/width_align * height_align;
+				WDMAConfig(1,
+						   WDMA_INPUT_FORMAT_ARGB,
+						   pConfig->srcROI.width,
+						   pConfig->srcROI.height,
+						   0,
+						   0,
+						   pConfig->srcROI.width,
+						   pConfig->srcROI.height,
+						   pConfig->outFormat,
+						   pConfig->dstAddr,
+						   width_align,	///pitch
+						   1,
+						   0);
 
-				pr_err("[normal] WFD dstAddr:0x%08x picSz:0x%08x uAddr:0x%08x vAddr:0x%08x\n",
-					pConfig->dstAddr,picSz,uAddr,vAddr);
-				pr_err("[normal] WFD width:%d align width:%d, height:%d, align width:%d\n",
-					pConfig->srcROI.width, width_align, pConfig->srcROI.height, height_align);
-				WDMAConfigUV(1, uAddr, vAddr, pConfig->srcROI.width);
-				if (pConfig->dstPitch) {
-					pr_err("[normal] WFD dstPitch:%d\n", pConfig->dstPitch);
-					DISP_REG_SET(DISP_INDEX_OFFSET + DISP_REG_WDMA_DST_UV_PITCH, 
-										ALIGN_TO(pConfig->dstPitch>>1, 16));
-				}
+				uAddr = pConfig->dstAddr + picSz;
+				vAddr = uAddr + (picSz>>2);		
+				pr_err("[normal] WFD align_height:%d width_align:%d; width:%d\ndstAddr:0x%08x picSz:0x%08x uAddr:0x%08x vAddr:0x%08x\n",
+					height_align, width_align, pConfig->srcROI.width,pConfig->dstAddr,picSz,uAddr,vAddr);
+				WDMAConfigUV(1, uAddr, vAddr, width_align);
 			}	
 
             WDMAStart(1);
 	    }
+#if 0 //temporarily marked for lacking of trustzone code
+#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+        {
+        	MTEEC_PARAM param[4];
+        	unsigned int paramTypes;
+        	TZ_RESULT ret;
+
+        	param[0].value.a = DISP_WDMA;
+        	param[1].value.a = (pConfig->security == 1);
+        	paramTypes = TZ_ParamTypes2(TZPT_VALUE_INPUT,TZPT_VALUE_INPUT);
+        	ret = KREE_TeeServiceCall(ddp_session_handle(), TZCMD_DDP_SET_SECURE_MODE, paramTypes, param);
+        	if(ret!= TZ_RESULT_SUCCESS)
+        	{
+        		DISP_ERR("KREE_TeeServiceCall(TZCMD_DDP_SET_SECURE_MODE) fail, ret=%d \n", ret);
+        	}	
+        }
+#endif
+#endif
     }
     else
     {
@@ -3221,6 +3308,14 @@ int disp_path_config_OVL_WDMA(struct disp_path_config_mem_out_struct* pConfig, i
 }
 #endif
 int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
+{
+
+	disp_path_config_mutex(pConfig, mutexId);
+
+	return disp_path_config_setting(pConfig, mutexId);
+}
+
+int disp_path_config_mutex(struct disp_path_config_struct *pConfig, int mutexId)
 {
     unsigned int mutexSof;
     //unsigned int mutexValue;
@@ -3288,6 +3383,7 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
 
     g_dst_module = pConfig->dstModule;
 
+#if 0
 #ifdef DDP_USE_CLOCK_API
 #else
         // TODO: clock manager sholud manager the clock ,not here
@@ -3295,6 +3391,7 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
         DISP_REG_SET(DISP_REG_CONFIG_MMSYS_CG_CLR1 , 0xFFFFFFFF);
         DISP_REG_SET(DISP_REG_CONFIG_MMSYS_CG_CON0 , 0xFFF00000);
         DISP_REG_SET(DISP_REG_CONFIG_MMSYS_CG_CON1 , 0xFFFFC000);
+#endif
 #endif
 
 	/*config mutex mode*/
@@ -3366,6 +3463,22 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
         	DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMemOutMutexID), 0x0);// single mode
         	DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, (1 << gMemOutMutexID)|(1 << mutexId));
         }
+
+	/* porting from abc123 */
+	return 0;
+}
+
+int disp_path_config_setting(struct disp_path_config_struct *pConfig, int mutexId)
+{
+		
+#ifdef DDP_USE_CLOCK_API
+		
+#else
+			/* TODO: clock manager sholud manager the clock ,not here */
+			DISP_REG_SET(DISP_REG_CONFIG_CG_CLR0, 0xFFFFFFFF);
+			DISP_REG_SET(DISP_REG_CONFIG_CG_CLR1, 0xFFFFFFFF);
+#endif
+
         ///> config config reg
         switch(pConfig->dstModule)
         {
@@ -3500,6 +3613,8 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
             {
                 DISP_ERR("layer ID undefined! %d \n", pConfig->ovl_config.layer);
             }
+			if (disp_path_get_ovl_en() == 0)  /* porting from abc123 */
+				OVLSWReset();
             OVLStart();
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
             if(pConfig->dstModule==DISP_MODULE_WDMA)  //1. mem->ovl->wdma0->mem
@@ -3829,4 +3944,10 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
     return 0;
 }
 
+#ifdef MTK_OVERLAY_ENGINE_SUPPORT
+int disp_path_get_ovl_en(void)
+{
+	return DISP_REG_GET(DISP_REG_OVL_EN);
+}
+#endif
 

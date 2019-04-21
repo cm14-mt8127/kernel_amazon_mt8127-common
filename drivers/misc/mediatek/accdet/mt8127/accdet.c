@@ -7,6 +7,10 @@
 #include <mach/eint.h>
 
 
+#define EARPHONE_SWITCH
+#define GPIO_HEADSET_SWITCH1 GPIO87
+#define GPIO_HEADSET_SWITCH2 GPIO90
+
 #define SW_WORK_AROUND_ACCDET_REMOTE_BUTTON_ISSUE
 #define DEBUG_THREAD 1
 
@@ -351,6 +355,27 @@ static void disable_micbias_callback(struct work_struct *work)
 	#endif
 }
 
+#define ACCDET_ADC_CHANNEL	 (8)
+#define ADC_BOARD_ID	(15)
+static int board_voltage;
+
+extern int IMM_GetOneChannelValue(int dwChannel, int data[4], int *rawdata);
+static int get_board_voltage(void)
+{
+	int data[4];
+	int voltage = 0;
+	int ret = 0;
+
+	ret = IMM_GetOneChannelValue(ADC_BOARD_ID, data, &voltage);
+	if (0 != ret) {
+		ACCDET_DEBUG("init_board_voltage get ADC error: %d\n", ret);
+		return 0;
+	}
+	board_voltage = (voltage*1500)/4096;
+	ACCDET_DEBUG("board_voltage = %d mv\n", board_voltage);
+
+}
+
 static void accdet_eint_work_callback(struct work_struct *work)
 {
 #ifndef MTK_ALPS_BOX_SUPPORT  	
@@ -364,6 +389,9 @@ static void accdet_eint_work_callback(struct work_struct *work)
 		eint_accdet_sync_flag = 1;
 		mutex_unlock(&accdet_eint_irq_sync_mutex);
 		#ifdef ACCDET_LOW_POWER
+		#ifdef CONFIG_AUSTIN_PROJECT
+		mod_timer(&micbias_timer, jiffies + MICBIAS_DISABLE_TIMER);
+		#endif
 		wake_lock_timeout(&accdet_timer_lock, 7*HZ);
 		#endif
 		#ifdef ACCDET_28V_MODE
@@ -392,7 +420,48 @@ static void accdet_eint_work_callback(struct work_struct *work)
 			pmic_pwrap_write(ACCDET_STATE_SWCTRL, (pmic_pwrap_read(ACCDET_STATE_SWCTRL)|ACCDET_SWCTRL_IDLE_EN));
 		#endif  
 		//enable ACCDET unit
-			enable_accdet(ACCDET_SWCTRL_EN); 
+			enable_accdet(ACCDET_SWCTRL_EN);
+		#if defined(EARPHONE_SWITCH)
+			msleep(60);
+			int accdet_adc = 0;
+			int i = 0;
+			int arr[10] = {0};
+			accdet_auxadc_switch(1);
+			for (i = 0; i < 10; i++) {
+				arr[i] = PMIC_IMM_GetOneChannelValue(ACCDET_ADC_CHANNEL, 1, 1);
+				printk("accdet_voltage arr[%d]=%d\n", i, arr[i]);
+			}
+			accdet_auxadc_switch(0);
+			accdet_adc = (arr[4] + arr[5] + arr[6] + arr[7])/4;
+			ACCDET_DEBUG("accdet_voltage = %d mv, board_voltage = %d mv\n", accdet_adc, board_voltage);
+			#if defined(CONFIG_AUSTIN_PROJECT)
+				if (accdet_adc > 550) {
+					ACCDET_DEBUG("[Accdet] ctia headset!!!\n");
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+				} else {
+					ACCDET_DEBUG("[Accdet] omtp headset!!!\n");
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ONE);
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ZERO);
+				}
+			#else
+				if (board_voltage > 570) {
+					if (accdet_adc > 550) {
+						ACCDET_DEBUG("[Accdet] ctia headset!!!\n");
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+					} else {
+						ACCDET_DEBUG("[Accdet] omtp headset!!!\n");
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ONE);
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ZERO);
+					}
+				} else {
+					ACCDET_DEBUG("[Accdet] ---HVT EVT1.0 board--- ctia headset!!!\n");
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+					mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+				}
+			#endif
+		#endif
     } else {
 //EINT_PIN_PLUG_OUT
 //Disable ACCDET
@@ -416,6 +485,10 @@ static void accdet_eint_work_callback(struct work_struct *work)
 			accdet_auxadc_switch(0);
 			disable_accdet();			   
 			headset_plug_out();
+			#if defined(EARPHONE_SWITCH)
+			mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+			mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+			#endif
 			#ifdef ACCDET_28V_MODE
 			pmic_pwrap_write(ACCDET_RSV, ACCDET_1V9_MODE_OFF);
 			ACCDET_DEBUG("ACCDET use in 1.9V mode!! \n");
@@ -480,13 +553,13 @@ static void accdet_eint_func(void)
 	
 #ifdef ACCDET_LOW_POWER
 		//INIT the timer to disable micbias.
-					
+#ifndef CONFIG_AUSTIN_PROJECT
 		init_timer(&micbias_timer);
 		micbias_timer.expires = jiffies + MICBIAS_DISABLE_TIMER;
 		micbias_timer.function = &disable_micbias;
 		micbias_timer.data = ((unsigned long) 0 );
 		add_timer(&micbias_timer);
-					
+#endif
 #endif
 	}
 
@@ -560,40 +633,79 @@ static DEFINE_MUTEX(accdet_multikey_mutex);
 0V<=MD< 0.09V<= UP<0.24V<=DW <0.5V
 
 */
-
-#define DW_KEY_HIGH_THR	 (500) //0.50v=500000uv
-#define DW_KEY_THR		 (240) //0.24v=240000uv
-#define UP_KEY_THR       (90) //0.09v=90000uv
+/*HVT*/
+#define DW_KEY_HIGH_THR	 (400) /*400mv*/
+#define DW_KEY_THR		 (280) /*280mv*/
+#define UP_KEY_THR       (180) /*180mv*/
 #define MD_KEY_THR		 (0)
 
+/*EVT1.2*/
+#define DW_KEY_HIGH_THR_1	 (400) /*400mv*/
+#define DW_KEY_THR_1		 (200) /*200mv*/
+#define UP_KEY_THR_1       (100) /*100mv*/
+#define MD_KEY_THR_1		 (0)
+
+#if defined(CONFIG_AUSTIN_PROJECT)
 static int key_check(int b)
 {
-	//ACCDET_DEBUG("adc_data: %d v\n",b);
-	
-	/* 0.24V ~ */
+	/*ACCDET_DEBUG("adc_data: %d v\n",b);*/
+
 	ACCDET_DEBUG("accdet: come in key_check!!\n");
-	if((b<DW_KEY_HIGH_THR)&&(b >= DW_KEY_THR)) 
-	{
-		ACCDET_DEBUG("adc_data: %d mv\n",b);
+	if ((b < DW_KEY_HIGH_THR_1) && (b >= DW_KEY_THR_1)) {
+		ACCDET_DEBUG("adc_data: %d mv\n", b);
 		return DW_KEY;
-	} 
-	else if ((b < DW_KEY_THR)&& (b >= UP_KEY_THR))
-	{
-		ACCDET_DEBUG("adc_data: %d mv\n",b);
+	} else if ((b < DW_KEY_THR_1) && (b >= UP_KEY_THR_1)) {
+		ACCDET_DEBUG("adc_data: %d mv\n", b);
 		return UP_KEY;
-	}
-	else if ((b < UP_KEY_THR) && (b >= MD_KEY_THR))
-	{
-		ACCDET_DEBUG("adc_data: %d mv\n",b);
+	} else if ((b < UP_KEY_THR_1) && (b >= MD_KEY_THR_1)) {
+		ACCDET_DEBUG("adc_data: %d mv\n", b);
 		return MD_KEY;
 	}
 	ACCDET_DEBUG("accdet: leave key_check!!\n");
 	return NO_KEY;
 }
+#else
+static int key_check(int b)
+{
+	/*ACCDET_DEBUG("adc_data: %d v\n",b);*/
+
+	/* 0.24V ~ */
+	if (board_voltage > 570) /*Board EVT1.2*/
+	{
+		ACCDET_DEBUG("accdet: come in key_check!!\n");
+		if ((b < DW_KEY_HIGH_THR_1) && (b >= DW_KEY_THR_1)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return DW_KEY;
+		} else if ((b < DW_KEY_THR_1) && (b >= UP_KEY_THR_1)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return UP_KEY;
+		} else if ((b < UP_KEY_THR_1) && (b >= MD_KEY_THR_1)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return MD_KEY;
+		}
+		ACCDET_DEBUG("accdet: leave key_check!!\n");
+		return NO_KEY;
+	} else {
+		ACCDET_DEBUG("accdet: come in key_check!!\n");
+		if ((b < DW_KEY_HIGH_THR) && (b >= DW_KEY_THR)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return DW_KEY;
+		} else if ((b < DW_KEY_THR) && (b >= UP_KEY_THR)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return UP_KEY;
+		} else if ((b < UP_KEY_THR) && (b >= MD_KEY_THR)) {
+			ACCDET_DEBUG("adc_data: %d mv\n", b);
+			return MD_KEY;
+		}
+		ACCDET_DEBUG("accdet: leave key_check!!\n");
+		return NO_KEY;
+	}
+}
+#endif
 
 static void send_key_event(int keycode,int flag)
 {
-    if(call_status == 0)
+    if (0)
     {
                 switch (keycode)
                 {
@@ -1068,6 +1180,10 @@ static inline void check_cable_type(void)
 		        mutex_lock(&accdet_eint_irq_sync_mutex);
 		        if(1 == eint_accdet_sync_flag) {
 		   			accdet_status = PLUG_OUT;
+					#if defined(EARPHONE_SWITCH)
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+						mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+					#endif
 			 	}else {
 					ACCDET_DEBUG("[Accdet] Headset has plugged out\n");
 			 	}
@@ -1351,9 +1467,17 @@ static int dump_register(void)
 
 static ssize_t accdet_store_call_state(struct device_driver *ddri, const char *buf, size_t count)
 {
-	if (sscanf(buf, "%u", &call_status) != 1) {
-			ACCDET_DEBUG("accdet: Invalid values\n");
-			return -EINVAL;
+	int ret;
+
+	if (buf == NULL) {
+		ACCDET_DEBUG("[%s] Invalid input!!\n",  __func__);
+		return -EINVAL;
+	}
+
+	ret = kstrtoint(buf, 0, &call_status);
+	if (ret != 0) {
+		ACCDET_DEBUG("accdet: Invalid values\n");
+		return -EINVAL;
 	}
 
 	switch(call_status)
@@ -1374,7 +1498,7 @@ static ssize_t accdet_store_call_state(struct device_driver *ddri, const char *b
 			break;
             
 		default:
-   		    ACCDET_DEBUG("[Accdet]accdet call : Invalid values\n");
+			ACCDET_DEBUG("[Accdet]accdet call : Invalid values\n");
             break;
      }
 	return count;
@@ -1384,11 +1508,16 @@ static ssize_t accdet_store_call_state(struct device_driver *ddri, const char *b
 
 static ssize_t show_pin_recognition_state(struct device_driver *ddri, char *buf)
 {
+	if (buf == NULL) {
+		ACCDET_DEBUG("[%s] Invalid input!!\n",  __func__);
+		return -EINVAL;
+	}
+
    #ifdef ACCDET_PIN_RECOGNIZATION
 	ACCDET_DEBUG("ACCDET show_pin_recognition_state = %d\n", cable_pin_recognition);
-	return sprintf(buf, "%u\n", cable_pin_recognition);
+	return snprintf(buf, (size_t)sizeof(cable_pin_recognition), "%u\n", cable_pin_recognition);
    #else
-    return sprintf(buf, "%u\n", 0);
+    return snprintf(buf, 4, "%u\n", 0);
    #endif
 }
 
@@ -1416,54 +1545,55 @@ static int dbug_thread(void *unused)
 //static ssize_t store_trace_value(struct device_driver *ddri, const char *buf, size_t count)
 static ssize_t store_accdet_start_debug_thread(struct device_driver *ddri, const char *buf, size_t count)
 {
-	
-	unsigned int start_flag;
-	int error;
+	int ret = 0;
+	int error = 0;
+	int start_flag = 0;
 
-	if (sscanf(buf, "%u", &start_flag) != 1) {
+	if (buf == NULL) {
+		ACCDET_DEBUG("[%s] Invalid input!!\n",  __func__);
+		return -EINVAL;
+	}
+
+	ret = kstrtoint(buf, 0, &start_flag);
+	if (ret != 0) {
 		ACCDET_DEBUG("accdet: Invalid values\n");
 		return -EINVAL;
 	}
 
-	ACCDET_DEBUG("[Accdet] start flag =%d \n",start_flag);
-
-	g_start_debug_thread = start_flag;
-
-    if(1 == start_flag)
-    {
-	   thread = kthread_run(dbug_thread, 0, "ACCDET");
-       if (IS_ERR(thread)) 
-	   { 
-          error = PTR_ERR(thread);
-          ACCDET_DEBUG( " failed to create kernel thread: %d\n", error);
-       }
-    }
+	if (start_flag) {/* if write 0, Invalid; otherwise, valid */
+		g_start_debug_thread = 1;
+		thread = kthread_run(dbug_thread, 0, "ACCDET");
+		if (IS_ERR(thread)) {
+			error = PTR_ERR(thread);
+			ACCDET_DEBUG("[store_accdet_start_debug_thread] failed to create kernel thread: %d\n", error);
+		} else {
+			ACCDET_DEBUG("[store_accdet_start_debug_thread] start debug thread!\n");
+		}
+	} else {
+		g_start_debug_thread = 0;
+		ACCDET_DEBUG("[store_accdet_start_debug_thread] stop debug thread!\n");
+	}
 
 	return count;
 }
 static ssize_t store_accdet_set_headset_mode(struct device_driver *ddri, const char *buf, size_t count)
 {
-
-    unsigned int value;
-	//int error;
-
-	if (sscanf(buf, "%u", &value) != 1) {
-		ACCDET_DEBUG("accdet: Invalid values\n");
-		return -EINVAL;
-	}
-
-	ACCDET_DEBUG("[Accdet]store_accdet_set_headset_mode value =%d \n",value);
-
+	ACCDET_DEBUG("[%s] Not Support\n", __func__);
 	return count;
 }
 
 static ssize_t store_accdet_dump_register(struct device_driver *ddri, const char *buf, size_t count)
 {
-    unsigned int value;
-//	int error;
+	int value;
+	int ret;
 
-	if (sscanf(buf, "%u", &value) != 1) 
-	{
+	if (buf == NULL) {
+		ACCDET_DEBUG("[%s] Invalid input!!\n",  __func__);
+		return -EINVAL;
+	}
+
+	ret = kstrtoint(buf, 0, &value);
+	if (ret != 0) {
 		ACCDET_DEBUG("accdet: Invalid values\n");
 		return -EINVAL;
 	}
@@ -1614,6 +1744,20 @@ int mt_accdet_probe(void)
     wake_lock_init(&accdet_irq_lock, WAKE_LOCK_SUSPEND, "accdet irq wakelock");
     wake_lock_init(&accdet_key_lock, WAKE_LOCK_SUSPEND, "accdet key wakelock");
 	wake_lock_init(&accdet_timer_lock, WAKE_LOCK_SUSPEND, "accdet timer wakelock");
+
+#if defined(EARPHONE_SWITCH)
+	get_board_voltage();
+
+	mt_set_gpio_mode(GPIO_HEADSET_SWITCH2, GPIO_MODE_00);
+	mt_set_gpio_pull_enable(GPIO_HEADSET_SWITCH2, GPIO_PULL_ENABLE);
+	mt_set_gpio_dir(GPIO_HEADSET_SWITCH2, GPIO_DIR_OUT);
+	mt_set_gpio_out(GPIO_HEADSET_SWITCH2, GPIO_OUT_ONE);
+
+	mt_set_gpio_mode(GPIO_HEADSET_SWITCH1, GPIO_MODE_00);
+	mt_set_gpio_pull_enable(GPIO_HEADSET_SWITCH1, GPIO_PULL_ENABLE);
+	mt_set_gpio_dir(GPIO_HEADSET_SWITCH1, GPIO_DIR_OUT);
+	mt_set_gpio_out(GPIO_HEADSET_SWITCH1, GPIO_OUT_ZERO);
+#endif
 #ifdef SW_WORK_AROUND_ACCDET_REMOTE_BUTTON_ISSUE
      init_waitqueue_head(&send_event_wq);
      //start send key event thread
@@ -1650,7 +1794,9 @@ int mt_accdet_probe(void)
 		queue_work(accdet_workqueue, &accdet_work); //schedule a work for the first detection					
 #endif
 		#ifdef ACCDET_EINT
-
+#ifdef CONFIG_AUSTIN_PROJECT
+		setup_timer(&micbias_timer, disable_micbias, (unsigned long) 0);
+#endif
           accdet_eint_workqueue = create_singlethread_workqueue("accdet_eint");
 	      INIT_WORK(&accdet_eint_work, accdet_eint_work_callback);
 	      accdet_setup_eint();

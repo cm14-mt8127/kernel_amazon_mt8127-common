@@ -15,6 +15,8 @@
 #include <mach/mt_reg_base.h>
 #include <mach/irqs.h>
 #include <linux/version.h>
+#include <mach/mt_spm_sleep.h>
+#include <mach/mt_spm.h>
 
 extern void arm_machine_restart(char mode, const char *cmd);
 extern struct sys_timer mt6582_timer;
@@ -24,6 +26,32 @@ extern struct smp_operations mt65xx_smp_ops;
 #endif
 extern void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi);
 extern void mt_reserve(void);
+
+/* Added by haitaoy@amazon.com for AUSTINPLAT-1413. */
+struct mt_wake_event_map mt8127_event_map[] = {
+	{
+		.domain = "SPM",
+		.code = 10, /* for WAKE_SRC_CONN */
+		.we = WEV_WIFI,
+		.irq = 10,
+	},
+/* Examples for tracing other types of wake source or event. */
+#if 0
+	{
+		.domain = "SPM",
+		.code = 21, /* for WAKE_SRC_THERM */
+		.we = WEV_THERM,
+		.irq = 21,
+	},
+	{
+		.domain = "IRQ",
+		.code = MT_CONN2AP_BTIF_WAKEUP_IRQ_ID, /* BTIF_WAKEUP_IRQ_ID */
+		.we = WEV_BT,
+		.irq = MT_CONN2AP_BTIF_WAKEUP_IRQ_ID,  /* BTIF_WAKEUP_IRQ_ID */
+	},
+#endif
+	{ /*empty*/ }
+};
 
 void __init mt_init(void)
 {
@@ -35,6 +63,9 @@ void __init mt_init(void)
     writel(opt, IOMEM(MCU_BIU_BASE));
     dsb();
 #endif
+
+    /* Added by haitaoy@amazon.com for AUSTINPLAT-1413. */
+    spm_set_wakeup_event_map(mt8127_event_map);
 }
 
 #if defined(CONFIG_TRUSTONIC_TEE_SUPPORT) || defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT)
@@ -90,7 +121,7 @@ static struct map_desc mt_io_desc[] __initdata =
         .virtual = SYSRAM_BASE,
         .pfn = __phys_to_pfn(0x00200000),
         .length = SZ_128K,
-        .type = MT_MEMORY_NONCACHED
+        .type = MT_DEVICE
     },
     {
         .virtual = G3D_CONFIG_BASE,
@@ -134,7 +165,7 @@ static struct map_desc mt_io_desc[] __initdata =
         .virtual = INTER_SRAM,
         .pfn = __phys_to_pfn(0x00100000),
         .length = SZ_64K,
-        .type = MT_MEMORY_NONCACHED
+        .type = MT_DEVICE
     },
 #else
     {
@@ -162,7 +193,7 @@ static struct map_desc mt_io_desc[] __initdata =
         .virtual = SYSRAM_BASE,
         .pfn = __phys_to_pfn(0x00200000),
         .length = SZ_128K,
-        .type = MT_MEMORY_NONCACHED
+        .type = MT_DEVICE
     },    
     {
         .virtual = DISPSYS_BASE,
@@ -199,7 +230,7 @@ static struct map_desc mt_io_desc[] __initdata =
         .virtual = INTER_SRAM,
         .pfn = __phys_to_pfn(0x00100000),
         .length = SZ_64K,
-        .type = MT_MEMORY_NONCACHED
+        .type = MT_DEVICE
     },
 #endif
 };

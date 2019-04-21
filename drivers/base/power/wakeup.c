@@ -15,11 +15,16 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <trace/events/power.h>
+#include <linux/syscore_ops.h>
+#include <linux/interrupt.h>
+#include <linux/irq.h>
+#include <linux/sched.h>
+#include <linux/module.h>
 
 #include "power.h"
-//#ifndef CONFIG_ARM64
-#if 1
+
 int wakeup_debug = 0;
+module_param(wakeup_debug, int, 0644);
 #define _TAG_WAKEUP "WAKEUP"
 #define wakeup_log(fmt, ...)    do { if (wakeup_debug) pr_info("[%s][%s]" fmt, _TAG_WAKEUP, __func__, ##__VA_ARGS__); } while (0)
 #define wakeup_warn(fmt, ...)   do { if (wakeup_debug) pr_warn("[%s][%s]" fmt, _TAG_WAKEUP, __func__, ##__VA_ARGS__); } while (0)
@@ -59,6 +64,13 @@ static void pm_wakeup_timer_fn(unsigned long data);
 static LIST_HEAD(wakeup_sources);
 
 static DECLARE_WAIT_QUEUE_HEAD(wakeup_count_wait_queue);
+
+static struct wakeup_event *wakeup_events;
+static struct wakeup_event *last_wakeup_ev;
+static unsigned total_wakeup_events = WEV_MAX;
+
+#define WAKE_ON_WIFI_TIMEOUT (1000)
+static struct wakeup_source *wifi_ws;
 
 /**
  * wakeup_source_prepare - Prepare a new wakeup source for initialization.
@@ -685,6 +697,22 @@ void pm_wakeup_event(struct device *dev, unsigned int msec)
 }
 EXPORT_SYMBOL_GPL(pm_wakeup_event);
 
+void pm_get_active_wakeup_sources(char *pending_wakeup_source, size_t max)
+{
+	struct wakeup_source *ws;
+	int len = 0;
+	rcu_read_lock();
+	len += snprintf(pending_wakeup_source, max, "Pending Wakeup Sources: ");
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		if (ws->active) {
+			len += snprintf(pending_wakeup_source + len, max,
+				"%s ", ws->name);
+		}
+	}
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL_GPL(pm_get_active_wakeup_sources);
+
 static void print_active_wakeup_sources(void)
 {
 	struct wakeup_source *ws;
@@ -694,7 +722,7 @@ static void print_active_wakeup_sources(void)
 	rcu_read_lock();
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
 		if (ws->active) {
-			pr_info("active wakeup source: %s\n", ws->name);
+			pr_warn("active wakeup source: %s\n", ws->name);
 			active = 1;
 		} else if (!active &&
 			   (!last_activity_ws ||
@@ -705,7 +733,7 @@ static void print_active_wakeup_sources(void)
 	}
 
 	if (!active && last_activity_ws)
-		pr_info("last active wakeup source: %s\n",
+		pr_warn("last active wakeup source: %s\n",
 			last_activity_ws->name);
 	rcu_read_unlock();
 }
@@ -808,6 +836,132 @@ bool pm_save_wakeup_count(unsigned int count)
 	return events_check_enabled;
 }
 
+/**
+ * weak function for BSPs to map irq to wakeup_event_t
+ */
+__weak wakeup_event_t irq_to_wakeup_ev(int irq)
+{
+	return WEV_MAX;
+}
+
+/**
+ * pm_rport_resume_ev - report a 'resume from suspend' event with it's
+ * corresponding irq.
+ *
+ * @ev : wakeup_event_t value corresponding to the event
+ * @irq : Interrupt number for the event
+ *
+ * Events can be of type {WEV_RTC, WEV_WIFI etc}. They can also be *not* listed
+ * in the wakeup_event_t enum. This function can record as much as 19 *unique*
+ * wakeup events and it will consolidate all other events into a single one at
+ * the end. If ev is >= EV_MAX, the mapping of irq to event depends on
+ * irq_to_wakeup_ev() function defined by the each arch. In future this may
+ * change and the function will be using the data extracted from a device tree
+ * node instead. For now, we allocate a new slot for every unique event, so we
+ * are not architecture dependant. We find the event name from its 'irq' for
+ * each unknown event.
+ *
+ * Absence of any locks is because this is exclusively supposed to be called
+ * from syscore_ops->resume() where all non-boot cpus are shutdown and local
+ * irqs are disabled.
+ *
+ */
+void pm_report_resume_ev(wakeup_event_t ev, int irq)
+{
+	struct wakeup_event *we = NULL;
+	int slot;
+
+	if (unlikely(!wakeup_events))
+		return;
+
+	if (ev >= WEV_MAX) {
+		for (slot = ev; slot < WEV_TOTAL; slot++) {
+			if (wakeup_events[slot].irq == irq) {
+				we = &wakeup_events[slot];
+				break;
+			}
+		}
+	} else {
+		we = &wakeup_events[ev];
+	}
+
+	/* This is a new event */
+	if (!we) {
+		we = &wakeup_events[total_wakeup_events];
+		total_wakeup_events = (total_wakeup_events < (WEV_TOTAL - 1)) ?
+					total_wakeup_events + 1 :
+					total_wakeup_events;
+		we->event = ev;
+		if (ev >= WEV_MAX) {
+			struct irq_desc *desc;
+			we->name = "null";
+
+			desc = irq_to_desc(irq);
+			if (desc == NULL)
+				we->name = "spurious";
+			else if (desc->action && desc->action->name)
+				we->name = desc->action->name;
+		}
+	}
+
+	BUG_ON(!we);
+
+	we->event = ev;
+	we->last_time = ns_to_ktime(sched_clock());
+	if (unlikely(!we->irq))
+		we->irq = irq;
+
+	if (!last_wakeup_ev ||
+		(last_wakeup_ev && (last_wakeup_ev != we)))
+		we->count++;
+
+	last_wakeup_ev = we;
+
+}
+EXPORT_SYMBOL(pm_report_resume_ev);
+
+/**
+ * pm_rport_resume_irq - report a 'resume from suspend' irq.
+ *
+ * @irq : Interrupt number that caused the SoC to come out of power collapse
+ *
+ * This is a wrapper to pm_report_resume_ev(). The purpose is to allow
+ * architectures to start reporting resume irqs w/o having to define their own
+ * irq_to_wakeup_ev()
+ */
+
+void pm_report_resume_irq(int irq)
+{
+	wakeup_event_t ev;
+
+	if (unlikely(!wakeup_events))
+		return;
+
+	/* if arch doesn't know about this wakeup irq
+	 * create a new entry and pickup the name from
+	 * irq_desc->action->name
+	 */
+	ev = irq_to_wakeup_ev(irq);
+	if (ev == WEV_NONE)
+		ev = WEV_MAX;
+
+	pm_report_resume_ev(ev, irq);
+}
+EXPORT_SYMBOL(pm_report_resume_irq);
+
+wakeup_event_t pm_get_resume_ev(ktime_t *ts)
+{
+	if (unlikely(!wakeup_events || !ts))
+		return WEV_NONE;
+
+	if (!last_wakeup_ev)
+		return WEV_NONE;
+
+	*ts = last_wakeup_ev->last_time;
+	return last_wakeup_ev->event;
+}
+EXPORT_SYMBOL(pm_get_resume_ev);
+
 #ifdef CONFIG_PM_AUTOSLEEP
 /**
  * pm_wakep_autosleep_enabled - Modify autosleep_enabled for all wakeup sources.
@@ -837,6 +991,7 @@ void pm_wakep_autosleep_enabled(bool set)
 #endif /* CONFIG_PM_AUTOSLEEP */
 
 static struct dentry *wakeup_sources_stats_dentry;
+static struct dentry *wakeup_events_stats_dentry;
 
 /**
  * print_wakeup_source_stats - Print wakeup source statistics information.
@@ -887,11 +1042,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 
 	return ret;
 }
-#endif
-//#ifdef CONFIG_ARM64
-#if 1
-static struct dentry *wakeup_sources_stats_dentry;
-#endif
+
 /**
  * wakeup_sources_stats_show - Print wakeup sources statistics information.
  * @m: seq_file to print the statistics into.
@@ -928,11 +1079,173 @@ static const struct file_operations wakeup_sources_stats_fops = {
 	.release = single_release,
 };
 
+/**
+ * print_wakeup_events_stats - Print wakeup events statistics information.
+ * @m: seq_file to print the statistics into.
+ * @we: Wakeup event object to print the statistics for.
+ */
+static int print_wakeup_events_stats(struct seq_file *m,
+				     struct wakeup_event *we)
+{
+	ktime_t now;
+	ktime_t awake_time, total_time;
+
+	/* print only if there are actually wakeup events */
+	if (we->count) {
+		now = ns_to_ktime(sched_clock());
+		if (we != last_wakeup_ev) {
+			total_time = we->total_time;
+		} else {
+			awake_time = ktime_sub(now, we->last_time);
+			total_time = ktime_add(awake_time, we->total_time);
+		}
+
+		return seq_printf(m, "%-12s\t%d\t%lu\t\t%lld\n",
+				we->name, we->irq, we->count,
+				ktime_to_ms(total_time));
+	}
+
+	return 0;
+}
+
+/**
+ * wakeup_events_stats_show - Print wakeup events statistics information.
+ * @m: seq_file to print the statistics into.
+ */
+static int wakeup_events_stats_show(struct seq_file *m, void *unused)
+{
+	int i;
+
+	seq_puts(m, "name\t\tirq\tevent_count\tawake_time\t\n");
+
+	for (i = 0; i <= total_wakeup_events; i++)
+		print_wakeup_events_stats(m, &wakeup_events[i]);
+
+	return 0;
+}
+
+static int wakeup_events_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wakeup_events_stats_show, NULL);
+}
+
+
+static const struct file_operations wakeup_events_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = wakeup_events_stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int wakeup_event_suspend(void)
+{
+	ktime_t now;
+	ktime_t awake_time;
+
+
+	if (likely(last_wakeup_ev)) {
+		now = ns_to_ktime(sched_clock());
+		awake_time = ktime_sub(now, last_wakeup_ev->last_time);
+		last_wakeup_ev->total_time =
+			ktime_add(last_wakeup_ev->total_time, awake_time);
+	}
+
+	last_wakeup_ev = NULL;
+
+	return 0;
+}
+
+static void wakeup_event_resume(void)
+{
+	/* Best Effort Wake-on-Wireless packet delivery to application in a
+	 * single resume cycle.
+	 *
+	 * When the device gets woken up from suspend due to a packet delivery,
+	 * there is still a chance that it may go back into suspend before the
+	 * application got scheduled to receive this packet on it's socket.
+	 *
+	 * We cannot *guarantee* the delivery in a single resume cycle (the nw
+	 * stack doesn't), so we are depending on the WiFi driver's rx wakelock
+	 * to keep us out of suspend every time.
+	 *
+	 * Instead of relying on the WiFi driver, here we add a generic wakelock
+	 * with 1s timeout to make sure we stay up atleast for a second before
+	 * we go back into suspend, but *only* if the wakeup was due to a packet
+	 * delivery.
+	 *
+	 * Needless to say, this still doesn't guarantee the packet delivery to
+	 * the application, but this is the best we can do with a very
+	 * slight/limited standby power impact.
+	 *
+	 * FIXME: ssp
+	 */
+
+	if (last_wakeup_ev && WEV_WIFI == last_wakeup_ev->event)
+		__pm_wakeup_event(wifi_ws, WAKE_ON_WIFI_TIMEOUT);
+}
+
+
+static struct syscore_ops we_syscore_ops = {
+	.suspend = wakeup_event_suspend,
+	.resume = wakeup_event_resume,
+};
+
+static int __init wakeup_events_init(void)
+{
+	int i;
+
+	wakeup_events = kzalloc(WEV_TOTAL * sizeof(*wakeup_events),
+					GFP_KERNEL);
+	if (!wakeup_events) {
+		pr_warn("%s: failed to allocated wakeup events\n",
+				__func__);
+		return -ENOMEM;
+	}
+
+	/* Init known wakeup events */
+	wakeup_events[WEV_RTC].name = "Rtc";
+	wakeup_events[WEV_WIFI].name = "WiFi";
+	wakeup_events[WEV_WAN].name = "Wan";
+	wakeup_events[WEV_USB].name = "USB plug";
+	wakeup_events[WEV_PWR].name = "Pon Key";
+	wakeup_events[WEV_HALL].name = "Hall Sens";
+	wakeup_events[WEV_BT].name = "BT";
+	wakeup_events[WEV_CHARGER].name = "Charger";
+	wakeup_events[WEV_TOTAL - 1].name = "Unknown (grp)";
+
+	for (i = WEV_RTC; i < WEV_MAX; i++)
+		wakeup_events[i].event = i;
+
+	wifi_ws = wakeup_source_register("wake-on-wifi");
+
+	return 0;
+}
+
 static int __init wakeup_sources_debugfs_init(void)
 {
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+
+	if (wakeup_events_init())
+		goto out;
+
+	wakeup_events_stats_dentry = debugfs_create_file("wakeup_events",
+			S_IRUGO, NULL, NULL, &wakeup_events_stats_fops);
+out:
+	return 0;
+}
+
+/* This is purposely done in late_initcall to ensure wakeup_event_resume gets
+ * called *after* timekeeping has resumed and we can safely kick a wakeup
+ * event without going into slowpath with irqs disabled
+ */
+static int __init wakeup_sources_syscore_init(void)
+{
+	register_syscore_ops(&we_syscore_ops);
+
 	return 0;
 }
 
 postcore_initcall(wakeup_sources_debugfs_init);
+late_initcall(wakeup_sources_syscore_init);

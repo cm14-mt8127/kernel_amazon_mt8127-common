@@ -399,6 +399,7 @@ int Disp_Ovl_Engine_Set_layer_info(DISP_OVL_ENGINE_INSTANCE_HANDLE handle, struc
     atomic_set(&disp_ovl_engine.Instance[handle].OverlaySettingDirtyFlag, 1);
     atomic_set(&disp_ovl_engine.Instance[handle].OverlaySettingApplied, 0);
 	disp_ovl_engine.Instance[handle].fgCompleted = 0;
+	disp_ovl_engine.Instance[handle].status = OVERLAY_STATUS_IDLE;
     up(&disp_ovl_engine_semaphore);
 
     DISP_OVL_ENGINE_INFO("Instance%d, layer%d en%d, next_idx=0x%x, vaddr=0x%x, paddr=0x%x, fmt=%u,"
@@ -554,7 +555,10 @@ int Disp_Ovl_Engine_Trigger_Overlay(DISP_OVL_ENGINE_INSTANCE_HANDLE handle)
     
     if(disp_ovl_engine.Instance[handle].status == OVERLAY_STATUS_IDLE)
     {
-        disp_ovl_engine.Instance[handle].status = OVERLAY_STATUS_TRIGGER;
+#if 1 //def monica_porting
+		disp_ovl_engine.Instance[handle].fgCompleted = 0;
+#endif
+		disp_ovl_engine.Instance[handle].status = OVERLAY_STATUS_TRIGGER;
         disp_ovl_engine.Instance[handle].fgCompleted = false;
         disp_ovl_engine_wake_up_ovl_engine_thread();
 
@@ -754,6 +758,10 @@ static void Disp_Ovl_Engine_Trigger_Overlay_Handler(struct work_struct *work_)
             if (sync_fence_wait(work->fences[layer], 1000) < 0)
                 DISP_OVL_ENGINE_ERR("Disp_Ovl_Engine_Trigger_Overlay_Handler %d layer %d fence wait fail\n",
                     instance->index,layer);
+#if 1 //def monica_porting
+						/* Unref the fence */
+				sync_fence_put(work->fences[layer]);
+#endif
         }
     }
 

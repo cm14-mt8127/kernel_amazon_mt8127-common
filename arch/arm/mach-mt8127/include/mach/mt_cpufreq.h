@@ -40,7 +40,10 @@ unsigned int mt_cpufreq_disable_by_ptpod(void);
 extern unsigned int mt_cpufreq_max_frequency_by_DVS(unsigned int num);
 void mt_cpufreq_return_default_DVS_by_ptpod(void);
 extern bool mt_cpufreq_earlysuspend_status_get(void);
-
+extern void mt_cpufreq_enable_boost(void);
+extern void mt_cpufreq_disable_boost(void);
+extern bool mt_cpufreq_get_boost(void);
+extern void hp_based_cpu_num(int num);
 
 /*****************
 * dummy type define for kernel 3.10

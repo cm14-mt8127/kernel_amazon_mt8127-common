@@ -144,14 +144,14 @@
 ********************************************************************************
 */
 
-
+/*
 BOOLEAN
 mtk_p2p_cfg80211func_channel_format_switch(
     IN struct ieee80211_channel *channel,
     IN enum nl80211_channel_type channel_type,
     IN P_RF_CHANNEL_INFO_T prRfChnlInfo,
     IN P_ENUM_CHNL_EXT_T prChnlSco
-    );
+    );*/
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -386,6 +386,7 @@ mtk_p2p_cfg80211_scan (
     P_P2P_SSID_STRUCT_T prSsidStruct = (P_P2P_SSID_STRUCT_T)NULL;
     struct ieee80211_channel *prChannel = NULL;
     struct cfg80211_ssid *prSsid = NULL;
+	GLUE_SPIN_LOCK_DECLARATION();
 
     /* [---------Channel---------] [---------SSID---------][---------IE---------] */
 	DBGLOG(INIT, TRACE, ("mtk_p2p_cfg80211_scan\n"));
@@ -406,16 +407,16 @@ mtk_p2p_cfg80211_scan (
         }
 
         DBGLOG(P2P, TRACE, ("mtk_p2p_cfg80211_scan.\n"));
-
-
+		GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
         if (prP2pGlueInfo->prScanRequest != NULL) {
             /* There have been a scan request on-going processing. */
             DBGLOG(P2P, TRACE, ("There have been a scan request on-going processing.\n"));
-            break;
+			GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
+			break;
         }
 
         prP2pGlueInfo->prScanRequest = request;
-
+		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
         /* Should find out why the n_channels so many? */
         if (request->n_channels > MAXIMUM_OPERATION_CHANNEL_LIST) {
             request->n_channels = MAXIMUM_OPERATION_CHANNEL_LIST;

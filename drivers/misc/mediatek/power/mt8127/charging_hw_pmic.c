@@ -203,7 +203,7 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	}
 	else
 	{
-		battery_xlog_printk(BAT_LOG_CRTI, "Can't find the parameter \r\n");	
+		battery_xlog_printk(BAT_LOG_CRTI, "Can't find the parameter \n");	
 		return parameter[0];
 	}
 }
@@ -221,7 +221,7 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 		}
 	}
 
-	 battery_xlog_printk(BAT_LOG_CRTI, "NO register value match \r\n");
+	 battery_xlog_printk(BAT_LOG_CRTI, "NO register value match \n");
 	//TODO: ASSERT(0);	// not find the value
 	return 0;
 }
@@ -247,7 +247,7 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 			 }	  
 		 }
 
-		 battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level \r\n");	
+		 battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level \n");	
 		 return pList[0];
 		 //return CHARGE_CURRENT_0_00_MA;
 	 }
@@ -261,7 +261,7 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 			 }	  
 		 }
 
- 		 battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level \r\n");
+ 		 battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level \n");
 		 return pList[number -1];
 		 //return CHARGE_CURRENT_0_00_MA;
 	 }
@@ -278,7 +278,7 @@ static void hw_bc11_dump_register(void)
 	for(i=reg_num ; i<=CHR_CON19 ; i+=2)
 	{
 		reg_val = upmu_get_reg_value(i);
-		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
+		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \n", i, reg_val);
 	}	
 }
 
@@ -311,7 +311,7 @@ static void hw_bc11_dump_register(void)
 	 
 	 if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	 {
-    		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \r\n");
+    		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \n");
 		hw_bc11_dump_register();
 	 }	
 
@@ -338,7 +338,7 @@ static void hw_bc11_dump_register(void)
 	 
 	 if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	 {
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \n");
 		hw_bc11_dump_register();
 	 }
 	 
@@ -373,7 +373,7 @@ static void hw_bc11_dump_register(void)
  
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \n");
 		hw_bc11_dump_register();
 	}
  
@@ -406,7 +406,7 @@ static void hw_bc11_dump_register(void)
  
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \n");
 		hw_bc11_dump_register();
 	}
  
@@ -439,7 +439,7 @@ static void hw_bc11_dump_register(void)
  
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \n");
 		hw_bc11_dump_register();
 	}
  
@@ -474,7 +474,7 @@ static void hw_bc11_dump_register(void)
  
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \n");
 		hw_bc11_dump_register();
 	}
  
@@ -507,7 +507,7 @@ static void hw_bc11_dump_register(void)
  
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \n");
 		hw_bc11_dump_register();
 	}
  
@@ -542,7 +542,7 @@ static void hw_bc11_dump_register(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \n");
 		hw_bc11_dump_register();
 	}
     
@@ -628,7 +628,7 @@ static void hw_bc11_dump_register(void)
     for(i=reg_num ; i<=CHR_CON29 ; i+=2)
     {
         reg_val = upmu_get_reg_value(i);
-        battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
+        battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \n", i, reg_val);
     }
 
 	return status;
@@ -830,7 +830,7 @@ kal_bool charging_type_detection_done(void)
     if(wireless_state == WIRELESS_CHARGER_EXIST_STATE)
     {
         *(CHARGER_TYPE*)(data) = WIRELESS_CHARGER;
-        battery_xlog_printk(BAT_LOG_CRTI, "WIRELESS_CHARGER!\r\n");
+        battery_xlog_printk(BAT_LOG_CRTI, "WIRELESS_CHARGER!\n");
         return status;
     }
 #endif
@@ -838,7 +838,7 @@ kal_bool charging_type_detection_done(void)
     if(g_charger_type!=CHARGER_UNKNOWN && g_charger_type!=WIRELESS_CHARGER)
     {
         *(CHARGER_TYPE*)(data) = g_charger_type;
-        battery_xlog_printk(BAT_LOG_CRTI, "return %d!\r\n", g_charger_type);
+        battery_xlog_printk(BAT_LOG_CRTI, "return %d!\n", g_charger_type);
         return status;
     }
 
@@ -857,16 +857,16 @@ kal_bool charging_type_detection_done(void)
 			 if(1 == hw_bc11_stepB1())
 			 {
 				 //*(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\n");
 				 *(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\n");
 			 }	 
 			 else
 			 {
 				 //*(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\n");
 				 *(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\n");
 			 }	 
 		 }
 		 else
@@ -875,12 +875,12 @@ kal_bool charging_type_detection_done(void)
 			 if(1 == hw_bc11_stepC1())
 			 {
 				 *(CHARGER_TYPE*)(data) = APPLE_1_0A_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 1A CHARGER!\r\n");
+				 battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 1A CHARGER!\n");
 			 }	 
 			 else
 			 {
 				 *(CHARGER_TYPE*)(data) = APPLE_0_5A_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 0.5A CHARGER!\r\n");			 
+				 battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 0.5A CHARGER!\n");			 
 			 }	 
 		 }
  
@@ -894,18 +894,18 @@ kal_bool charging_type_detection_done(void)
 			 if(1 == hw_bc11_stepB2())
 			 {
 				 *(CHARGER_TYPE*)(data) = STANDARD_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B2 : STANDARD CHARGER!\r\n");
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B2 : STANDARD CHARGER!\n");
 			 }
 			 else
 			 {
 				 *(CHARGER_TYPE*)(data) = CHARGING_HOST;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B2 :  Charging Host!\r\n");
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B2 :  Charging Host!\n");
 			 }
 		 }
 		 else
 		 {
      *(CHARGER_TYPE*)(data) = STANDARD_HOST;
-			 battery_xlog_printk(BAT_LOG_CRTI, "step A2 : Standard USB Host!\r\n");
+			 battery_xlog_printk(BAT_LOG_CRTI, "step A2 : Standard USB Host!\n");
 		 }
  
 	}

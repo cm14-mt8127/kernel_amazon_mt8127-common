@@ -46,7 +46,7 @@ extern void aee_wdt_printf(const char *fmt, ...);
  *   IRQ ID 
  *--------------------------------------------------------------------*/
 #define AP_RGU_WDT_IRQ_ID    MT_WDT_IRQ_ID
-#define CONFIG_KICK_SPM_WDT
+/* #define CONFIG_KICK_SPM_WDT */
 
 /* 
  * internal variables 

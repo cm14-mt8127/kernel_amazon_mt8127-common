@@ -1,31 +1,14 @@
-/******************************************************************************
-*
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Filename:
- * ---------
- *   AudDrv_Common.h
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Project:
- * --------
- *   MT6583 FPGA LDVT Audio Driver
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- *   Chipeng Chang (MTK02308)
- *
- *---------------------------------------------------------------------------
----
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
-
-*******************************************************************************/
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 #ifndef AUDIO_GLOBAL_H
 #define AUDIO_GLOBAL_H

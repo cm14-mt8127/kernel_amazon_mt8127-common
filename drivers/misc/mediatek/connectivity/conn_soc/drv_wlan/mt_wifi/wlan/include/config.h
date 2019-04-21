@@ -949,7 +949,9 @@
 #define CFG_SUPPORT_STATISTICS		1
 #define CFG_SUPPORT_DBG_POWERMODE	1	/* for debugging power always active mode */
 
+#define AMZN_PWR_TABLE_ENABLE 0 /* amazon specified power table setup enable flag */
 
+#define CFG_FORCE_USE_20BW			1
 /*------------------------------------------------------------------------------
  * SLT Option
  *------------------------------------------------------------------------------
@@ -1248,6 +1250,12 @@
 #define CFG_INIT_ADHOC_BEACON_INTERVAL          (100)
 #define CFG_INIT_ADHOC_ATIM_WINDOW              (0)
 
+/*------------------------------------------------------------------------------
+* Flags and Parameters for Maximum Scan SSID number
+*------------------------------------------------------------------------------
+*/
+#define CFG_SCAN_SSID_MAX_NUM                   (4)
+#define CFG_SCAN_SSID_MATCH_MAX_NUM             (16)
 
 /*------------------------------------------------------------------------------
  * Flags and Parameters for Load Setup Default
@@ -1511,7 +1519,7 @@
 
 #define CFG_SUPPORT_P2P_RSSI_QUERY        0
 
-#define CFG_SHOW_MACADDR_SOURCE     1
+#define CFG_SHOW_MACADDR_SOURCE     0
 
 #define CFG_SUPPORT_802_11V                    0  /* Support 802.11v Wireless Network Management */
 #define CFG_SUPPORT_802_11V_TIMING_MEASUREMENT 0
@@ -1559,6 +1567,26 @@
  */
 #define COMPILE_FLAG0_GET_STA_LINK_STATUS     (1<<0)
 #define COMPILE_FLAG0_WFD_ENHANCEMENT_PROTECT (1<<1)
+
+/*------------------------------------------------------------------------------
+ * Flags for wakeup event satistics
+ *------------------------------------------------------------------------------
+ */
+#define CFG_SUPPORT_WAKEUP_STATISTICS 1
+
+/*------------------------------------------------------------------------------
+ * Flags of custom region domain
+ *------------------------------------------------------------------------------
+ */
+#define CFG_CUSTOM_REG 1
+
+/*------------------------------------------------------------------------------
+ * Flags of  THERMO_THROTTLING SUPPORT
+ *------------------------------------------------------------------------------
+ */
+
+#define CFG_SUPPORT_THERMO_THROTTLING       1
+#define WLAN_INCLUDE_PROC		1
 
 /*******************************************************************************
 *                             D A T A   T Y P E S

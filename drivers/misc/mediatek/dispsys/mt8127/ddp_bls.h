@@ -3,6 +3,7 @@
 
 #include "ddp_drv.h"
 
+extern int g_Shutdown;
 
 void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight);
 int disp_bls_config(void);
@@ -21,5 +22,7 @@ void disp_bls_update_pwm_lut(void);
 //Called by tasklet to config registers
 void disp_onConfig_bls(DISP_AAL_PARAM *param);
 void disp_bls_contrl_directly(bool enable);
+
+void disp_bls_shutdown(bool shutdown);
 
 #endif

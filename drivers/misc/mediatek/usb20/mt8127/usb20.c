@@ -286,16 +286,30 @@ void mt_usb_disconnect(void)
 
 bool usb_cable_connected(void)
 {
+#if CONFIG_AUSTIN_PROJECT
+	int i = 0;
+#endif
 #ifdef FPGA_PLATFORM
 	return true;
 #else
 
 #ifdef CONFIG_USB_MTK_OTG
 	//ALPS00775710
-    int iddig_state = 1;
+	int iddig_state = 1;
 
-    iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
-	DBG(0,"iddig_state = %d\n", iddig_state);
+	iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
+	DBG(0, "iddig_state = %d\n", iddig_state);
+#if CONFIG_AUSTIN_PROJECT
+	for (i=0; i<3; i++) {
+		if (likely(iddig_state)) {
+			break;
+		} else {
+			msleep(50); /* anti-shake */
+			iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
+			DBG(0, "iddig_state = %d after sleep 50ms\n", iddig_state);
+		}
+	}
+#endif
 
 	if(!iddig_state)
 		return false;
@@ -472,9 +486,6 @@ static ssize_t mt_usb_store_cmode(struct device* dev, struct device_attribute *a
 					if (wake_lock_active(&mtk_musb->usb_lock))
                         wake_unlock(&mtk_musb->usb_lock);
 					musb_platform_set_vbus(mtk_musb, 0);
-                    
-                    msleep(100);
-                    
 					musb_stop(mtk_musb);
 					MUSB_DEV_MODE(mtk_musb);
 					/* Think about IPO shutdown with A-cable, then switch to B-cable and IPO bootup. We need a point to clear session bit */

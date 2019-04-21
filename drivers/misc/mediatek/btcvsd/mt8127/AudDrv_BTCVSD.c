@@ -1,43 +1,14 @@
-/*
- * Copyright (C) 2007 The Android Open Source Project
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
-/*******************************************************************************
- *
- * Filename:
- * ---------
- *   AudDrv_Kernelc
- *
- * Project:
- * --------
- *   MT6583  Audio Driver Kernel Function
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- * Chipeng Chang
- *
- *------------------------------------------------------------------------------
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
- *******************************************************************************/
 
 
 /*****************************************************************************
@@ -74,7 +45,6 @@
 #include <linux/proc_fs.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
-#include <linux/xlog.h>
 #include <mach/irqs.h>
 #include <mach/mt_irq.h>
 #include <asm/uaccess.h>
@@ -692,7 +662,7 @@ static int AudDrv_btcvsd_probe(struct platform_device *dev)
 
 static int AudDrv_btcvsd_open(struct inode *inode, struct file *fp)
 {
-    xlog_printk(ANDROID_LOG_INFO, "Sound", "AudDrv_btcvsd_open do nothing inode:%p, file:%p \n", inode, fp);
+    pr_debug("%s AudDrv_btcvsd_open do nothing inode:%p, file:%p \n",__func__, inode, fp);
     return 0;
 }
 
@@ -920,7 +890,7 @@ static ssize_t AudDrv_btcvsd_read(struct file *fp,  char __user *data, size_t co
             //printk("AudDrv_btcvsd_read 2-2 copy_to_user target=0x%x, source=0x%x,size_2=%d\n",(Read_Data_Ptr+size_1),((kal_uint8 *)btsco.pRX->PacketBuf+BTSCORX_ReadIdx_tmp+size_1),size_2);
             if (copy_to_user((void __user *)(Read_Data_Ptr + size_1), (void *)((kal_uint8 *)btsco.pRX->PacketBuf), size_2))
             {
-                xlog_printk(ANDROID_LOG_ERROR, "Sound", "AudDrv_btcvsd_read Fail 3 copy to user Read_Data_Ptr:%p, pRX->PacketBuf:%p, BTSCORX_ReadIdx_tmp:0x%x, read_size:%x", Read_Data_Ptr, btsco.pRX->PacketBuf, BTSCORX_ReadIdx_tmp, read_size);
+                pr_info("%s AudDrv_btcvsd_read Fail 3 copy to user Read_Data_Ptr:%p, pRX->PacketBuf:%p, BTSCORX_ReadIdx_tmp:0x%x, read_size:%x",__func__,Read_Data_Ptr, btsco.pRX->PacketBuf, BTSCORX_ReadIdx_tmp, read_size);
                 if (read_count == 0)
                 {
                     return -1;

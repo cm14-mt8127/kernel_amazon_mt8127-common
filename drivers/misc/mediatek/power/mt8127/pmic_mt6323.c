@@ -42,6 +42,7 @@
 #include <linux/sched.h>
 #include <linux/writeback.h>
 #include <linux/earlysuspend.h>
+#include <linux/reboot.h>
 
 #include <asm/uaccess.h>
 
@@ -107,9 +108,12 @@ void pmic_disable_pll(int id, char *mod_name)
 #define VOLTAGE_FULL_RANGE     1800
 #define ADC_PRECISE         32768 // 10 bits
 
+static void deferred_restart(struct work_struct *dummy);
+
 static DEFINE_MUTEX(pmic_lock_mutex);
 static DEFINE_MUTEX(pmic_adc_mutex);
 static DEFINE_SPINLOCK(pmic_adc_lock);
+static DECLARE_WORK(restart_work, deferred_restart);
 
 //==============================================================================
 // Extern
@@ -134,6 +138,10 @@ static unsigned long timer_pre = 0;
 static unsigned long timer_pos = 0; 
 #define LONG_PWRKEY_PRESS_TIME 		500*1000000    //500ms
 #endif
+
+static struct hrtimer long_press_pwrkey_shutdown_timer;
+#define LONG_PRESS_PWRKEY_SHUTDOWN_TIME		(6)	/* 6sec */
+
 //==============================================================================
 // PMIC lock/unlock APIs
 //==============================================================================
@@ -559,6 +567,27 @@ EXPORT_SYMBOL(wake_up_pmic);
 
 #define WAKE_LOCK_INITIALIZED            (1U << 8)
 
+static void deferred_restart(struct work_struct *dummy)
+{
+	mutex_lock(&pmic_mutex);
+
+	pr_notice("[deferred_restart] -- Long key press power off\n");
+
+	unsigned int pwrkey_deb = 0;
+    pwrkey_deb = upmu_get_pwrkey_deb();
+    if (pwrkey_deb == 1) {
+        pr_err("[deferred_restart] -- pwrkey release, do nothing\n");
+    }
+    else {
+        sys_sync();
+    	rtc_mark_enter_sw_lprst(); /* for long press power off */
+    	if (upmu_get_rgs_chrdet())
+    		rtc_mark_enter_kpoc();
+
+    	orderly_reboot(true);
+	}
+	mutex_unlock(&pmic_mutex);
+}
 
 void cust_pmic_interrupt_en_setting(void)
 {
@@ -639,13 +668,23 @@ void watchdog_int_handler(void)
 
 extern void kpd_pwrkey_pmic_handler(unsigned long pressed);
 
+enum hrtimer_restart long_press_pwrkey_shutdown_timer_func(struct hrtimer *timer)
+{
+	queue_work(system_highpri_wq, &restart_work);
+	return HRTIMER_NORESTART;
+}
+
 void pwrkey_int_handler(void)
 {
     kal_uint32 ret=0;
+	ktime_t ktime;
+    U32 pwrkey_deb = 0;
 
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pwrkey_int_handler]....\n");
-    
-		if(upmu_get_pwrkey_deb()==1)    	    	
+
+    pwrkey_deb = upmu_get_pwrkey_deb();
+
+    if (pwrkey_deb == 1)
     {
         xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pwrkey_int_handler] Release pwrkey\n");
 #if defined (CONFIG_MTK_KERNEL_POWER_OFF_CHARGING)
@@ -664,6 +703,8 @@ void pwrkey_int_handler(void)
 				}
 		}
 #endif
+		hrtimer_cancel(&long_press_pwrkey_shutdown_timer);
+
         kpd_pwrkey_pmic_handler(0x0);
         upmu_set_rg_pwrkey_int_sel(0);
     }
@@ -676,6 +717,9 @@ void pwrkey_int_handler(void)
 			timer_pre = sched_clock();
 		}
 #endif
+		ktime = ktime_set(LONG_PRESS_PWRKEY_SHUTDOWN_TIME, 0);
+		hrtimer_start(&long_press_pwrkey_shutdown_timer, ktime, HRTIMER_MODE_REL);
+
         kpd_pwrkey_pmic_handler(0x1);
         upmu_set_rg_pwrkey_int_sel(1);
     }
@@ -3650,6 +3694,9 @@ static int pmic_mt6323_probe(struct platform_device *dev)
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC] VTCXO control by SRCLKEM due to MTK_ENABLE_MD5, Reg[0x402]=0x%x\n",
         upmu_get_reg_value(0x402));
     #endif
+
+	hrtimer_init(&long_press_pwrkey_shutdown_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	long_press_pwrkey_shutdown_timer.function = long_press_pwrkey_shutdown_timer_func;
 
     return 0;
 }

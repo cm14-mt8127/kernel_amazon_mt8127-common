@@ -18,10 +18,6 @@
 #include <mach/board.h> 
 #include <linux/mmc/sd_misc.h>
 
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-#include "partition_define.h"
-#endif
-
 #ifndef FPGA_PLATFORM
 #include <mach/mt_clkmgr.h>
 #endif
@@ -33,9 +29,6 @@ MODULE_LICENSE("GPL");
 /*--------------------------------------------------------------------------*/
 /* some marco will be reuse with mmc subsystem */
 
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-#include "partition_define.h"
-#endif
 char test_kdump[]={6,5,8,2,'k','d','u','m','p','t','e','s','t'};
 //==============
 #define TEST_SIZE       (128*1024)
@@ -1251,21 +1244,6 @@ static unsigned int simp_init_sd(void){
 		sd_init = 1;
 	return ret; 
 }
-unsigned int reset_boot_up_device(int type){
-	int ret = 0; 
-
-	if(type == MMC_TYPE_MMC)
-		ret = simp_init_emmc();
-	else if(type == MMC_TYPE_SD)
-		ret = simp_init_sd();
-	else{
-		printk(KERN_EMERG "invalide card type: %d\n", type);
-		ret = 1;
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL(reset_boot_up_device);
 #define MSDC_FIFO_SZ            (128)
 #define MSDC_FIFO_THD           (64)  // (128)
 #define msdc_txfifocnt()   ((sdr_read32(MSDC_FIFOCS) & MSDC_FIFOCS_TXCNT) >> 16)
@@ -1610,7 +1588,7 @@ static int simp_mmc_init(int card_type,bool boot)
 /*--------------------------------------------------------------------------*/
 /* porting for panic dump interface                                         */
 /*--------------------------------------------------------------------------*/
-#ifdef CONFIG_MTK_EMMC_SUPPORT
+#if 0
 static int simp_emmc_dump_write(unsigned char* buf, unsigned int len, unsigned int offset,unsigned int dev)
 {
 
@@ -1795,160 +1773,7 @@ static int sd_dump_read(unsigned char* buf, unsigned int len, unsigned int offse
 	return ret;
 }
 
-int card_dump_func_write(unsigned char* buf, unsigned int len, unsigned long long offset, int dev)
-{
-    int ret = SIMP_FAILED;
-
-    //local_irq_disable();
-    //preempt_disable();
-    unsigned int sec_offset = 0;
-	#if MTK_MMC_DUMP_DBG
-	printk(KERN_EMERG "card_dump_func_write len<%d> addr<%lld> type<%d>\n",len,offset,dev);
-	#endif
-    if(offset % 512){
-			 printk("Address isn't 512 alignment!\n");
-			return SIMP_FAILED;
-    	}
-	sec_offset = offset/512;
-    switch (dev){
-        case DUMP_INTO_BOOT_CARD_IPANIC:
-            #ifdef CONFIG_MTK_EMMC_SUPPORT
-            ret = simp_emmc_dump_write(buf, len, (unsigned int)offset, dev);
-			#endif
-            break;
-        case DUMP_INTO_BOOT_CARD_KDUMP:
-            break;
-        case DUMP_INTO_EXTERN_CARD:
-			ret = simp_sd_dump_write(buf, len, sec_offset, dev);
-            break;
-        default:
-            printk("unknown card type, error!\n");
-            break;
-    }
-
-    return ret;
-}
-EXPORT_SYMBOL(card_dump_func_write);
-
 extern int simple_sd_ioctl_rw(struct msdc_ioctl* msdc_ctl);
-#ifdef CONFIG_MTK_EMMC_SUPPORT
-
-#define SD_FALSE             -1
-#define SD_TRUE              0
-#define DEBUG_MMC_IOCTL      0
-static int emmc_dump_read(unsigned char* buf, unsigned int len, unsigned int offset,unsigned int slot)
-{
-    /* maybe delete in furture */
-    struct msdc_ioctl     msdc_ctl;
-    unsigned int i;
-    unsigned int l_user_begin_num = 0;
-    unsigned int l_dest_num = 0;
-    unsigned long long l_start_offset = 0;
-    unsigned int ret = SD_FALSE;
-
-    if ((0 != slot) || (0 != offset % 512) || (0 != len % 512)) {
-        /* emmc always in slot0 */
-        printk("debug: slot is not use for emmc!\n");
-        return ret;
-    }
-
-    /* find the offset in emmc */
-    for (i = 0; i < PART_NUM; i++) {
-    //for (i = 0; i < 1; i++) {
-        if ('m' == *(PartInfo[i].name) && 'b' == *(PartInfo[i].name + 1) &&
-                'r' == *(PartInfo[i].name + 2)){
-            l_user_begin_num = i;
-        }
-
-        if ('e' == *(PartInfo[i].name) && 'x' == *(PartInfo[i].name + 1) &&
-                'p' == *(PartInfo[i].name + 2) && 'd' == *(PartInfo[i].name + 3) &&
-                'b' == *(PartInfo[i].name + 4)){
-            l_dest_num = i;
-        }
-    }
-
-#if DEBUG_MMC_IOCTL
-    printk("l_user_begin_num = %d l_dest_num = %d\n",l_user_begin_num,l_dest_num);
-#endif
-
-    if (l_user_begin_num >= PART_NUM && l_dest_num >= PART_NUM) {
-        printk("not find in scatter file error!\n");
-        return ret;
-    }
-
-    if (PartInfo[l_dest_num].size < (len + offset)) {
-        printk("read operation oversize!\n");
-        return ret;
-    }
-
-#if DEBUG_MMC_IOCTL
-    printk("read start address=0x%llx\n", PartInfo[l_dest_num].start_address - PartInfo[l_user_begin_num].start_address);
-#endif 
-    l_start_offset = offset + PartInfo[l_dest_num].start_address - PartInfo[l_user_begin_num].start_address;
-
-    msdc_ctl.partition = 0;
-    msdc_ctl.iswrite = 0;
-    msdc_ctl.host_num = slot;
-    msdc_ctl.opcode = MSDC_CARD_DUNM_FUNC;
-    msdc_ctl.total_size = 512;
-    msdc_ctl.trans_type = 0;
-    for (i = 0; i < (len/512); i++) {
-        /* code */
-        msdc_ctl.address = (l_start_offset >> 9) + i; //blk address
-        msdc_ctl.buffer =(u32*)(buf + i * 512);
-
-#if DEBUG_MMC_IOCTL
-        printk("l_start_offset = 0x%x\n", msdc_ctl.address);
-#endif        
-        msdc_ctl.result = simple_sd_ioctl_rw(&msdc_ctl);
-    }
-    
-#if DEBUG_MMC_IOCTL
-    printk("read data:");
-    for (i = 0; i < 32; i++) {
-        printk("0x%x", buf[i]);
-        if (0 == (i+1)%32)
-            printk("\n");
-    }
-#endif
-    return SD_TRUE;
-}
-#endif
-
-int card_dump_func_read(unsigned char* buf, unsigned int len, unsigned long long offset, int dev)
-{
-
-//    unsigned int l_slot;
-    unsigned int ret = SIMP_FAILED;
-	unsigned int sec_offset = 0;
-	#if MTK_MMC_DUMP_DBG
-	printk(KERN_EMERG "card_dump_func_read len<%d> addr<%lld> type<%d>\n",len,offset,dev);
-	#endif
-	if(offset % 512){
-			 printk("Address isn't 512 alignment!\n");
-			return SIMP_FAILED;
-    	}
-	sec_offset = offset/512;
-    switch (dev){
-        case DUMP_INTO_BOOT_CARD_IPANIC:
-            #ifdef CONFIG_MTK_EMMC_SUPPORT
-            ret = emmc_dump_read(buf, len, (unsigned int)offset, dev);
-			#endif
-            break;
-        case DUMP_INTO_BOOT_CARD_KDUMP:
-            break;
-        case DUMP_INTO_EXTERN_CARD:
-			ret = sd_dump_read(buf, len, sec_offset);
-            break;
-        default:
-            printk("unknown card type, error!\n");
-            break;
-    }
-    return ret;
-
-}
-EXPORT_SYMBOL(card_dump_func_read);
-
 
 /*--------------------------------------------------------------------------*/
 /* porting for kdump interface                                              */

@@ -279,6 +279,9 @@ struct mmc_card {
 #define MMC_QUIRK_KSI_V03_SKIP_TRIM (1<<13)	        /* Skip Kingston FRV=0x3 trim */
 #define MMC_QUIRK_TRIM_UNSTABLE (1<<28)	        /* Skip trim */
 						/* byte mode */
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+#define MMC_QUIRK_SAMSUNG_SMART (1<<11)		/* Samrung smart read */
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
 
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
@@ -305,7 +308,7 @@ struct mmc_card {
 	struct sdio_func_tuple	*tuples;	/* unknown common tuples */
 
 	unsigned int		sd_bus_speed;	/* Bus Speed Mode set for the card */
-
+	unsigned int		sd_speed_class;	/* Bus Speed Mode set for the card */
 	struct dentry		*debugfs_root;
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
@@ -558,5 +561,10 @@ extern void mmc_unregister_driver(struct mmc_driver *);
 
 extern void mmc_fixup_device(struct mmc_card *card,
 			     const struct mmc_fixup *table);
+
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+extern ssize_t mmc_samsung_smart_handle(struct mmc_card *card, char *buf);
+extern int mmc_samsung_report(struct mmc_card *card, u8 *buf);
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
 
 #endif /* LINUX_MMC_CARD_H */

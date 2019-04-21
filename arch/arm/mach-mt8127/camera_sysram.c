@@ -917,14 +917,16 @@ static int SYSRAM_mmap(
     struct vm_area_struct*  pVma)
 {
     //LOG_MSG("");
-    long length = 0;
+    unsigned long length = 0;
     MUINT32 pfn=0x0;
+
     pVma->vm_page_prot = pgprot_noncached(pVma->vm_page_prot);
-	length=(long)(pVma->vm_end - pVma->vm_start);
+	length = pVma->vm_end - pVma->vm_start;
 	pfn=pVma->vm_pgoff<<PAGE_SHIFT;//page from number, physical address of kernel memory
 	LOG_WRN("pVma->vm_pgoff(0x%x),phy(0x%x),pVmapVma->vm_start(0x%x),pVma->vm_end(0x%x),length(0x%x)",\
 			pVma->vm_pgoff,pVma->vm_pgoff<<PAGE_SHIFT,pVma->vm_start,pVma->vm_end,length);
-	if((length>ISP_VALID_REG_RANGE) || (pfn<IMGSYS_BASE_ADDR) || (pfn>(IMGSYS_BASE_ADDR+ISP_VALID_REG_RANGE)))
+
+	if((length>ISP_VALID_REG_RANGE) || (pfn<IMGSYS_BASE_ADDR) || (pfn>(IMGSYS_BASE_ADDR+ISP_VALID_REG_RANGE) || pVma->vm_end <= pVma->vm_start))
 	{
 		LOG_ERR("mmap range error : vm_start(0x%x),vm_end(0x%x),length(0x%x),pfn(0x%x)!",pVma->vm_start,pVma->vm_end,length,pfn);
 		return -EAGAIN;
@@ -1257,35 +1259,46 @@ static struct platform_driver SysramPlatformDriver =
 };
 //------------------------------------------------------------------------------
 static int SYSRAM_DumpLayoutToProc(
-    char*   pPage,
-    char**  ppStart,
-    off_t   Off,
-    int     Count,
-    int*    pEof,
-    void*   pData)
+    struct file *pFile,
+    char *pStart,
+    size_t Off,
+    loff_t *Count)
 {
-    char *p = pPage;
-    MUINT32 len = 0;
+    MINT32 Length = 0;
     MUINT32 Index = 0;
     SYSRAM_MEM_NODE_STRUCT* pCurrNode = NULL;
-    //
-    p += sprintf(p, "\n[SYSRAM_DumpLayoutToProc]\n");
-    p += sprintf(p, "AllocatedTbl = 0x%08lX\n",Sysram.AllocatedTbl);
-    p += sprintf(p, "=========================================\n" );
+
+    char *buffer_log = kmalloc(1000*sizeof(unsigned int), GFP_KERNEL);
+
+    if (buffer_log == NULL) {
+        LOG_ERR("kmalloc fail");
+        kfree(buffer_log);
+        return -EFAULT;
+    }
+
+    if (*Count > 0) {
+        kfree(buffer_log);
+        return 0;
+    }
+
+    Length += sprintf(buffer_log, "\n[SYSRAM_DumpLayoutToProc]\n");
+    Length += sprintf(buffer_log + Length, "AllocatedTbl = 0x%08lX\n",Sysram.AllocatedTbl);
+    Length += sprintf(buffer_log + Length, "=========================================\n" );
+
     for (Index = 0; Index < SYSRAM_MEM_BANK_AMOUNT; Index++)
     {
-        p += sprintf(p, "\n [Mem Pool %ld] (IndexTbl, UserCount)=(%lX, %ld)\n",
+        Length += sprintf(buffer_log + Length, "\n [Mem Pool %ld] (IndexTbl, UserCount)=(%lX, %ld)\n",
                         Index,
                         SysramMemPoolInfo[Index].IndexTbl,
                         SysramMemPoolInfo[Index].UserCount);
-        p += sprintf(p, "[Locked Time] [Owner   Offset   Size  Index pCurrent pPrevious pNext]  [pid tgid] [Proc Name / Owner Name]\n");
+        Length += sprintf(buffer_log + Length, "[Locked Time] [Owner   Offset   Size  Index pCurrent pPrevious pNext]  [pid tgid] [Proc Name / Owner Name]\n");
         pCurrNode = &SysramMemPoolInfo[Index].pMemNode[0];
         while ( NULL != pCurrNode )
         {
             SYSRAM_USER_ENUM const User = pCurrNode->User;
             if  ( SYSRAM_IsBadOwner(User) )
             {
-                p += sprintf(p, 
+                Length += sprintf(buffer_log + Length,
                     "------------ --------"
                     " %2d\t0x%05lX 0x%05lX  %ld    %p %p\t%p\n", 
                     pCurrNode->User,
@@ -1300,7 +1313,7 @@ static int SYSRAM_DumpLayoutToProc(
             else
             {
                 SYSRAM_USER_STRUCT*const pUserInfo = &Sysram.UserInfo[User];
-                p += sprintf(p, 
+                Length += sprintf(buffer_log + Length,
                     "%5lu.%06lu"
                     " %2d\t0x%05lX 0x%05lX  %ld    %p %p\t%p"
                     "  %-4d %-4d \"%s\" / \"%s\"\n", 
@@ -1321,49 +1334,52 @@ static int SYSRAM_DumpLayoutToProc(
             pCurrNode = pCurrNode->pNext;
         };
     }
-    //
-    *ppStart = pPage + Off;
-    len = p - pPage;
-    if(len > Off)
-    {
-        len -= Off;
+
+    if (copy_to_user(pStart, buffer_log, Length)) {
+        LOG_ERR("copy_to_user fail");
+        kfree(buffer_log);
+        return -EFAULT;
     }
-    else
-    {
-        len = 0;
-    }
-    //
-    return len < Count ? len : Count;
+
+    *Count = *Count + Length;
+    kfree(buffer_log);
+    return Length;
 }
 //------------------------------------------------------------------------------
 static int SYSRAM_ReadFlag(
-    char*   pPage,
-    char**  ppStart,
-    off_t   Off,
-    int     Count,
-    int*    pEof,
-    void*   pData)
+    struct file *pFile,
+    char *pStart,
+    size_t Off,
+    loff_t *Count)
 {
-    char *p = pPage;
-    MUINT32 len = 0;
-    //
-    p += sprintf(p, "\r\n[SYSRAM_ReadFlag]\r\n");
-    p += sprintf(p, "=========================================\r\n" );
-    p += sprintf(p, "Sysram.DebugFlag = 0x%08lX\r\n",Sysram.DebugFlag);
 
-    *ppStart = pPage + Off;
+    MINT32 Length = 0;
 
-    len = p - pPage;
-    if(len > Off)
-    {
-        len -= Off;
+    char *buffer_log = kmalloc(1000*sizeof(unsigned int), GFP_KERNEL);
+
+    if (buffer_log == NULL) {
+        LOG_ERR("kmalloc fail");
+        kfree(buffer_log);
+        return -EFAULT;
     }
-    else
-    {
-        len = 0;
+
+    if (*Count > 0) {
+        kfree(buffer_log);
+        return 0;
     }
-    //
-    return len < Count ? len  : Count;
+
+    Length += sprintf(buffer_log, "\r\n[SYSRAM_ReadFlag]\r\n");
+    Length += sprintf(buffer_log + Length, "Sysram.DebugFlag = 0x%08lX\r\n",Sysram.DebugFlag);
+
+    if (copy_to_user(pStart, buffer_log, Length)) {
+        LOG_ERR("copy_to_user fail");
+        kfree(buffer_log);
+        return -EFAULT;
+    }
+
+    *Count = *Count + Length;
+    kfree(buffer_log);
+    return Length;
 }
 //------------------------------------------------------------------------------
 static int SYSRAM_WriteFlag(

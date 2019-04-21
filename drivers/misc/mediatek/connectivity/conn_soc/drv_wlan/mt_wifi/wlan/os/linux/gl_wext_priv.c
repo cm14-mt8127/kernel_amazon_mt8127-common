@@ -542,7 +542,7 @@ static WLAN_REQ_ENTRY arWlanOidReqTable[] = {
 
     {OID_CUSTOM_MCR_RW,
         DISP_STRING("OID_CUSTOM_MCR_RW"),
-        TRUE, TRUE, ENUM_OID_DRIVER_CORE, sizeof(PARAM_CUSTOM_MCR_RW_STRUC_T),
+        TRUE, TRUE, ENUM_OID_DRIVER_CORE, sizeof(PARAM_CUSTOM_MCR_RW_STRUCT_T),
         (PFN_OID_HANDLER_FUNC_REQ)wlanoidQueryMcrRead,
         (PFN_OID_HANDLER_FUNC_REQ)wlanoidSetMcrWrite},
 
@@ -554,7 +554,7 @@ static WLAN_REQ_ENTRY arWlanOidReqTable[] = {
 
     {OID_CUSTOM_SW_CTRL,
         DISP_STRING("OID_CUSTOM_SW_CTRL"),
-        TRUE, TRUE, ENUM_OID_DRIVER_CORE, sizeof(PARAM_CUSTOM_SW_CTRL_STRUC_T),
+        TRUE, TRUE, ENUM_OID_DRIVER_CORE, sizeof(PARAM_CUSTOM_SW_CTRL_STRUCT_T),
         (PFN_OID_HANDLER_FUNC_REQ)wlanoidQuerySwCtrlRead,
         (PFN_OID_HANDLER_FUNC_REQ)wlanoidSetSwCtrlWrite},
 
@@ -752,6 +752,7 @@ priv_set_int (
     UINT_32                     u4BufLen = 0;
     int                         status = 0;
     P_PTA_IPC_T         prPtaIpc;
+	unsigned char dtim_skip_count = 0;
 
     ASSERT(prNetDev);
     ASSERT(prIwReqInfo);
@@ -1089,6 +1090,17 @@ case PRIV_CMD_MET_PROFILING:
 		break;
 
 #endif
+	case PRIV_CMD_DTIM_SKIP_COUNT:
+		dtim_skip_count = (unsigned char)pu4IntBuf[1];
+		if (prGlueInfo->prAdapter &&
+		    dtim_skip_count >= 0 &&
+		    dtim_skip_count <= 6) {
+			prGlueInfo->prAdapter->dtim_skip_count =
+				dtim_skip_count;
+		} else {
+			status = -EINVAL;
+		}
+		break;
 
     default:
         return -EOPNOTSUPP;
@@ -1262,6 +1274,12 @@ priv_get_int (
         prIwReqData->mode = 0;
         return status;
 
+	case PRIV_CMD_DTIM_SKIP_COUNT:
+		if (prGlueInfo->prAdapter)
+			prIwReqData->mode =
+				prGlueInfo->prAdapter->dtim_skip_count;
+		return status;
+
     default:
         break;
     }
@@ -1334,15 +1352,14 @@ priv_get_int (
         {
 			wlanQueryDebugCode(prGlueInfo->prAdapter);
 
-			kalMemSet(gucBufDbgCode, '.', sizeof(gucBufDbgCode));
-			u4BufLen = prIwReqData->data.length;
-			if (u4BufLen > sizeof(gucBufDbgCode))
-				u4BufLen = sizeof(gucBufDbgCode);
-            if (copy_to_user(prIwReqData->data.pointer, gucBufDbgCode, u4BufLen)) {
-                 return -EFAULT;
-            }
-            else
-                 return status;
+				kalMemSet(gucBufDbgCode, '.', sizeof(gucBufDbgCode));
+                if (copy_to_user(prIwReqData->data.pointer, gucBufDbgCode,
+				(prIwReqData->data.length < sizeof(gucBufDbgCode)?
+					prIwReqData->data.length:sizeof(gucBufDbgCode)))) {
+                     return -EFAULT;
+                }
+                else
+                     return status;
         }
 
     default:
@@ -1772,7 +1789,6 @@ priv_get_struct (
     UINT_32         u4BufLen = 0;
     PUINT_32        pu4IntBuf = NULL;
     int             status = 0;
-    UINT_32         u4CopyDataMax = 0;
 
     kalMemZero(&aucOidBuf[0], sizeof(aucOidBuf));
 
@@ -1843,11 +1859,14 @@ priv_get_struct (
         pu4IntBuf = (PUINT_32)prIwReqData->data.pointer;
         prNdisReq = (P_NDIS_TRANSPORT_STRUCT) &aucOidBuf[0];
 
-		u4CopyDataMax = sizeof(aucOidBuf) - OFFSET_OF(NDIS_TRANSPORT_STRUCT, ndisOidContent);
-		if ((prIwReqData->data.length > u4CopyDataMax)
-			|| copy_from_user(&prNdisReq->ndisOidContent[0],
-								prIwReqData->data.pointer,
-								prIwReqData->data.length)) {
+		if (prIwReqData->data.length > (sizeof(NDIS_TRANSPORT_STRUCT) -
+			OFFSET_OF(NDIS_TRANSPORT_STRUCT, ndisOidContent))) {
+			DBGLOG(REQ, WARN, ("priv_get_struct() length Err!\n"));
+			return -EFAULT;
+		}
+        if (copy_from_user(&prNdisReq->ndisOidContent[0],
+                prIwReqData->data.pointer,
+                prIwReqData->data.length)) {
             DBGLOG(REQ, INFO, ("priv_get_struct() copy_from_user oidBuf fail\n"));
             return -EFAULT;
         }
@@ -1868,7 +1887,6 @@ priv_get_struct (
             }
         }
         return 0;
-        break;
     default:
         DBGLOG(REQ, WARN, ("get struct cmd:0x%x\n", u4SubCmd));
         return -EOPNOTSUPP;

@@ -21,7 +21,6 @@
 #include <linux/rtc.h>
 
 #define RTC_GPIO_USER_MASK	(((1U << 13) - 1) & 0xff00)
-
 /* RTC registers */
 #ifdef CONFIG_MTK_PMIC_MT6397
 #define	RTC_BASE					(0xe000)
@@ -46,7 +45,7 @@ extern void hal_rtc_set_tick_time(struct rtc_time *tm);
 extern bool hal_rtc_check_pwron_alarm_rg(struct rtc_time *nowtm, struct rtc_time *tm);
 extern void hal_rtc_get_alarm_time(struct rtc_time *tm, struct rtc_wkalrm *alm);
 extern void hal_rtc_set_alarm_time(struct rtc_time *tm);
-extern void hal_rtc_clear_alarm(void);
+extern void hal_rtc_clear_alarm(struct rtc_time *tm);
 extern void hal_rtc_set_lp_irq(void);
 extern void hal_rtc_read_rg(void);
 extern void hal_rtc_save_pwron_time(bool enable, struct rtc_time *tm, bool logo);

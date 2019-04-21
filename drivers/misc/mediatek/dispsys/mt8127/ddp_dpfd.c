@@ -221,7 +221,7 @@ unsigned int ddp_bitblt_ioctl_wait_reequest( unsigned long ioctl_user_param  )
             }
         }
 
-        if( b_found == 0 ){
+        if( b_found == 0 || ch >= DDPKBITBLIT_CHNL_COUNT){
             DDPK_ERROR("DDPK Bitblt cannot found request flag\n");
             spin_unlock_irqrestore(&g_ddpk_bitblt_chnls.lock, irq_state );
             return -ERESTARTSYS;

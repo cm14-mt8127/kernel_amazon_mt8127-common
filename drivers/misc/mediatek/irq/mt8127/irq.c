@@ -23,6 +23,10 @@
 #include <trustzone/kree/tz_irq.h>
 #endif
 
+#include <mach/mt_spm.h>
+#include <mach/mt_spm_sleep.h>
+#include <linux/syscore_ops.h>
+
 #define GIC_DIST_IGROUP           (0x080)
 #define GIC_DIST_ACTIVE_SET             (0x300)
 
@@ -1192,11 +1196,51 @@ int request_fiq(int irq, fiq_isr_handler handler, unsigned long irq_flags, void 
 
 #endif  /* CONFIG_FIQ_GLUE */
 
+/* Added by haitaoy@amazon.com, to report wake event of IRQ type. */
+struct mt_wake_event intr_event = {
+	.domain = "IRQ",
+};
+
+static unsigned int get_pending_status(int irq);
+static unsigned int get_active_status(int irq);
+
+static int mt_intr_suspend(void)
+{
+	return 0;
+}
+
+static void mt_intr_resume(void)
+{
+	int port;
+	u32 events;
+	struct mt_wake_event *we = spm_get_wakeup_event();
+
+	/* whether is waked up by WAKE_SRC_CPU0_IRQ or not. */
+	if (we && we->domain && !strcmp(we->domain, "SPM") && we->code == 26) {
+		for (port = 0; port < 7; ++port) {
+			events = get_pending_status(port<<5);
+			if (events) {
+				int num = __ffs(events) + (port << 5);
+				spm_report_wakeup_event(&intr_event, num);
+				break;
+			}
+		}
+	}
+}
+
+static struct syscore_ops mt_intr_syscore_ops = {
+	.suspend = mt_intr_suspend,
+	.resume = mt_intr_resume,
+};
+
 void __init mt_init_irq(void)
 {
     spin_lock_init(&irq_lock);
     mt_gic_dist_init();
     mt_gic_cpu_init();
+
+    /* register interrupt syscore operations. */
+    register_syscore_ops(&mt_intr_syscore_ops);
 }
 
 static unsigned int get_mask(int irq)

@@ -155,22 +155,43 @@
 #define CON9_CHRG_FAULT_MASK           0x03
 #define CON9_CHRG_FAULT_SHIFT          4
 
+#define CON9_CHRG_INPUT_FAULT_MASK     0x01
+#define CON9_CHRG_THERMAL_SHUTDOWN_FAULT_MASK     0x02
+#define CON9_CHRG_TIMER_EXPIRATION_FAULT_MASK     0x03
+
 #define CON9_BAT_FAULT_MASK           0x01
 #define CON9_BAT_FAULT_SHIFT          3
 
-#define CON9_NTC_FAULT_MASK           0x07
+#define CON9_NTC_FAULT_MASK           0x03
 #define CON9_NTC_FAULT_SHIFT          0
+#define CON9_NTC_COLD_FAULT_MASK      0x02
+#define CON9_NTC_HOT_FAULT_MASK       0x01
 
 //CON10
 #define CON10_PN_MASK      0x07
-#define CON10_PN_SHIFT     3
+#define CON10_PN_SHIFT     5
 
 #define CON10_Rev_MASK           0x07
 #define CON10_Rev_SHIFT          0
 
+/* REG09 status */
+enum BQ_FAULT {
+	BQ_NORMAL_FAULT = 0,
+	BQ_WATCHDOG_FAULT,
+	BQ_OTG_FAULT,
+	BQ_CHRG_NORMAL_FAULT,
+	BQ_CHRG_INPUT_FAULT,
+	BQ_CHRG_THERMAL_FAULT,
+	BQ_CHRG_TIMER_EXPIRATION_FAULT,
+	BQ_BAT_FAULT,
+	BQ_NTC_COLD_FAULT,
+	BQ_NTC_HOT_FAULT,
+	BQ_FAULT_MAX
+};
+
 /**********************************************************
   *
-  *   [Extern Function] 
+  *   [Extern Function]
   *
   *********************************************************/
 //CON0----------------------------------------------------
@@ -213,6 +234,7 @@ extern kal_uint32 bq24296_get_system_status(void);
 extern kal_uint32 bq24296_get_vbus_stat(void);
 extern kal_uint32 bq24296_get_chrg_stat(void);
 extern kal_uint32 bq24296_get_vsys_stat(void);
+extern kal_bool bq24296_is_found;
 //---------------------------------------------------------
 extern void bq24296_dump_register(void);
 extern kal_uint32 bq24296_read_interface (kal_uint8 RegNum, kal_uint8 *val, kal_uint8 MASK, kal_uint8 SHIFT);

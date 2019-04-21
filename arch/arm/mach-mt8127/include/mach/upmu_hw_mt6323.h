@@ -400,6 +400,10 @@
 #define ACCDET_CON14       ((UINT32)(PMIC_REG_BASE+0x0796))
 #define ACCDET_CON15       ((UINT32)(PMIC_REG_BASE+0x0798))
 #define ACCDET_CON16       ((UINT32)(PMIC_REG_BASE+0x079A))
+
+/* The valid range of audio analog hardware in PMIC */
+#define AUDTOP_MAX_ADDR_OFFSET		(0x079A)
+
 //mask is HEX;  shift is Integer
 #define PMIC_RG_VCDT_HV_EN_MASK                    0x1
 #define PMIC_RG_VCDT_HV_EN_SHIFT                   0

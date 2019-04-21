@@ -151,7 +151,7 @@ struct rtc_time tm;
 int err = -ENODEV;
 
 ret = err;
-pr_err("enter  TEE_Icnt_time \n");
+//pr_err("enter  TEE_Icnt_time \n");
 
 shm_p = kmalloc(sizeof(struct TM_GB), GFP_KERNEL);
 
@@ -185,7 +185,7 @@ if (err) {
 
 rtc_tm_to_time(&tm, &time_count);
 #if 1
-pr_info("securetime increase result: %d %d %d %d %d %d %d\n", tm.tm_yday, tm.tm_year, tm.tm_mon
+pr_notice("securetime increase result: %d %d %d %d %d %d %d\n", tm.tm_yday, tm.tm_year, tm.tm_mon
 	, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 #endif	
 param[0].value.a = time_count;
@@ -195,7 +195,7 @@ if (ret != TZ_RESULT_SUCCESS)
 	pr_err("ServiceCall error %d\n", ret);
 
 #if 1
-pr_info("securetime increase result: %d %d %d %d %d %d %d\n", ((struct TM_GB *) shm_p)->tm_yday
+pr_notice("securetime increase result: %d %d %d %d %d %d %d\n", ((struct TM_GB *) shm_p)->tm_yday
 	, ((struct TM_GB *) shm_p)->tm_year, ((struct TM_GB *) shm_p)->tm_mon, ((struct TM_GB *) shm_p)->tm_mday
 	, ((struct TM_GB *) shm_p)->tm_hour, ((struct TM_GB *) shm_p)->tm_min, ((struct TM_GB *) shm_p)->tm_sec);
 #endif
@@ -338,7 +338,7 @@ for (;;) {
 		}
 }
 
-		pr_err("update_securetime_thread_gb updata inc count\n");
+		//pr_err("update_securetime_thread_gb updata inc count\n");
 
 }
 

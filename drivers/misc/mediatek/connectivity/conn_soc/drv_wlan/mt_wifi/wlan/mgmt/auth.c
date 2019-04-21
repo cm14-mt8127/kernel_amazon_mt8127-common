@@ -797,7 +797,8 @@ authCheckRxAuthFrameStatus (
     if (u2RxAuthAlgNum != (UINT_16)prStaRec->ucAuthAlgNum) {
         DBGLOG(SAA, LOUD, ("Discard Auth frame with auth type = %d, current = %d\n",
             u2RxAuthAlgNum, prStaRec->ucAuthAlgNum));
-        return WLAN_STATUS_FAILURE;
+	*pu2StatusCode = STATUS_CODE_AUTH_ALGORITHM_NOT_SUPPORTED;
+        return WLAN_STATUS_SUCCESS;
     }
 
     //WLAN_GET_FIELD_16(&prAuthFrame->u2AuthTransSeqNo, &u2RxTransactionSeqNum);
@@ -805,7 +806,8 @@ authCheckRxAuthFrameStatus (
     if (u2RxTransactionSeqNum != u2TransactionSeqNum) {
         DBGLOG(SAA, LOUD, ("Discard Auth frame with Transaction Seq No = %d\n",
             u2RxTransactionSeqNum));
-        return WLAN_STATUS_FAILURE;
+	*pu2StatusCode = STATUS_CODE_AUTH_OUT_OF_SEQ;
+        return WLAN_STATUS_SUCCESS;
     }
 
     //4 <3> Get the Status code

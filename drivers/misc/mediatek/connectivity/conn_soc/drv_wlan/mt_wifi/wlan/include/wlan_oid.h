@@ -360,6 +360,16 @@ typedef struct _PARAM_SSID_T {
     UINT_8   aucSsid[PARAM_MAX_LEN_SSID];
 } PARAM_SSID_T, *P_PARAM_SSID_T;
 
+typedef struct _PARAM_CONNECT_T {
+    UINT_32  u4SsidLen;      /*!< SSID length in bytes. Zero length is broadcast(any) SSID */
+    UINT_8   *pucSsid;
+	UINT_8	 *pucBssid;
+	UINT_32  u4CenterFreq;
+	UINT_8 ucSpecificChnl;
+	RF_CHANNEL_INFO_T rChannelInfo;
+	ENUM_CHNL_EXT_T eChnlSco;
+} PARAM_CONNECT_T, *P_PARAM_CONNECT_T;
+
 /* This is enum defined for user to select an AdHoc Mode */
 typedef enum _ENUM_PARAM_AD_HOC_MODE_T {
     AD_HOC_MODE_11B = 0,                /*!< Create 11b IBSS if we support 802.11abg/802.11bg. */
@@ -654,10 +664,10 @@ typedef struct _PARAM_PMKID_CANDIDATE_LIST_T
 } PARAM_PMKID_CANDIDATE_LIST_T, *P_PARAM_PMKID_CANDIDATE_LIST_T;
 //#endif
 
-typedef struct _PARAM_CUSTOM_MCR_RW_STRUC_T {
-    UINT_32             u4McrOffset;
-    UINT_32             u4McrData;
-} PARAM_CUSTOM_MCR_RW_STRUC_T, *P_PARAM_CUSTOM_MCR_RW_STRUC_T;
+typedef struct _PARAM_CUSTOM_MCR_RW_STRUCT_T {
+	UINT_32 u4McrOffset;
+	UINT_32 u4McrData;
+} PARAM_CUSTOM_MCR_RW_STRUCT_T, *P_PARAM_CUSTOM_MCR_RW_STRUCT_T;
 
 typedef struct _PARAM_CUSTOM_MEM_DUMP_STRUC_T {
     UINT_32     u4Address;
@@ -667,10 +677,10 @@ typedef struct _PARAM_CUSTOM_MEM_DUMP_STRUC_T {
 } PARAM_CUSTOM_MEM_DUMP_STRUC_T, *P_PARAM_CUSTOM_MEM_DUMP_STRUC_T;
 
 
-typedef struct _PARAM_CUSTOM_SW_CTRL_STRUC_T {
+typedef struct _PARAM_CUSTOM_SW_CTRL_STRUCT_T {
     UINT_32             u4Id;
     UINT_32             u4Data;
-} PARAM_CUSTOM_SW_CTRL_STRUC_T, *P_PARAM_CUSTOM_SW_CTRL_STRUC_T;
+} PARAM_CUSTOM_SW_CTRL_STRUCT_T, *P_PARAM_CUSTOM_SW_CTRL_STRUCT_T;
 
 
 typedef struct _CMD_CHIP_CONFIG_T {
@@ -866,6 +876,13 @@ typedef struct _PARAM_NETWORK_ADDRESS_IP
     UINT_8      sin_zero[8];
 } PARAM_NETWORK_ADDRESS_IP, *P_PARAM_NETWORK_ADDRESS_IP;
 
+typedef struct _PARAM_NETWORK_ADDRESS_IPV6
+{
+	UINT_16     sin_port;
+    UINT_8     addr[16];
+} PARAM_NETWORK_ADDRESS_IPV6, *P_PARAM_NETWORK_ADDRESS_IPV6;
+
+
 typedef struct _PARAM_NETWORK_ADDRESS {
     UINT_16     u2AddressLength;    // length in bytes of Address[] in this
     UINT_16     u2AddressType;      // type of this address (PARAM_PROTOCOL_ID_XXX above)
@@ -1040,6 +1057,13 @@ typedef struct _PARAM_SCAN_REQUEST_EXT_T {
     PUINT_8         pucIE;
 } PARAM_SCAN_REQUEST_EXT_T, *P_PARAM_SCAN_REQUEST_EXT_T;
 
+struct PARAM_SCAN_REQUEST_ADV_T {
+	UINT_32         u4SsidNum;
+	PARAM_SSID_T    rSsid[CFG_SCAN_SSID_MAX_NUM];
+	UINT_32         u4IELength;
+	PUINT_8         pucIE;
+};
+
 #if CFG_SUPPORT_HOTSPOT_2_0
 typedef struct _PARAM_HS20_SET_BSSID_POOL {
 	BOOLEAN		        fgIsEnable;
@@ -1122,6 +1146,14 @@ wlanoidSetBssidListScanExt (
     );
 
 WLAN_STATUS
+wlanoidSetBssidListScanAdv(
+	IN  P_ADAPTER_T       prAdapter,
+	IN  PVOID             pvSetBuffer,
+	IN  UINT_32           u4SetBufferLen,
+	OUT PUINT_32          pu4SetInfoLen
+);
+
+WLAN_STATUS
 wlanoidQueryBssidList(
     IN  P_ADAPTER_T       prAdapter,
     OUT PVOID             pvQueryBuffer,
@@ -1139,6 +1171,14 @@ wlanoidSetBssid(
 
 WLAN_STATUS
 wlanoidSetSsid(
+    IN  P_ADAPTER_T       prAdapter,
+    IN  PVOID             pvSetBuffer,
+    IN  UINT_32           u4SetBufferLen,
+    OUT PUINT_32          pu4SetInfoLen
+    );
+
+WLAN_STATUS
+wlanoidSetConnect(
     IN  P_ADAPTER_T       prAdapter,
     IN  PVOID             pvSetBuffer,
     IN  UINT_32           u4SetBufferLen,
@@ -1797,6 +1837,14 @@ wlanoidSetNetworkAddress (
     );
 
 WLAN_STATUS
+wlanoidSetIPv6NetworkAddress(
+    IN  P_ADAPTER_T prAdapter,
+    IN  PVOID       pvSetBuffer,
+    IN  UINT_32     u4SetBufferLen,
+    OUT PUINT_32    pu4SetInfoLen
+    );
+
+WLAN_STATUS
 wlanoidQueryMaxFrameSize (
     IN  P_ADAPTER_T       prAdapter,
     OUT PVOID             pvQueryBuffer,
@@ -1989,12 +2037,26 @@ wlanoidQueryEepromType(
     );
 
 WLAN_STATUS
+wlanoidGetCountryCode(
+	IN P_ADAPTER_T prAdapter,
+ 	IN PVOID pvSetBuffer,
+	IN UINT_32 u4SetBufferLen,
+	OUT PUINT_32 pu4SetInfoLen
+	);
+
+WLAN_STATUS
 wlanoidSetCountryCode (
     IN P_ADAPTER_T  prAdapter,
     IN  PVOID       pvSetBuffer,
     IN  UINT_32     u4SetBufferLen,
     OUT PUINT_32    pu4SetInfoLen
     );
+
+WLAN_STATUS
+wlanoidUpdatePowerTable(IN P_ADAPTER_T prAdapter,
+			IN PVOID pvSetBuffer,
+			IN UINT_32 u4SetBufferLen,
+			OUT PUINT_32 pu4SetInfoLen);
 
 WLAN_STATUS
 wlanSendMemDumpCmd (
@@ -2171,6 +2233,20 @@ wlanoidSetRoamingInfo (
     OUT PUINT_32 pu4QueryInfoLen
     );
 
+WLAN_STATUS
+wlanoidGetRoamParams(IN P_ADAPTER_T prAdapter,
+	    OUT PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen);
+
+WLAN_STATUS
+wlanoidSetRoamParams(IN P_ADAPTER_T prAdapter,
+			IN PVOID pvSetBuffer, IN UINT_32 u4SetBufferLen, OUT PUINT_32 pu4SetInfoLen);
+
+WLAN_STATUS
+wlanoidSetForceRoam(IN P_ADAPTER_T prAdapter,
+			IN PVOID pvSetBuffer, IN UINT_32 u4SetBufferLen, OUT PUINT_32 pu4SetInfoLen);
+
+extern VOID wlanUpdateChannelTable(P_GLUE_INFO_T prGlueInfo);
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************
@@ -2184,5 +2260,18 @@ wlanoidSetChipConfig(
 	OUT PUINT_32 	pu4SetInfoLen
 	);
 
+WLAN_STATUS
+wlanoidQueryTsf (
+    IN P_ADAPTER_T  prAdapter,
+    IN  PVOID    pvQueryBuffer,
+    IN  UINT_32  u4QueryBufferLen,
+    OUT PUINT_32 pu4QueryInfoLen
+    );
+
+WLAN_STATUS
+wlanoidNotifyFwSuspend(IN P_ADAPTER_T prAdapter,
+		       IN PVOID pvSetBuffer,
+		       IN UINT_32 u4SetBufferLen,
+		       OUT PUINT_32 pu4SetInfoLen);
 #endif /* _WLAN_OID_H */
 

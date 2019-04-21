@@ -39,6 +39,7 @@
 #include <mach/mt_boot.h>
 #include <mach/system.h>
 #include <cust_charging.h>
+#include <mach/battery_common.h>
  
 #ifdef CONFIG_MTK_DUAL_INPUT_CHARGER_SUPPORT
 #include <mach/diso.h>
@@ -82,14 +83,14 @@ static CHARGER_TYPE g_charger_type = CHARGER_UNKNOWN;
 #define  GPIO_CHR_CE_PIN (19 | 0x80000000)
 #endif
 #endif
-int gpio_off_dir  = GPIO_DIR_OUT;
-int gpio_off_out  = GPIO_OUT_ONE;
-int gpio_on_dir   = GPIO_DIR_OUT;
-int gpio_on_out   = GPIO_OUT_ZERO;
+static int gpio_off_dir  = GPIO_DIR_OUT;
+static int gpio_off_out  = GPIO_OUT_ONE;
+static int gpio_on_dir   = GPIO_DIR_OUT;
+static int gpio_on_out   = GPIO_OUT_ZERO;
 
-kal_bool charging_type_det_done = KAL_TRUE;
+static kal_bool charging_type_det_done = KAL_TRUE;
 
-const kal_uint32 VBAT_CV_VTH[]=
+static const kal_uint32 VBAT_CV_VTH[]=
 {
 	3504000,    3520000,    3536000,    3552000,
 	3568000,    3584000,    3600000,    3616000,
@@ -106,7 +107,7 @@ const kal_uint32 VBAT_CV_VTH[]=
 	4272000,    4288000,    4304000
 };
 
-const kal_uint32 CS_VTH[]=
+static const kal_uint32 CS_VTH[]=
 {
 	51200,  57600,  64000,  70400,
 	76800,  83200,  89600,  96000,
@@ -117,13 +118,13 @@ const kal_uint32 CS_VTH[]=
 	204800, 211200, 217600, 224000
 }; 
 
-const kal_uint32 INPUT_CS_VTH[]=
+static const kal_uint32 INPUT_CS_VTH[]=
 {
 	CHARGE_CURRENT_100_00_MA,  CHARGE_CURRENT_150_00_MA,	CHARGE_CURRENT_500_00_MA,  CHARGE_CURRENT_900_00_MA,
 	CHARGE_CURRENT_1000_00_MA, CHARGE_CURRENT_1500_00_MA,  CHARGE_CURRENT_2000_00_MA,  CHARGE_CURRENT_MAX
 }; 
 
-const kal_uint32 VCDT_HV_VTH[]=
+static const kal_uint32 VCDT_HV_VTH[]=
 {
 	BATTERY_VOLT_04_200000_V, BATTERY_VOLT_04_250000_V,	  BATTERY_VOLT_04_300000_V,   BATTERY_VOLT_04_350000_V,
 	BATTERY_VOLT_04_400000_V, BATTERY_VOLT_04_450000_V,	  BATTERY_VOLT_04_500000_V,   BATTERY_VOLT_04_550000_V,
@@ -188,8 +189,14 @@ extern void mt_power_off(void);
 static kal_uint32 charging_error = false;
 static kal_uint32 charging_get_error_state(void);
 static kal_uint32 charging_set_error_state(void *data);
+
+static DEFINE_MUTEX(g_charging_enable_mutex);
+static kal_uint16 g_charging_enable_testmode = TESTMODE_NONE;
+/* By default enable charging */
+static kal_uint32 g_last_charging_enable = KAL_FALSE;
+
  // ============================================================ //
-kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
+static kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
 {
 	if (val < array_size)
 	{
@@ -197,17 +204,17 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	}
 	else
 	{
-		battery_xlog_printk(BAT_LOG_CRTI, "Can't find the parameter \r\n");	
+		battery_xlog_printk(BAT_LOG_CRTI, "Can't find the parameter \n");	
 		return parameter[0];
 	}
 }
 
  
-kal_uint32 charging_parameter_to_value(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
+static kal_uint32 charging_parameter_to_value(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
 {
 	kal_uint32 i;
 
-    battery_xlog_printk(BAT_LOG_CRTI, "array_size = %d \r\n", array_size);
+    battery_xlog_printk(BAT_LOG_FULL, "array_size = %d \n", array_size);
     
 	for(i=0;i<array_size;i++)
 	{
@@ -217,7 +224,7 @@ kal_uint32 charging_parameter_to_value(const kal_uint32 *parameter, const kal_ui
 		}
 	}
 
-    battery_xlog_printk(BAT_LOG_CRTI, "NO register value match. val=%d\r\n", val);
+    battery_xlog_printk(BAT_LOG_CRTI, "NO register value match. val=%d\n", val);
 	//TODO: ASSERT(0);	// not find the value
 	return 0;
 }
@@ -243,7 +250,7 @@ static kal_uint32 bmt_find_closest_level(const kal_uint32 *pList,kal_uint32 numb
 			}	  
 		}
 
-		battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level, small value first \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "Can't find closest level, small value first \n");
 		return pList[0];
 		//return CHARGE_CURRENT_0_00_MA;
 	}
@@ -257,7 +264,7 @@ static kal_uint32 bmt_find_closest_level(const kal_uint32 *pList,kal_uint32 numb
 			}	  
 		}
 
-		battery_xlog_printk(BAT_LOG_CRTI, "Can't find closest level, large value first \r\n"); 	 
+		battery_xlog_printk(BAT_LOG_FULL, "Can't find closest level, large value first \n");
 		return pList[number -1];
 		//return CHARGE_CURRENT_0_00_MA;
 	}
@@ -272,7 +279,7 @@ static void hw_bc11_dump_register(void)
 	for(i=reg_num ; i<=CHR_CON19 ; i+=2)
 	{
 		reg_val = upmu_get_reg_value(i);
-		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
+		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \n", i, reg_val);
 	}
 }
 
@@ -303,7 +310,7 @@ static void hw_bc11_init(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \n");
 		hw_bc11_dump_register();
 	}	
 
@@ -330,7 +337,7 @@ static U32 hw_bc11_DCD(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -365,7 +372,7 @@ static U32 hw_bc11_stepA1(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -396,9 +403,9 @@ static U32 hw_bc11_stepB1(void)
 
 	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
 
-	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
+	if (Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -431,7 +438,7 @@ static U32 hw_bc11_stepC1(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -466,7 +473,7 @@ static U32 hw_bc11_stepA2(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -499,7 +506,7 @@ static U32 hw_bc11_stepB2(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -533,7 +540,7 @@ static void hw_bc11_done(void)
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
 	{
-		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \r\n");
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \n");
 		hw_bc11_dump_register();
 	}
 
@@ -571,21 +578,26 @@ static kal_uint32 charging_hw_init(void *data)
 	bq24296_set_chg_config(0x0); // charger disable
 	bq24296_set_en_hiz(0x1);
 #else
-	bq24296_set_en_hiz(0x0);
+	mutex_lock(&g_charging_enable_mutex);
+	if (TESTMODE_NONE == g_charging_enable_testmode)
+	{
+		bq24296_set_en_hiz(0x0);
+	}
+	mutex_unlock(&g_charging_enable_mutex);
 #endif
 
-	bq24296_set_vindpm(0xA); //VIN DPM check 4.68V
+	bq24296_set_vindpm(0x7); /*VIN DPM check 4.44V*/
 	bq24296_set_reg_rst(0x0);
-	bq24296_set_wdt_rst(0x1); //Kick watchdog	
-	bq24296_set_sys_min(0x5); //Minimum system voltage 3.5V	
-	bq24296_set_iprechg(0x3); //Precharge current 512mA
-	bq24296_set_iterm(0x0); //Termination current 128mA
+	bq24296_set_wdt_rst(0x1); /*Kick watchdog*/
+	bq24296_set_sys_min(0x5); /*Minimum system voltage 3.5V*/
+	bq24296_set_iprechg(0x3); /*Precharge current 512mA*/
+	bq24296_set_iterm(0x0); /*Termination current 128mA*/
 
 #if defined(HIGH_BATTERY_VOLTAGE_SUPPORT)
 	bq24296_set_vreg(0x32); //VREG 4.304V
 #else
-	bq24296_set_vreg(0x2C); //VREG 4.208V
-#endif    
+	/*bq24296_set_vreg(0x2C); //VREG 4.208V*/
+#endif
 
 	bq24296_set_batlowv(0x1); //BATLOWV 3.0V
 	bq24296_set_vrechg(0x0); //VRECHG 0.1V (4.108V)
@@ -602,56 +614,128 @@ static kal_uint32 charging_dump_register(void *data)
 {
 	kal_uint32 status = STATUS_OK;
 
-	battery_xlog_printk(BAT_LOG_CRTI, "charging_dump_register\r\n");
+	battery_xlog_printk(BAT_LOG_FULL, "charging_dump_register\n");
 
 	bq24296_dump_register();
 
 	return status;
-}	
-
+}
 
 static kal_uint32 charging_enable(void *data)
 {
 	kal_uint32 status = STATUS_OK;
 	kal_uint32 enable = *(kal_uint32*)(data);
+	kal_uint16 charging_test_mode = (enable & 0xffff0000) >> 16;
+	bool commit = true;
+	enable = (enable & 0x0000ffff);
 
+	mutex_lock(&g_charging_enable_mutex);
+
+	if (TESTMODE_NONE == g_charging_enable_testmode) {
+		if (TESTMODE_DISABLE_CHARGING == charging_test_mode)  {
+			/* test mode: disable charging */
+			pr_info("[Battery] disable charging\n");
+			g_charging_enable_testmode = TESTMODE_DISABLE_CHARGING;
+
+			/* Cut usb power path */
+			bq24296_set_en_hiz(0x1);
+
+			/* Disable battery charging	*/
+			bq24296_set_chg_config(0x0);
+
+			/* Disable battery watchdog	*/
+			bq24296_set_watchdog(0x0);
+
+			mutex_unlock(&g_charging_enable_mutex);
+			return status;
+		} else if (TESTMODE_NONE == charging_test_mode) {
+			/* normal mode: save charging setting then commit change to hw */
+			g_last_charging_enable = enable;
+		} else {
+			pr_warn("[Battery] unexpected charging mode input\n");
+			commit = false;
+		}
+	} else if (TESTMODE_DISABLE_CHARGING == g_charging_enable_testmode) {
+		if (TESTMODE_NONE == charging_test_mode) {
+			/* test mode: don't commit change to hw, save charging setting */
+			pr_info("[Battery] charging is disabled");
+			pr_info("[Battery] req(%d) will be commited to hw \
+				when charging is enabled\n", enable);
+			g_last_charging_enable = enable;
+			commit = false;
+		} else if (TESTMODE_ENABLE_CHARGING == charging_test_mode) {
+			/* test mode: enable charging, restore to normal mode */
+			pr_info("[Battery] enable charging");
+			g_charging_enable_testmode = TESTMODE_NONE;
+
+			/* Restore usb power path */
+			bq24296_set_en_hiz(0x0);
+
+			/* restore saved charging setting */
+			enable = g_last_charging_enable;
+			if (KAL_TRUE == enable) {
+				/* Enable battery charging	*/
+				bq24296_set_chg_config(0x1);
+			} else {
+				/* Disable battery charging	*/
+				bq24296_set_chg_config(0x0);
+			}
+
+			/* Enable battery watchdog	*/
+			bq24296_set_watchdog(0x1);
+
+			mutex_unlock(&g_charging_enable_mutex);
+			return status;
+		}
+	} else {
+		pr_warn("[Battery] unexpected g_charging_enable_testmode:%d\n",
+			g_charging_enable_testmode);
+		commit = false;
+	}
+
+	if (!commit) {
+		mutex_unlock(&g_charging_enable_mutex);
+		return status;
+	}
 	if(KAL_TRUE == enable)
 	{
-	bq24296_set_en_hiz(0x0);	            	
-	bq24296_set_chg_config(0x1); // charger enable
+		bq24296_set_en_hiz(0x0);
+		bq24296_set_chg_config(0x1); // charger enable
+		bq24296_set_otg_config(0x0); // disable otg mode when charging
 	}
 	else
 	{
 	#if defined(CONFIG_USB_MTK_HDRC_HCD)
 		if(mt_usb_is_device())
-	#endif 			
+	#endif
 		{
-			bq24296_set_chg_config(0x0);
+			bq24296_set_chg_config(0x0); //charger disable
 		}
 	}
 
+	mutex_unlock(&g_charging_enable_mutex);
 	return status;
 }
-
 
 static kal_uint32 charging_set_cv_voltage(void *data)
 {
 	kal_uint32 status = STATUS_OK;
+	kal_uint32 set_chr_cv;
 	kal_uint16 register_value;
 	kal_uint32 cv_value = *(kal_uint32 *)(data);	
-
-	if(cv_value == BATTERY_VOLT_04_200000_V)
-	{
+	if (cv_value == BATTERY_VOLT_04_200000_V) {
 	#if defined(HIGH_BATTERY_VOLTAGE_SUPPORT)
-		//highest of voltage will be 4.3V, because powerpath limitation
-		cv_value = 4304000;		
+		/*highest of voltage will be 4.3V, because powerpath limitation*/
+		cv_value = 4304000;
 	#else
-		//use nearest value
+		/*use nearest value*/
 		cv_value = 4208000;
-	#endif	    
+	#endif
 	}
-	register_value = charging_parameter_to_value(VBAT_CV_VTH, GETARRAYNUM(VBAT_CV_VTH), cv_value);
-	bq24296_set_vreg(register_value); 
+
+	set_chr_cv = bmt_find_closest_level(VBAT_CV_VTH, GETARRAYNUM(VBAT_CV_VTH), cv_value);
+	register_value = charging_parameter_to_value(VBAT_CV_VTH, GETARRAYNUM(VBAT_CV_VTH), set_chr_cv);
+	bq24296_set_vreg(register_value);
 
 	return status;
 } 	
@@ -660,41 +744,27 @@ static kal_uint32 charging_set_cv_voltage(void *data)
 static kal_uint32 charging_get_current(void *data)
 {
 	kal_uint32 status = STATUS_OK;
-	//kal_uint32 array_size;
-	//kal_uint8 reg_value;
 
-	kal_uint8 ret_val=0;    
-	kal_uint8 ret_force_20pct=0;
+	kal_uint32 data_val = 0;
+	kal_uint8 ret_val = 0;
+	kal_uint8 ret_force_20pct = 0;
 
-	//Get current level
+	/* Get current level */
 	bq24296_read_interface(bq24296_CON2, &ret_val, CON2_ICHG_MASK, CON2_ICHG_SHIFT);
 
-	//Get Force 20% option
+	/* Get Force 20% option */
 	bq24296_read_interface(bq24296_CON2, &ret_force_20pct, CON2_FORCE_20PCT_MASK, CON2_FORCE_20PCT_SHIFT);
 
-	//Parsing
-	ret_val = (ret_val*64) + 512;
+	/* Parsing */
+	data_val = (ret_val*64) + 512;
 
 	if (ret_force_20pct == 0)
-	{
-		//Get current level
-		//array_size = GETARRAYNUM(CS_VTH);
-		//*(kal_uint32 *)data = charging_value_to_parameter(CS_VTH,array_size,reg_value);
-		*(kal_uint32 *)data = ret_val;
-	}   
+		*(kal_uint32 *)data = data_val;
 	else
-	{
-		//Get current level
-		//array_size = GETARRAYNUM(CS_VTH_20PCT);
-		//*(kal_uint32 *)data = charging_value_to_parameter(CS_VTH,array_size,reg_value);
-		//return (int)(ret_val<<1)/10;
-		*(kal_uint32 *)data = (int)(ret_val<<1)/10;
-	}   
+		*(kal_uint32 *)data = data_val / 5;
 
 	return status;
-}  
-  
-
+}
 
 static kal_uint32 charging_set_current(void *data)
 {
@@ -704,14 +774,20 @@ static kal_uint32 charging_set_current(void *data)
 	kal_uint32 register_value;
 	kal_uint32 current_value = *(kal_uint32 *)data;
 
+	if (current_value == 30000)	{
+		current_value = 150000;
+		bq24296_set_force_20pct(1);
+	} else {
+		bq24296_set_force_20pct(0);
+	}
 	array_size = GETARRAYNUM(CS_VTH);
 	set_chr_current = bmt_find_closest_level(CS_VTH, array_size, current_value);
 	register_value = charging_parameter_to_value(CS_VTH, array_size ,set_chr_current);
 	bq24296_set_ichg(register_value);
 
 	return status;
-} 	
- 
+}
+
 
 static kal_uint32 charging_set_input_current(void *data)
 {
@@ -750,7 +826,7 @@ static kal_uint32 charging_reset_watch_dog_timer(void *data)
 {
 	kal_uint32 status = STATUS_OK;
 
-	battery_xlog_printk(BAT_LOG_CRTI, "charging_reset_watch_dog_timer\r\n");
+	battery_xlog_printk(BAT_LOG_FULL, "charging_reset_watch_dog_timer\n");
 
 	bq24296_set_wdt_rst(0x1); //Kick watchdog
 
@@ -827,7 +903,7 @@ static kal_uint32 charging_get_charger_det_status(void *data)
 
 
 
-kal_bool charging_type_detection_done(void)
+static kal_bool charging_type_detection_done(void)
 {
 	return charging_type_det_done;
 }
@@ -844,7 +920,7 @@ static kal_uint32 charging_get_charger_type(void *data)
 	charging_type_det_done = KAL_FALSE;
 
 	charger_type = hw_charger_type_detection();
-	battery_xlog_printk(BAT_LOG_CRTI, "charging_get_charger_type = %d\r\n", charger_type);
+	battery_xlog_printk(BAT_LOG_CRTI, "charging_get_charger_type = %d\n", charger_type);
 
 	*(CHARGER_TYPE*)(data) = charger_type;
 
@@ -862,16 +938,16 @@ static kal_uint32 charging_get_charger_type(void *data)
 			if(1 == hw_bc11_stepB1())
 			{
 				//*(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				//battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");				
+				//battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\n");				
 				*(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\n");
 			}	 
 			else
 			{
 				//*(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				//battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				//battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\n");
 				*(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\n");
 			}	 
 		}
 		else
@@ -880,12 +956,12 @@ static kal_uint32 charging_get_charger_type(void *data)
 			if(1 == hw_bc11_stepC1())
 			{
 				*(CHARGER_TYPE*)(data) = APPLE_1_0A_CHARGER;
-				battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 1A CHARGER!\r\n");
+				battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 1A CHARGER!\n");
 			}	 
 			else
 			{
 				*(CHARGER_TYPE*)(data) = APPLE_0_5A_CHARGER;
-				battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 0.5A CHARGER!\r\n");			 
+				battery_xlog_printk(BAT_LOG_CRTI, "step C1 : Apple 0.5A CHARGER!\n");			 
 			}	 
 		}
 
@@ -899,18 +975,18 @@ static kal_uint32 charging_get_charger_type(void *data)
 			if(1 == hw_bc11_stepB2())
 			{
 				*(CHARGER_TYPE*)(data) = STANDARD_CHARGER;
-				battery_xlog_printk(BAT_LOG_CRTI, "step B2 : STANDARD CHARGER!\r\n");
+				battery_xlog_printk(BAT_LOG_CRTI, "step B2 : STANDARD CHARGER!\n");
 			}
 			else
 			{
 				*(CHARGER_TYPE*)(data) = CHARGING_HOST;
-				battery_xlog_printk(BAT_LOG_CRTI, "step B2 :  Charging Host!\r\n");
+				battery_xlog_printk(BAT_LOG_CRTI, "step B2 :  Charging Host!\n");
 			}
 		}
 		else
 		{
 			*(CHARGER_TYPE*)(data) = STANDARD_HOST;
-			battery_xlog_printk(BAT_LOG_CRTI, "step A2 : Standard USB Host!\r\n");
+			battery_xlog_printk(BAT_LOG_CRTI, "step A2 : Standard USB Host!\n");
 		}
 
 	}
@@ -942,13 +1018,13 @@ static kal_uint32 charging_get_is_pcm_timer_trigger(void *data)
 
 static kal_uint32 charging_set_platform_reset(void *data)
 {
-    kal_uint32 status = STATUS_OK;
+	kal_uint32 status = STATUS_OK;
 
-    battery_xlog_printk(BAT_LOG_CRTI, "charging_set_platform_reset\n");
- 
-    //arch_reset(0,NULL);
-        
-    return status;
+	battery_xlog_printk(BAT_LOG_CRTI, "charging_set_platform_reset\n");
+
+	arch_reset(0,NULL);
+
+	return status;
 }
 
 static kal_uint32 charging_get_platfrom_boot_mode(void *data)
@@ -1655,7 +1731,7 @@ static kal_uint32 (* const charging_func[CHARGING_CMD_NUMBER])(void *data)=
  * GLOBALS AFFECTED
  *	   None
  */
-kal_int32 chr_control_interface(CHARGING_CTRL_CMD cmd, void *data)
+kal_int32 chr_control_interface_bq24296(CHARGING_CTRL_CMD cmd, void *data)
 {
 	kal_int32 status;
 	if(cmd < CHARGING_CMD_NUMBER)

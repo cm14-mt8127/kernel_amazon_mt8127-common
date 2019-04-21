@@ -92,7 +92,6 @@ struct disp_path_config_mem_out_struct
     unsigned int dirty;
 	unsigned int outFormat; 
     unsigned int dstAddr;
-    unsigned int dstPitch;
     struct DISP_REGION srcROI;        // ROI
     unsigned int security;
 	int ion_fd;
@@ -132,6 +131,12 @@ typedef struct _RDMA_CONFIG_STRUCT
 
 int disp_wait_timeout(bool flag, unsigned int timeout);
 int disp_path_config(struct disp_path_config_struct* pConfig);
+/* porting from abc123 : power_saving*/
+int disp_path_config_internal_setting(struct disp_path_config_struct *pConfig);
+int disp_path_config_internal_mutex(struct disp_path_config_struct *pConfig);
+int disp_path_config_mutex(struct disp_path_config_struct *pConfig, int mutexId);
+int disp_path_config_setting(struct disp_path_config_struct *pConfig, int mutexId);
+
 int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig);
 int disp_path_config_layer_addr(unsigned int layer, unsigned int addr);
 int disp_path_get_mutex(void);
@@ -155,6 +160,7 @@ int disp_path_change_tdshp_status(unsigned int layer, unsigned int enable);
 
 int disp_hdmi_path_clock_on(char* name);
 int disp_hdmi_path_clock_off(char* name);
+int disp_path_rdma_start(unsigned idx);  /* porting from abc123 : power_saving*/
 
 void disp_path_clear_mem_out_done_flag(void);
 int disp_path_query(void); // return different functions according to chip type
@@ -182,6 +188,7 @@ void disp_path_unregister_ovl_rdma_callback(void (*callback)(unsigned int param)
 int disp_path_config_OVL_WDMA_path(int mutex_id);
 int disp_path_config_OVL_WDMA(struct disp_path_config_mem_out_struct* pConfig, int OvlSecure);
 void disp_path_wait_ovl_wdma_done(void);
+int disp_path_get_ovl_en(void);		/* porting from abc123 : power_saving*/
 #endif
 
 #endif

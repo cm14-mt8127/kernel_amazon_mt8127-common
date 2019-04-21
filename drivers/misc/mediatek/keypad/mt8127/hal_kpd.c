@@ -99,8 +99,10 @@ static void enable_kpd(int enable)
 		}
 }
 #endif
-
-void kpd_slide_qwerty_init(void){
+#if KPD_HAS_SLIDE_QWERTY
+	extern void kpd_slide_eint_handler(void);
+#endif
+void kpd_slide_qwerty_init(struct input_dev *dev){
 #if KPD_HAS_SLIDE_QWERTY
 	bool evdev_flag=false;
 	bool power_op=false;
@@ -130,25 +132,27 @@ void kpd_slide_qwerty_init(void){
 			return -1;	
 		}	
 	}
-
+#if 0
 	power_op = powerOn_slidePin_interface();
 	if(!power_op) {
 		printk(KPD_SAY "Qwerty slide pin interface power on fail\n");
 	} else {
 		kpd_print("Qwerty slide pin interface power on success\n");
 	}
-		
-	mt65xx_eint_set_sens(KPD_SLIDE_EINT, KPD_SLIDE_SENSITIVE);
+#endif		
+	/*mt65xx_eint_set_sens(KPD_SLIDE_EINT, KPD_SLIDE_SENSITIVE);
 	mt65xx_eint_set_hw_debounce(KPD_SLIDE_EINT, KPD_SLIDE_DEBOUNCE);
 	mt65xx_eint_registration(KPD_SLIDE_EINT, true, KPD_SLIDE_POLARITY,
-	                         kpd_slide_eint_handler, false);
-	                         
+	                        kpd_slide_eint_handler, false);*/
+	mt_eint_registration(KPD_SLIDE_EINT, CUST_EINT_KPD_SLIDE_TYPE,kpd_slide_eint_handler, 0);
+#if 0                   
 	power_op = powerOff_slidePin_interface();
 	if(!power_op) {
 		printk(KPD_SAY "Qwerty slide pin interface power off fail\n");
 	} else {
 		kpd_print("Qwerty slide pin interface power off success\n");
 	}
+#endif
 #endif
 return;
 }

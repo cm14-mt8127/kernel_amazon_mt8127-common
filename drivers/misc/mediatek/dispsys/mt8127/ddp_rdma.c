@@ -72,6 +72,14 @@ int RDMAStop(unsigned idx) {
     DISP_REG_SET(idx * DISP_INDEX_OFFSET + DISP_REG_RDMA_INT_STATUS, 0);
     return 0;
 }
+/* porting from abc123 */
+int RDMADisable(unsigned idx)
+{
+	ASSERT(idx <= 2);
+	DISP_REG_SET_FIELD(GLOBAL_CON_FLD_ENGINE_EN,
+			   idx * DISP_INDEX_OFFSET + DISP_REG_RDMA_GLOBAL_CON, 0);
+	return 0;
+}
 
 int RDMAReset(unsigned idx) {
     unsigned int delay_cnt=0;
@@ -157,7 +165,7 @@ int RDMAConfig_(unsigned idx,
     unsigned int input_is_yuv = 0;
     unsigned int output_is_yuv = 0;
     // Calculate fifo settings
-    unsigned int fifo_pseudo_length = 256; //HW fifo SRAM: 240(89), 256(71/72/82/92), 512
+    unsigned int fifo_pseudo_length = 256; //HW fifo SRAM: 240(89), 256(71/72/82/92), 512(ROME)
     unsigned int fifo_threashold;
     // Calculate ultra settings
     unsigned int fps = 60;
@@ -424,7 +432,7 @@ int RDMAConfig(unsigned idx,
     unsigned int input_is_yuv = 0;
     unsigned int output_is_yuv = 0;
     // Calculate fifo settings
-    unsigned int fifo_pseudo_length = 256; //HW fifo SRAM: 240(89), 256(71/72/82/92), 512
+    unsigned int fifo_pseudo_length = 256; //HW fifo SRAM: 240(89), 256(71/72/82/92), 512(ROME)
     unsigned int fifo_threashold;
     // Calculate ultra settings
     unsigned int fps = 60;

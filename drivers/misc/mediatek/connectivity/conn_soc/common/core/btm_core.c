@@ -1431,4 +1431,8 @@ INT32 stp_btm_reset_btm_wq(MTKSTP_BTM_T *stp_btm)
     return 0;
 }
 
+INT32 wmt_btm_trigger_reset(VOID)
+{
+	return stp_btm_notify_wmt_rst_wq(stp_btm);
+}
 

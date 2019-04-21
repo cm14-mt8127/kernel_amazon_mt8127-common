@@ -4,7 +4,7 @@
 #include "hdmihdcp.h"
 #include "hdmi_ctrl.h"
 #include "hdmiddc.h"
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 #include "hdmi_ca.h"
 #endif
 #include <mach/mt_boot_common.h>
@@ -41,7 +41,7 @@ static unsigned char bHdcpKeyExternalBuff[HDCP_KEY_RESERVE]= {
 
 extern  HDMI_CTRL_STATE_T e_hdmi_ctrl_state;
 extern HDCP_CTRL_STATE_T e_hdcp_ctrl_state;
-#ifdef CONFIG_MTK_HDMI_HDCP_SUPPORT
+#ifdef MTK_HDMI_HDCP_SUPPORT
 unsigned char _bHdcpOff=0;
 #else
 unsigned char _bHdcpOff=1;
@@ -62,7 +62,7 @@ unsigned char _bsvpaudiomute=FALSE;
 
 extern size_t hdmi_TmrValue[MAX_HDMI_TMR_NUMBER];
 extern size_t hdmi_hdmiCmd;
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 static unsigned char u1CaHdcpAKsv[HDCP_AKSV_COUNT];
 #endif
 void vShowHdcpRawData(void)
@@ -119,8 +119,8 @@ void vShowHdcpRawData(void)
 
 void hdmi_hdcpkey(unsigned char *pbhdcpkey)
 {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
-#ifdef CONFIG_MTK_DRM_KEY_MNG_SUPPORT
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
+#ifdef MTK_DRM_KEY_MNG_SUPPORT
   HDMI_HDCP_FUNC();
   fgCaHDMIInstallHdcpKey(pbhdcpkey,384);
   fgCaHDMIGetAKsv(u1CaHdcpAKsv);
@@ -218,7 +218,7 @@ void vHalHDCPReset(void)
   }
   
   vWriteByteHdmiGRL(GRL_HDCP_CTL, bTemp);
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 	fgCaHDMIHDCPEncEn(FALSE);
   fgCaHDMIHDCPReset(TRUE);
 #endif
@@ -232,7 +232,7 @@ void vHalHDCPReset(void)
   bTemp &= (~HDCP_CTL_CP_RSTB);
   
   vWriteByteHdmiGRL(GRL_HDCP_CTL, bTemp);
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   fgCaHDMIHDCPReset(FALSE);
 #endif
   
@@ -329,7 +329,7 @@ void vReadAksvFromReg(BYTE *PrBuff)
 
 void vWriteAksvKeyMask(unsigned char *PrData)
 { 
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
  HDMI_HDCP_FUNC();
  vWriteHdmiSYSMsk(HDMI_SYS_CFG1C,0, SYS_KEYMASK2);
  vWriteHdmiSYSMsk(HDMI_SYS_CFG1C,0, SYS_KEYMASK1);
@@ -550,7 +550,7 @@ unsigned char fgCompareRi(void)
 
 void vEnableEncrpt(void)
 {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
   HDMI_HDCP_FUNC();
   fgCaHDMIHDCPEncEn(TRUE);
 #else
@@ -815,7 +815,7 @@ void HdcpService(HDCP_CTRL_STATE_T e_hdcp_state)
     {
       for(bIndx=0; bIndx<HDCP_AKSV_COUNT; bIndx++)
       {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 		HDMI_AKSV[bIndx] = u1CaHdcpAKsv[bIndx]; 
 	#else
         HDMI_AKSV[bIndx] = bHdcpKeyBuff[1+bIndx]; 
@@ -864,7 +864,7 @@ void HdcpService(HDCP_CTRL_STATE_T e_hdcp_state)
 	
     if (fgHostKey())
     {
-#if (defined(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT) && defined(CONFIG_MTK_HDMI_HDCP_SUPPORT))
+#if (defined(MTK_IN_HOUSE_TEE_SUPPORT) && defined(MTK_HDMI_HDCP_SUPPORT))
 	fgCaHDMILoadHDCPKey();  
 #else    
       vSendAKey(&bHdcpKeyBuff[6]); //around 190msec

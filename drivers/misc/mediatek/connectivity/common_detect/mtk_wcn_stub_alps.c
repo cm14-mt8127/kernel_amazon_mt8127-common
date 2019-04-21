@@ -307,7 +307,7 @@ signed long mtk_wcn_cmb_stub_query_ctrl()
 	}
 	else
 	{
-		CMB_STUB_LOG_WARN("[cmb_stub] thermal_ctrl_cb null\n");
+		CMB_STUB_LOG_DBG("[cmb_stub] thermal_ctrl_cb null\n");
 	}
 
 	return temp;

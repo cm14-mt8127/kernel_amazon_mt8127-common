@@ -482,6 +482,10 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	mutex_init(&host->slot.lock);
 	host->slot.cd_irq = -EINVAL;
 
+#ifdef CONFIG_MMC_ERR_REMOVE
+	host->rest_remove_flags = false;
+#endif
+
 	spin_lock_init(&host->lock);
 	init_waitqueue_head(&host->wq);
 	wake_lock_init(&host->detect_wake_lock, WAKE_LOCK_SUSPEND,

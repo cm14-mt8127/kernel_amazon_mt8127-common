@@ -93,7 +93,15 @@ typedef struct _ROAMING_PARAM_T {
     UINT_16     u2Data;
 } ROAMING_PARAM_T, *P_ROAMING_PARAM_T;
 
-/**/
+ typedef struct _CMD_ROAMING_CTRL_T {
+	 UINT_8 fgEnable;
+	 UINT_8 ucRcpiAdjustStep;
+	 UINT_16 u2RcpiLowThr;
+	 UINT_8 ucRoamingRetryCount;
+	 UINT_8 ucRoamingStableTimeout;
+	 UINT_8 aucReserved[2];
+ } CMD_ROAMING_CTRL_T, *P_CMD_ROAMING_CTRL_T;
+
 typedef enum _ENUM_ROAMING_STATE_T {
     ROAMING_STATE_IDLE = 0,
     ROAMING_STATE_DECISION,
@@ -111,7 +119,7 @@ typedef struct _ROAMING_INFO_T {
 
 #define ROAMING_ENTRY_TIMEOUT_SKIP_COUNT_MAX		2
 	UINT_32					RoamingEntryTimeoutSkipCount;
-
+	CMD_ROAMING_CTRL_T rRoamCtrl;
 } ROAMING_INFO_T, *P_ROAMING_INFO_T;
 
 /*******************************************************************************

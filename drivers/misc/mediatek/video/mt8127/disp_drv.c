@@ -931,6 +931,16 @@ static int _DISP_CaptureOvlKThread(void *data)
     return 0;
 }
 
+unsigned char dump_init = 0;
+unsigned int va[4] = {0}; 
+unsigned int src_va = 0;
+unsigned int buf_size[4]={0};
+unsigned int gdump_layer_en = 0;
+unsigned int layer_pitch[4] = {0};
+unsigned int layer_height[4] = {0};
+unsigned int layer_enable[4] = {0};
+unsigned char layer_fmt[4][100];
+
 void _DISP_DumpLayer(OVL_CONFIG_STRUCT* pLayer)
 {
     if (gCaptureLayerEnable && pLayer->layer_en)
@@ -971,6 +981,78 @@ void _DISP_DumpLayer(OVL_CONFIG_STRUCT* pLayer)
             disphal_dma_unmap_kernel(pLayer->addr, Bitmap.data_size, (unsigned int)Bitmap.pData);
         }
     }
+	if(gdump_layer_en == 1)
+	{
+		printk("_DISP_DumpLayer pLayer->layer_en = %d,pLayer->layer= %d\n",pLayer->layer_en,pLayer->layer);
+		printk("pLayer->dst_h= %d ### pLayer->pitch= %d ### pLayer->dst_w= %d\n",
+			pLayer->dst_h,pLayer->src_pitch,pLayer->dst_w);
+
+		dump_init++;
+		if(pLayer->layer_en)
+		{
+
+			switch (pLayer->fmt)
+	        {
+	            case eRGB565:
+					sprintf(layer_fmt[pLayer->layer], "_RGB565");
+					buf_size[pLayer->layer]=((pLayer->src_pitch/2) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/2;
+					break;
+	            case eRGB888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/3) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/3;
+					sprintf(layer_fmt[pLayer->layer], "_RGB888"); 
+					break;
+	            case eARGB8888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/4) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/4;
+					sprintf(layer_fmt[pLayer->layer], "_ARGB8888"); 
+					break;
+	            case ePARGB8888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/4) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/4;
+					sprintf(layer_fmt[pLayer->layer], "_PARGB8888"); 
+					break;
+	            case eBGR888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/3) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/3;
+					sprintf(layer_fmt[pLayer->layer], "_BGR888"); 
+					break;
+	            case eABGR8888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/4) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/4;
+					sprintf(layer_fmt[pLayer->layer], "_ABGR8888"); 
+					break;
+	            case ePABGR8888:
+					buf_size[pLayer->layer]=((pLayer->src_pitch/4) *pLayer->dst_h*4);
+					layer_pitch[pLayer->layer] = pLayer->src_pitch/4;
+					sprintf(layer_fmt[pLayer->layer], "_PABGR8888"); 
+					break;
+	            default: pr_info("error: _DISP_DumpLayer(), unknow format=%d \n", pLayer->fmt); return;
+	        }
+
+			va[pLayer->layer] = vmalloc(buf_size[pLayer->layer]);
+			layer_height[pLayer->layer] = pLayer->dst_h;
+			layer_enable[pLayer->layer] = 1;
+			//copy layer buffer to dst
+            disphal_dma_map_kernel(pLayer->addr, buf_size[pLayer->layer], (unsigned int*)&src_va, &buf_size[pLayer->layer]);
+			memset(va[pLayer->layer],0,buf_size[pLayer->layer]);
+			memcpy(va[pLayer->layer],src_va,buf_size[pLayer->layer]);
+			printk("[DEBUG]save layer_id= %d,va[pLayer->layer]=0x%x, dump_init = %d, 0x%x  0x%x buffer_size[i]=%d, pixel_pitch=%d\n",
+				pLayer->layer,va[pLayer->layer],dump_init,pLayer->addr,src_va, buf_size[pLayer->layer],layer_pitch[pLayer->layer]);	
+            disphal_dma_unmap_kernel(pLayer->addr, buf_size[pLayer->layer], src_va);
+		}
+		else
+		{
+			layer_enable[pLayer->layer] = 0;
+		}
+		//save 4 layers
+		if(dump_init == 3)
+		{
+			dump_init=0;
+			gdump_layer_en = 0;
+		}
+	}
 }
 
 static void _DISP_VSyncCallback(void* pParam);
@@ -1003,10 +1085,7 @@ static int _DISP_ESD_Check(int* dirty)
 			{
 			    break;
 			}
-/* [PLATFORM]-Mod-BEGIN by TCTSZ.yaohui.zeng, 2015/05/04, modify for ESD fast shoot*/
-			//esd_check_count++;
-			esd_check_count=1;
-/* [PLATFORM]-Mod-END by TCTSZ.yaohui.zeng, 2015/05/04*/
+			esd_check_count++;
         }
         if (esd_check_count >= LCM_ESD_CHECK_MAX_COUNT)
         {

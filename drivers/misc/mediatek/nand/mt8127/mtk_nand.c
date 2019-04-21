@@ -30,7 +30,6 @@
 #include <linux/jiffies.h>
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
-#include <linux/seq_file.h>
 #include <linux/time.h>
 #include <linux/mm.h>
 #include <linux/xlog.h>
@@ -343,8 +342,8 @@ static int g_block_size;
 static u32 PAGES_PER_BLOCK = 255;
 static bool g_bSyncOrToggle = false;
 static int g_iNFI2X_CLKSRC = ARMPLL;
-//extern unsigned int flash_number;
-//extern flashdev_info_t gen_FlashTable_p[MAX_FLASH];
+extern unsigned int flash_number;
+extern flashdev_info_t gen_FlashTable_p[MAX_FLASH];
 extern int part_num;
 
 #if CFG_2CS_NAND
@@ -474,6 +473,7 @@ u32 MICRON_TRANSFER(u32 pageNo)
 
 u32 sandisk_pairpage_mapping(u32 page, bool high_to_low)
 {
+	int offset;
 	if(TRUE == high_to_low)
 	{
 		if(page == 255)
@@ -503,10 +503,9 @@ u32 sandisk_pairpage_mapping(u32 page, bool high_to_low)
 		}
 	}
 }
-
 u32 hynix_pairpage_mapping(u32 page, bool high_to_low)
 {
-	u32 offset;
+	int offset;
 	if(TRUE == high_to_low)
 	{
 		//Micron 256pages
@@ -547,10 +546,9 @@ u32 hynix_pairpage_mapping(u32 page, bool high_to_low)
 		}
 	}
 }
-
 u32 micron_pairpage_mapping(u32 page, bool high_to_low)
 {
-	u32 offset;
+	int offset;
 	if(TRUE == high_to_low)
 	{
 		//Micron 256pages
@@ -1639,12 +1637,10 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf,u8 * sp
                 {
 	            	failed_sec++;
                     ret = false;
-                    //xlog_printk(ANDROID_LOG_WARN,"NFI", "UnCorrectable ECC errors at PageAddr=%d, Sector=%d\n", u4PageAddr, i);
-					MSG(INIT,"UnCorrectable ECC errors at PageAddr=%d, Sector=%d\n", u4PageAddr, i);
+                    xlog_printk(ANDROID_LOG_WARN,"NFI", "UnCorrectable ECC errors at PageAddr=%d, Sector=%d\n", u4PageAddr, i);
                 } else
                 {
-	                if(bitmap)
-    	            	*bitmap |= 1 << i;
+                	*bitmap |= 1 << u4SecIndex;
 		    		if (u4ErrNum)
                     {
                     		if(maxSectorBitErr < u4ErrNum)
@@ -1654,10 +1650,24 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf,u8 * sp
 		    }
                 }
             }
+            if(ret == false){
+				if(failed_sec == (u4SecIndex+1))
+				{
+    				if(0 != (DRV_Reg32(NFI_STA_REG32) & STA_READ_EMPTY))
+    				{
+    					ret=true;
+    					MSG(INIT,"NFI empty page have few filped bit(s) , fake buffer returned\n");
+    					memset(pDataBuf,0xff,page_size);
+    					memset(spareBuf,0xff,sec_num*8);
+    					failed_sec=0;
+    					maxSectorBitErr = 0;
+    				}
+	    	    }
+	    	}
 	    	mtd->ecc_stats.failed+=failed_sec;
-            if ((maxSectorBitErr > ecc_threshold) && (FALSE != ret))
+            if (maxSectorBitErr > ecc_threshold)
             {
-            	MSG(INIT,"ECC bit flips (0x%x) exceed eccthreshold (0x%x),u4PageAddr 0x%x\n",maxSectorBitErr,ecc_threshold,u4PageAddr);
+            	MSG(INIT,"ECC bit flips (0x%x) exceed eccthreshold (0x%x)\n",maxSectorBitErr,ecc_threshold);
                 mtd->ecc_stats.corrected++;
             } else
             {
@@ -1665,17 +1675,6 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf,u8 * sp
             }
         }
     }
-
-	if(0 != (DRV_Reg32(NFI_STA_REG32) & STA_READ_EMPTY))
-	{
-		ret=true;
-		//MSG(INIT, "empty page, empty buffer returned\n");
-		memset(pDataBuf,0xff,page_size);
-		memset(spareBuf,0xff,sec_num*8);
-		maxSectorBitErr = 0;
-		failed_sec=0;
-	}
-
 #else
     /* We will manually correct the error bits in the last sector, not all the sectors of the page! */
     memset(au4ErrBitLoc, 0x0, sizeof(au4ErrBitLoc));
@@ -2994,6 +2993,18 @@ bool mtk_nand_GetFeature(struct mtd_info *mtd, u16 cmd, u32 addr, u8 *value,  u8
 }
 
 #if 1
+const u8 addr_tbl[8][5] =
+{
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D},
+	{0x04, 0x05, 0x06, 0x07, 0x0D}
+};
+
 const u8 data_tbl[8][5] =
 {
 	{0x04, 0x04, 0x7C, 0x7E, 0x00},
@@ -3043,14 +3054,19 @@ static void mtk_nand_sprmset_rrtry(u32 addr, u32 data) //single parameter settin
 
 	reg_val |= (CNFG_OP_CUST | CNFG_BYTE_RW);
 	DRV_WriteReg(NFI_CNFG_REG16, reg_val);
+
 	mtk_nand_set_command(0x55);
 	mtk_nand_set_address(addr, 0, 1, 0);
+
 	mtk_nand_status_ready(STA_NFI_OP_MASK);
+
 	DRV_WriteReg32(NFI_CON_REG16, 1 << CON_NFI_SEC_SHIFT);
 	NFI_SET_REG32(NFI_CON_REG16, CON_NFI_BWR);
 	DRV_WriteReg(NFI_STRDATA_REG16, 0x1);
+	
+	
 	WAIT_NFI_PIO_READY(timeout);
-    timeout=TIMEOUT_3;
+    
     DRV_WriteReg8(NFI_DATAW_REG32, data);
 
 	while(!(DRV_Reg32(NFI_STA_REG32) & STA_NAND_BUSY_RETURN) && (timeout--));    	
@@ -3059,19 +3075,18 @@ static void mtk_nand_sprmset_rrtry(u32 addr, u32 data) //single parameter settin
 static void mtk_nand_toshiba_rrtry(struct mtd_info *mtd,flashdev_info_t deviceinfo, u32 retryCount, bool defValue)
 {
 	u32 acccon;
-    u8 cnt = 0;
-    u8 add_reg[6] = {0x04, 0x05, 0x06, 0x07, 0x0D};
-    
+
 	acccon = DRV_Reg32(NFI_ACCCON_REG32);
-	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C08669); //to fit read retry timing
+	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C083F9); //to fit read retry timing
 	
 	if(0 == retryCount)
 		mtk_nand_modeentry_rrtry();
-    
-	for(cnt = 0; cnt < 5; cnt ++)
-	{
-		mtk_nand_sprmset_rrtry(add_reg[cnt], data_tbl[retryCount][cnt]);	
-	}
+
+	mtk_nand_sprmset_rrtry(addr_tbl[retryCount][0], data_tbl[retryCount][0]);
+	mtk_nand_sprmset_rrtry(addr_tbl[retryCount][1], data_tbl[retryCount][1]);
+	mtk_nand_sprmset_rrtry(addr_tbl[retryCount][2], data_tbl[retryCount][2]);
+	mtk_nand_sprmset_rrtry(addr_tbl[retryCount][3], data_tbl[retryCount][3]);
+	mtk_nand_sprmset_rrtry(addr_tbl[retryCount][4], data_tbl[retryCount][4]);
 
 	if(3 == retryCount)
 		mtk_nand_rren_rrtry(TRUE);
@@ -3080,9 +3095,10 @@ static void mtk_nand_toshiba_rrtry(struct mtd_info *mtd,flashdev_info_t devicein
 
 	if(7 == retryCount) // to exit
 	{
-		mtk_nand_device_reset();
+		mtk_nand_set_mode(CNFG_OP_RESET);
+		NFI_ISSUE_COMMAND (NAND_CMD_RESET, 0, 0, 0, 0);
 		mtk_nand_reset();
-		//should do NAND DEVICE interface change under sync mode 
+		//should do NAND DEVICE interface change under sync mode  xiaolei 
 	}
 
 	DRV_WriteReg32(NFI_ACCCON_REG32, acccon);
@@ -3097,74 +3113,36 @@ static void mtk_nand_micron_rrtry(struct mtd_info *mtd,flashdev_info_t deviceinf
 								(u8 *)&feature,4);
 }
 
-static int g_sandisk_retry_case = 0; //for new read retry table case 1,2,3,4
 static void mtk_nand_sandisk_rrtry(struct mtd_info *mtd,flashdev_info_t deviceinfo, u32 feature, bool defValue)
 {
 	//u32 feature = deviceinfo.feature_set.FeatureSet.readRetryStart+retryCount;
 	if(FALSE == defValue)
 	{
-	    mtk_nand_reset();
+	mtk_nand_reset();
 	}
 	else
 	{
-		mtk_nand_device_reset();
+		mtk_nand_set_mode(CNFG_OP_RESET);
+		NFI_ISSUE_COMMAND (NAND_CMD_RESET, 0, 0, 0, 0);
 		mtk_nand_reset();
-		//should do NAND DEVICE interface change under sync mode
+		//should do NAND DEVICE interface change under sync mode  xiaolei
 	}
 	
 	mtk_nand_SetFeature(mtd, deviceinfo.feature_set.FeatureSet.sfeatureCmd,\
 								deviceinfo.feature_set.FeatureSet.readRetryAddress,\
 								(u8 *)&feature,4);
 	if(FALSE == defValue)
-	{
-	    if(g_sandisk_retry_case > 1) //case 3
-	    {
-	        if(g_sandisk_retry_case == 3)
-	        {
-    	        u32 timeout=TIMEOUT_3;
-    	        mtk_nand_reset();
-    	        DRV_WriteReg(NFI_CNFG_REG16, (CNFG_OP_CUST | CNFG_BYTE_RW));
-    	        mtk_nand_set_command(0x5C);
-    	        mtk_nand_set_command(0xC5);
-    	        mtk_nand_set_command(0x55);
-    	        mtk_nand_set_address(0x00, 0, 1, 0); // test mode entry
-    	        mtk_nand_status_ready(STA_NFI_OP_MASK);
-    	        DRV_WriteReg32(NFI_CON_REG16, 1 << CON_NFI_SEC_SHIFT);
-    	        NFI_SET_REG32(NFI_CON_REG16, CON_NFI_BWR);
-    	        DRV_WriteReg(NFI_STRDATA_REG16, 0x1);
-    	        WAIT_NFI_PIO_READY(timeout);
-    	        DRV_WriteReg8(NFI_DATAW_REG32, 0x01);
-    	        while(!(DRV_Reg32(NFI_STA_REG32) & STA_NAND_BUSY_RETURN) && (timeout--));
-    	        mtk_nand_reset();
-    	        timeout=TIMEOUT_3;
-    	        mtk_nand_set_command(0x55);
-    	        mtk_nand_set_address(0x23, 0, 1, 0); //changing parameter LMFLGFIX_NEXT = 1 to all die
-    	        mtk_nand_status_ready(STA_NFI_OP_MASK);
-    	        DRV_WriteReg32(NFI_CON_REG16, 1 << CON_NFI_SEC_SHIFT);
-    	        NFI_SET_REG32(NFI_CON_REG16, CON_NFI_BWR);
-    	        DRV_WriteReg(NFI_STRDATA_REG16, 0x1);
-    	        WAIT_NFI_PIO_READY(timeout);
-    	        DRV_WriteReg8(NFI_DATAW_REG32, 0xC0);
-    	        while(!(DRV_Reg32(NFI_STA_REG32) & STA_NAND_BUSY_RETURN) && (timeout--));
-    	        mtk_nand_reset();
-    	        printk("Case3# Set LMFLGFIX_NEXT=1\n");
-	        }
-            mtk_nand_set_command(0x25);
-            printk("Case2#3# Set cmd 25\n");
-	    }
 		mtk_nand_set_command(deviceinfo.feature_set.FeatureSet.readRetryPreCmd);
-	}
 }
 
-//sandisk 19nm read retry
-u16 sandisk_19nm_rr_table[18] =
+#if 1 //sandisk 19nm read retry
+u16 sandisk_19nm_rr_table[17] =
 {
 	0x0000, 
 	0xFF0F, 0xEEFE, 0xDDFD, 0x11EE, //04h[7:4] | 07h[7:4] | 04h[3:0] | 05h[7:4]
 	0x22ED, 0x33DF, 0xCDDE, 0x01DD,
 	0x0211, 0x1222, 0xBD21, 0xAD32,
-	0x9DF0, 0xBCEF, 0xACDC, 0x9CFF,
-	0x0000 //align
+	0x9DF0, 0xBCEF, 0xACDC, 0x9CFF
 };
 
 static void sandisk_19nm_rr_init(void)
@@ -3176,24 +3154,37 @@ static void sandisk_19nm_rr_init(void)
 	u32 acccon;
 
 	acccon = DRV_Reg32(NFI_ACCCON_REG32);
-	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C08669); //to fit read retry timing
+	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C083F9); //to fit read retry timing
 	
 	mtk_nand_reset();
+
+	if(use_randomizer)
+	{
+		u4RandomSetting = DRV_Reg32(NFI_RANDOM_CNFG_REG32);
+		DRV_WriteReg32(NFI_RANDOM_CNFG_REG32, (u4RandomSetting & (~(RAN_CNFG_ENCODE_EN | RAN_CNFG_DECODE_EN))));
+	}
 	
 	reg_val = (CNFG_OP_CUST | CNFG_BYTE_RW);
 	DRV_WriteReg(NFI_CNFG_REG16, reg_val);
-    mtk_nand_set_command(0x3B);
-    mtk_nand_set_command(0xB9);
+
+	DRV_WriteReg(NFI_CMD_REG16,0x3B);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);
+	DRV_WriteReg(NFI_CMD_REG16,0xB9);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);
 
 	for(count = 0; count < 9; count++)
 	{
-		mtk_nand_set_command(0x53);
-        mtk_nand_set_address((0x04 + count), 0, 1, 0);
+		DRV_WriteReg(NFI_CMD_REG16,0x53);
+		  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);	  
+		  DRV_WriteReg32(NFI_COLADDR_REG32, (0x04 + count));
+		  DRV_WriteReg32(NFI_ROWADDR_REG32, 0);
+		  DRV_WriteReg(NFI_ADDRNOB_REG16, 0x1);
+		  while (DRV_Reg32(NFI_STA_REG32) & STA_ADDR_STATE);
 		DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
 		DRV_WriteReg(NFI_STRDATA_REG16, 1);
-		timeout = 0xffff;
 		WAIT_NFI_PIO_READY(timeout);
-		DRV_WriteReg32(NFI_DATAW_REG32, 0x00);
+			DRV_WriteReg32(NFI_DATAW_REG32, 0x00);
+
 		mtk_nand_reset();
 	}
 	
@@ -3204,45 +3195,75 @@ static void sandisk_19nm_rr_loading(u32 retryCount, bool defValue)
 {
 	u32 		  reg_val		 = 0;
 	u32 		  timeout = 0xffff;
+	u32 u4RandomSetting;
 	u32 acccon;
-    u8 count;
-	u8 cmd_reg[4] = {0x4, 0x5, 0x7};
+
 	acccon = DRV_Reg32(NFI_ACCCON_REG32);
-	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C08669); //to fit read retry timing
+	DRV_WriteReg32(NFI_ACCCON_REG32, 0x31C083F9); //to fit read retry timing
 	
 	mtk_nand_reset();
+
+	if(use_randomizer)
+	{
+		u4RandomSetting = DRV_Reg32(NFI_RANDOM_CNFG_REG32);
+		DRV_WriteReg32(NFI_RANDOM_CNFG_REG32, (u4RandomSetting & (~(RAN_CNFG_ENCODE_EN | RAN_CNFG_DECODE_EN))));
+	}
 	
 	reg_val = (CNFG_OP_CUST | CNFG_BYTE_RW);
 	DRV_WriteReg(NFI_CNFG_REG16, reg_val);
 
 	if((0 != retryCount) || defValue)
 	{
-		mtk_nand_set_command(0xD6);
+		DRV_WriteReg(NFI_CMD_REG16,0xD6); //disable rr
+	 	while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);
 	}
 
-	mtk_nand_set_command(0x3B);
-    mtk_nand_set_command(0xB9);
-    for(count = 0; count < 3; count++)
-	{
-	    mtk_nand_set_command(0x53);
-	    mtk_nand_set_address(cmd_reg[count], 0, 1, 0);
-		DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
-		DRV_WriteReg(NFI_STRDATA_REG16, 1);
-		timeout = 0xffff;
-		WAIT_NFI_PIO_READY(timeout);
-		if(count == 0)
-			DRV_WriteReg32(NFI_DATAW_REG32, (((sandisk_19nm_rr_table[retryCount] & 0xF000) >> 8) | ((sandisk_19nm_rr_table[retryCount] & 0x00F0) >> 4)));
-		else if(count == 1)
-			DRV_WriteReg32(NFI_DATAW_REG32, ((sandisk_19nm_rr_table[retryCount] & 0x000F) << 4));
-		else if(count == 2)
-			DRV_WriteReg32(NFI_DATAW_REG32, ((sandisk_19nm_rr_table[retryCount] & 0x0F00) >> 4));
-		
-		mtk_nand_reset();
-	}
+	DRV_WriteReg(NFI_CMD_REG16,0x3B);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);
+	DRV_WriteReg(NFI_CMD_REG16,0xB9);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);
+
+	DRV_WriteReg(NFI_CMD_REG16,0x53);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);	  
+	  DRV_WriteReg32(NFI_COLADDR_REG32, 0x04);
+	  DRV_WriteReg32(NFI_ROWADDR_REG32, 0);
+	  DRV_WriteReg(NFI_ADDRNOB_REG16, 0x1);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_ADDR_STATE);
+	DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
+	DRV_WriteReg(NFI_STRDATA_REG16, 1);
+	WAIT_NFI_PIO_READY(timeout);
+		DRV_WriteReg32(NFI_DATAW_REG32, (((sandisk_19nm_rr_table[retryCount] & 0xF000) >> 8) | ((sandisk_19nm_rr_table[retryCount] & 0x00F0) >> 4)));
+
+	mtk_nand_reset();
+
+	DRV_WriteReg(NFI_CMD_REG16,0x53);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);	  
+	  DRV_WriteReg32(NFI_COLADDR_REG32, 0x05);
+	  DRV_WriteReg32(NFI_ROWADDR_REG32, 0);
+	  DRV_WriteReg(NFI_ADDRNOB_REG16, 0x1);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_ADDR_STATE);
+	DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
+	DRV_WriteReg(NFI_STRDATA_REG16, 1);
+	WAIT_NFI_PIO_READY(timeout);
+		DRV_WriteReg32(NFI_DATAW_REG32, ((sandisk_19nm_rr_table[retryCount] & 0x000F) << 4));
+
+	mtk_nand_reset();
+
+	DRV_WriteReg(NFI_CMD_REG16,0x53);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);	  
+	  DRV_WriteReg32(NFI_COLADDR_REG32, 0x07);
+	  DRV_WriteReg32(NFI_ROWADDR_REG32, 0);
+	  DRV_WriteReg(NFI_ADDRNOB_REG16, 0x1);
+	  while (DRV_Reg32(NFI_STA_REG32) & STA_ADDR_STATE);
+	DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
+	DRV_WriteReg(NFI_STRDATA_REG16, 1);
+	WAIT_NFI_PIO_READY(timeout);
+		DRV_WriteReg32(NFI_DATAW_REG32, ((sandisk_19nm_rr_table[retryCount] & 0x0F00) >> 4));
 
 	if(!defValue)
 	{
-		mtk_nand_set_command(0xB6);		  
+		DRV_WriteReg(NFI_CMD_REG16,0xB6); //enable rr
+		while (DRV_Reg32(NFI_STA_REG32) & STA_CMD_STATE);	  
 	}
 	
 	DRV_WriteReg32(NFI_ACCCON_REG32, acccon);	
@@ -3254,20 +3275,19 @@ static void mtk_nand_sandisk_19nm_rrtry(struct mtd_info *mtd,flashdev_info_t dev
 		sandisk_19nm_rr_init();
 	sandisk_19nm_rr_loading(retryCount, defValue);
 }
+#endif
 
 #define HYNIX_RR_TABLE_SIZE  (1026)  //hynix read retry table size
 #define SINGLE_RR_TABLE_SIZE (64)
 
-#define READ_RETRY_STEP (devinfo.feature_set.FeatureSet.readRetryCnt + devinfo.feature_set.FeatureSet.readRetryStart)  // 8 step or 12 step to fix read retry table
-#define HYNIX_16NM_RR_TABLE_SIZE  ((READ_RETRY_STEP == 12)?(784):(528))  //hynix read retry table size
-#define SINGLE_RR_TABLE_16NM_SIZE  ((READ_RETRY_STEP == 12)?(48):(32))
+#define HYNIX_16NM_RR_TABLE_SIZE  (528)  //hynix read retry table size
+#define SINGLE_RR_TABLE_16NM_SIZE (32)
 
 u8 nand_hynix_rr_table[(HYNIX_RR_TABLE_SIZE+16)/16*16]; //align as 16 byte
 
 #define NAND_HYX_RR_TBL_BUF nand_hynix_rr_table
 
-static u8 real_hynix_rr_table_idx = 0;
-static u32 g_hynix_retry_count = 0;
+u8 real_hynix_rr_table_idx = 0;
 
 static bool hynix_rr_table_select(u8 table_index, flashdev_info_t *deviceinfo)
 {
@@ -3286,17 +3306,7 @@ static bool hynix_rr_table_select(u8 table_index, flashdev_info_t *deviceinfo)
 		if(0xFF != (temp_rr_table[i] ^ temp_inversed_rr_table[i]))
 			return FALSE; // error table
 	}
-// print table
-    if(deviceinfo->feature_set.FeatureSet.rtype == RTYPE_HYNIX_16NM)
-        table_size += 16;
-    else
-        table_size += 2;
-    for(i = 0; i < table_size; i++)
-    {
-        printk("%02X ", NAND_HYX_RR_TBL_BUF[i]);
-        if((i + 1)%8 == 0)
-            printk("\n");
-    }
+
 	return TRUE; // correct table
 }
 
@@ -3318,10 +3328,6 @@ static void HYNIX_RR_TABLE_READ(flashdev_info_t *deviceinfo)
         add_reg1[1]= 0x38;
         data_reg1[1] = 0x52;
         max_count = HYNIX_16NM_RR_TABLE_SIZE;
-        if(READ_RETRY_STEP == 12)
-        {
-            add_reg2[2] = 0x1F;
-        }
 	}
 	mtk_nand_device_reset();
 	// take care under sync mode. need change nand device inferface xiaolei
@@ -3457,114 +3463,41 @@ static void HYNIX_Set_RR_Para(u32 rr_index, flashdev_info_t *deviceinfo)
 	mtk_nand_reset();	
 	
 	DRV_WriteReg(NFI_CNFG_REG16, (CNFG_OP_CUST | CNFG_BYTE_RW));
-    //mtk_nand_set_command(0x36);
+    mtk_nand_set_command(0x36);
     
 	for(count = 0; count < max_count; count++)
 	{
-		mtk_nand_set_command(0x36);
 	    mtk_nand_set_address(add_reg[count], 0, 1, 0);
 	    DRV_WriteReg(NFI_CON_REG16, (CON_NFI_BWR | (1 << CON_NFI_SEC_SHIFT)));
 		DRV_WriteReg(NFI_STRDATA_REG16, 1);
 		timeout = 0xffff;
 		WAIT_NFI_PIO_READY(timeout);
-		if(timeout == 0)
-		{  
-			printk("HYNIX_Set_RR_Para timeout\n");
-			break;
-		}
         DRV_WriteReg32(NFI_DATAW_REG32, hynix_rr_table[rr_index*max_count + count]);
 		mtk_nand_reset();
 	}
     mtk_nand_set_command(0x16);
 }
 
-static void HYNIX_Get_RR_Para(u32 rr_index, flashdev_info_t *deviceinfo)
+static void mtk_nand_hynix_rrtry(flashdev_info_t deviceinfo, u32 retryCount, bool defValue)
 {
-	u32           reg_val     	 = 0;
-	u32           timeout=0xffff;
-	u8 count, max_count = 8;
-	u8 add_reg[9] = {0xCC, 0xBF, 0xAA, 0xAB, 0xCD, 0xAD, 0xAE, 0xAF};
-	u8 *hynix_rr_table = (u8 *)NAND_HYX_RR_TBL_BUF+SINGLE_RR_TABLE_SIZE*real_hynix_rr_table_idx*2+2;
-	if(deviceinfo->feature_set.FeatureSet.rtype == RTYPE_HYNIX_16NM)
-	{
-	    add_reg[0] = 0x38; //0x38, 0x39, 0x3A, 0x3B
-	    for(count =1; count < 4; count++)
-	    {
-            add_reg[count] = add_reg[0] + count; 
-	    }
-        hynix_rr_table += 14;
-		max_count = 4;
-	}
-	mtk_nand_reset();	
-	
-	DRV_WriteReg(NFI_CNFG_REG16, (CNFG_OP_CUST | CNFG_BYTE_RW | CNFG_READ_EN));
-    //mtk_nand_set_command(0x37);
-    
-	for(count = 0; count < max_count; count++)
-	{
-		mtk_nand_set_command(0x37);
-	    mtk_nand_set_address(add_reg[count], 0, 1, 0);	    
-	    
-		DRV_WriteReg(NFI_CON_REG16, (CON_NFI_SRD | (1 << CON_NFI_NOB_SHIFT)));
-		DRV_WriteReg(NFI_STRDATA_REG16, 1);
-		
-		timeout = 0xffff;
-		WAIT_NFI_PIO_READY(timeout);
-		if(timeout == 0)
-		{  
-				printk("HYNIX_Get_RR_Para timeout\n");
-		}
-	    //DRV_WriteReg32(NFI_DATAW_REG32, hynix_rr_table[rr_index*max_count + count]);
-	    printk("Get[%02X]%02X\n",add_reg[count], DRV_Reg8(NFI_DATAR_REG32));
-		mtk_nand_reset();
-	}
-}
-
-static void mtk_nand_hynix_rrtry(struct mtd_info *mtd, flashdev_info_t deviceinfo, u32 retryCount, bool defValue)
-{
-    if(defValue == FALSE)
-    {
-		if(g_hynix_retry_count == READ_RETRY_STEP)
-    	{
-            g_hynix_retry_count = 0;
-    	}
-		printk("Hynix Retry %d\n", g_hynix_retry_count);
-    	HYNIX_Set_RR_Para(g_hynix_retry_count, &deviceinfo);
-		//HYNIX_Get_RR_Para(g_hynix_retry_count, &deviceinfo);
-    	g_hynix_retry_count ++;    	
-	}
+	HYNIX_Set_RR_Para(retryCount, &deviceinfo);
 }	
 
-static void mtk_nand_hynix_16nm_rrtry(struct mtd_info *mtd, flashdev_info_t deviceinfo, u32 retryCount, bool defValue)
+static void mtk_nand_hynix_16nm_rrtry(flashdev_info_t deviceinfo, u32 retryCount, bool defValue)
 {
-    if(defValue == FALSE)
-    {
-		if(g_hynix_retry_count == READ_RETRY_STEP)
-    	{
-            g_hynix_retry_count = 0;
-    	}
-		printk("Hynix 16nm Retry %d\n", g_hynix_retry_count);
-    	HYNIX_Set_RR_Para(g_hynix_retry_count, &deviceinfo);
-		//mb();
-    	//HYNIX_Get_RR_Para(g_hynix_retry_count, &deviceinfo);
-    	g_hynix_retry_count ++;
-    	
-	}
+	HYNIX_Set_RR_Para(retryCount, &deviceinfo);
 }	
 
-// sandisk 1y nm
-u32 special_rrtry_setting[36]= 
+u32 special_rrtry_setting[32]= 
 {
-0x00000000,0x7C00007C,0x787C0004,0x74780078,
-0x7C007C08,0x787C7C00,0x74787C7C,0x70747C00,
-0x7C007800,0x787C7800,0x74787800,0x70747800,
-0x6C707800,0x00040400,0x7C000400,0x787C040C,
-0x7478040C,0x7C000810,0x00040810,0x04040C0C,
-0x00040C10,0x00081014,0x000C1418,0x7C040C0C,
-0x74787478,0x70747478,0x6C707478,0x686C7478,
-0x74787078,0x70747078,0x686C7078,0x6C707078,
-0x6C706C78,0x686C6C78,0x64686C78,0x686C6874,
-0x64686874,
+0x00000000,0x7C00007C,0x04007C78,0x78007874,
+0x087C007C,0x007C7C78,0x7C7C7874,0x007C7470,
+0x0078007C,0x00787C78,0x00787874,0x00787470,
+0x0078706C,0x00040400,0x0004007C,0x0C047C78,
+0x0C047874,0x1008007C,0x10080400,0x78747874,
+0x78747470,0x7874706C,0x78746C68,0x78707874,
+0x78707470,0x78706C68,0x7870706C,0x786C706C,
+0x786C6C68,0x786C6864,0x74686C68,0x74686864,
 };
 
 static u32 mtk_nand_rrtry_setting(flashdev_info_t deviceinfo, enum readRetryType type, u32 retryStart, u32 loopNo)
@@ -3626,11 +3559,13 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
     int bRet = ERR_RTN_SUCCESS;
     struct nand_chip *nand = mtd->priv;
     u32 u4SecNum = u4PageSize >> host->hw->nand_sec_shift;
+	u32 u4SecSize = host->hw->nand_sec_size;
     u32 backup_corrected, backup_failed;
 	bool readRetry = FALSE;
 	int retryCount = 0;
 	u32 val;
 	u32 tempBitMap, bitMap, i;
+	u32 feature ;
 #ifdef NAND_PFM
     struct timeval pfm_time_read;
 #endif
@@ -3643,24 +3578,30 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 	//MSG(INIT, "mtk_nand_exec_read_page,u4RowAddr: 0x%x\n", u4RowAddr);
     PFM_BEGIN(pfm_time_read);
 	tempBitMap = 0;
+	bitMap = 0;
 
     if (((u32) pPageBuf % 16) && local_buffer_16_align)
     {
         buf = local_buffer_16_align;
     } else
-    {
-    	  if(virt_addr_valid (pPageBuf)==0)
-    	  { // It should be allocated by vmalloc
-    	  	buf = local_buffer_16_align;
-    	  }
-    	  else
-    	  {    	  	
-        	buf = pPageBuf;
-        }
-    }
+        buf = pPageBuf;
     backup_corrected = mtd->ecc_stats.corrected;
     backup_failed = mtd->ecc_stats.failed;
-
+#if 0
+	{
+		val = devinfo.feature_set.FeatureSet.readRetryDefault;
+		mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+									devinfo.feature_set.FeatureSet.readRetryAddress,\
+									(u8 *)&val,4);
+		mtk_nand_GetFeature(mtd, devinfo.feature_set.FeatureSet.gfeatureCmd,\
+			devinfo.feature_set.FeatureSet.readRetryAddress,\
+			(u8 *)&val,4);
+		if((val&0xFF) != (devinfo.feature_set.FeatureSet.readRetryDefault&0xFF))
+		{
+			MSG(INIT, "mtk_nand_exec_read_page check read retry defalut value fail 0x%x\n",val);
+		}
+    }
+#endif
 
 #if CFG_2CS_NAND
     if (g_bTricky_CS)
@@ -3715,9 +3656,15 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 						MSG(INIT,"NFI read retry read empty page, return as uncorrectable\n");
 						mtd->ecc_stats.failed+=u4SecNum;
 						bRet = ERR_RTN_BCH_FAIL;
-					}
-				}
-        	}
+				    }else
+				    {
+    				    memset(buf,0xff,u4PageSize);
+    		            memset(pFDMBuf,0xff,u4SecNum*8);
+    		            readRetry = FALSE;
+    		            bRet = ERR_RTN_SUCCESS;
+		            }
+			    }
+            }
         }
         mtk_nand_stop_read();
     }
@@ -3725,7 +3672,6 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 		{	mtk_nand_turn_off_randomizer();}
 		else if(pre_randomizer && u4RowAddr < RAND_START_ADDR)
 		{	mtk_nand_turn_off_randomizer();}
-#if 0
 		if (bRet == ERR_RTN_BCH_FAIL)
 		{
 			tempBitMap -= (tempBitMap&bitMap);
@@ -3752,10 +3698,8 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 				bRet = ERR_RTN_SUCCESS;
 			}
 		}
-#endif
 		if (bRet == ERR_RTN_BCH_FAIL)
 		{
-			u32 feature ;
 		    tempBitMap = 0;
 			//feature= devinfo.feature_set.FeatureSet.readRetryStart+retryCount;
 			feature = mtk_nand_rrtry_setting(devinfo, devinfo.feature_set.FeatureSet.rtype,devinfo.feature_set.FeatureSet.readRetryStart,retryCount);
@@ -3763,70 +3707,62 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 			{
 				mtd->ecc_stats.corrected = backup_corrected;
     			mtd->ecc_stats.failed = backup_failed;
-				mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
+			  if(MLC_DEVICE)    			
+			  {
+			    //printk("[Bean]feature=%x\n", feature);
+			  	mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
+				//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+				//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+				//				(u8*)&feature,4);
+				}
 				retryCount++;
 			}
 			else
 			{
+				if(MLC_DEVICE)
+				{										
 				feature = devinfo.feature_set.FeatureSet.readRetryDefault;
-				// sandisk case 2/3/4
-    		    if((devinfo.feature_set.FeatureSet.rtype == RTYPE_SANDISK) && (g_sandisk_retry_case < 3))
-    		    {
-    		        g_sandisk_retry_case++;
-    		        printk("Sandisk read retry case#%d\n", g_sandisk_retry_case);
-    		        tempBitMap = 0;
-    		        mtd->ecc_stats.corrected = backup_corrected;
-    			    mtd->ecc_stats.failed = backup_failed;
-    		        mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
-    		        //if((g_sandisk_retry_case == 0) || (g_sandisk_retry_case == 2))
-    		        //{
-    		        //    mtk_nand_set_command(0x26);
-    		        //}    		        
-    		        retryCount = 0;
-    		    }else
-    		    {
-    				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
-    				readRetry = FALSE;
-    				g_sandisk_retry_case = 0;
+				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
+				//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+				//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+				//				(u8*)&feature,4);
 				}
-			}
-			if((g_sandisk_retry_case == 1) || (g_sandisk_retry_case == 3))
-	        {
-	            mtk_nand_set_command(0x26);
-	            printk("Case1#3# Set cmd 26\n");
-	        }  
+				readRetry = FALSE;
+			}		
 		}
 		else
 		{
 			if((retryCount != 0) && MLC_DEVICE)
 			{
-				u32 feature = devinfo.feature_set.FeatureSet.readRetryDefault;
+				feature = devinfo.feature_set.FeatureSet.readRetryDefault;
 				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
+				//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+				//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+				//				(u8*)&feature,4);
 			}
 			readRetry = FALSE;
-			g_sandisk_retry_case = 0;
 		}
 		if(TRUE == readRetry)
 			bRet = ERR_RTN_SUCCESS;
 	}while(readRetry);
 	if(retryCount != 0)
 	{
-		u32 feature = devinfo.feature_set.FeatureSet.readRetryDefault;
+		feature = devinfo.feature_set.FeatureSet.readRetryDefault;
 	    if(bRet == ERR_RTN_SUCCESS)
 	    {
 	        MSG(INIT, "u4RowAddr:0x%x read retry pass, retrycnt:%d ENUM0:%x,ENUM1:%x,mtd_ecc(A):%x,mtd_ecc(B):%x \n",u4RowAddr,retryCount,DRV_Reg32(ECC_DECENUM1_REG32),DRV_Reg32(ECC_DECENUM0_REG32),mtd->ecc_stats.failed,backup_failed);
-			mtd->ecc_stats.corrected++;
-			if((devinfo.feature_set.FeatureSet.rtype == RTYPE_HYNIX_16NM) || (devinfo.feature_set.FeatureSet.rtype == RTYPE_HYNIX))
-			{
-				g_hynix_retry_count--;
-			}
 	    }
 	    else
 	    {
-    			MSG(INIT, "u4RowAddr:0x%x read retry fail, mtd_ecc(A):%x ,fail, mtd_ecc(B):%x\n",u4RowAddr,mtd->ecc_stats.failed,backup_failed);	    	
+    		MSG(INIT, "u4RowAddr:0x%x read retry fail, mtd_ecc(A):%x ,fail, mtd_ecc(B):%x\n",u4RowAddr,mtd->ecc_stats.failed,backup_failed);	    	
 	    }
-		mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
-		g_sandisk_retry_case = 0;
+	    if(MLC_DEVICE)
+	    {
+				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
+				//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+				//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+				//				(u8*)&feature,4);
+		}
 	}
 	
     if (buf == local_buffer_16_align)
@@ -3835,7 +3771,7 @@ int mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
 	}
 	if(bRet != ERR_RTN_SUCCESS)
 	{
-		MSG(INIT,"ECC uncorrectable , fake buffer returned\n");
+		MSG(INIT,"NFI ECC uncorrectable , fake buffer returned\n");
 		memset(pPageBuf,0xff,u4PageSize);
 		memset(pFDMBuf,0xff,u4SecNum*8);
 	}
@@ -3871,16 +3807,7 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
     {
         buf = local_buffer_16_align;
     } else
-    {
-    	  if(virt_addr_valid (pPageBuf)==0)
-    	  { // It should be allocated by vmalloc
-    	  	buf = local_buffer_16_align;
-    	  }
-    	  else
-    	  {    	  	
-        	buf = pPageBuf;
-        }
-    }
+        buf = pPageBuf;
   backup_corrected = mtd->ecc_stats.corrected;
   backup_failed = mtd->ecc_stats.failed;
 #if CFG_2CS_NAND
@@ -3918,7 +3845,7 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
         mtk_nand_read_fdm_data(pFDMBuf, u4SecNum);
         if (g_bHwEcc)
         {
-            if (!mtk_nand_check_bch_error(mtd, buf, pFDMBuf,u4SecNum - 1, u4RowAddr, NULL))
+            if (!mtk_nand_check_bch_error(mtd, buf, pFDMBuf,u4SecNum - 1, u4RowAddr, &tempBitMap))
             {
 				if(devinfo.vendor != VEND_NONE){
 					readRetry = TRUE;
@@ -3935,8 +3862,14 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
 						MSG(INIT,"NFI read retry read empty page, return as uncorrectable\n");
 						mtd->ecc_stats.failed+=u4SecNum;
 						bRet = ERR_RTN_BCH_FAIL;
-				}
-			}
+				    }else
+				    {
+    				    memset(buf,0xff,u4PageSize);
+    		            memset(pFDMBuf,0xff,u4SecNum*8);
+    		            readRetry = FALSE;
+    		            bRet = ERR_RTN_SUCCESS;
+		            }
+			    }
         }
         }
         mtk_nand_stop_read();
@@ -3947,43 +3880,33 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
 		{	mtk_nand_turn_off_randomizer();}
 		if (bRet == ERR_RTN_BCH_FAIL)
 		{
+			//u32 feature = devinfo.feature_set.FeatureSet.readRetryStart+retryCount;
 			u32 feature = mtk_nand_rrtry_setting(devinfo, devinfo.feature_set.FeatureSet.rtype,devinfo.feature_set.FeatureSet.readRetryStart,retryCount);
 			if(retryCount < devinfo.feature_set.FeatureSet.readRetryCnt)
 			{
 				mtd->ecc_stats.corrected = backup_corrected;
     			mtd->ecc_stats.failed = backup_failed;
-				mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
+				if(MLC_DEVICE)
+				{
+					mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
+					//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+					//			devinfo.feature_set.FeatureSet.readRetryAddress,\
+					//			(u8*)&feature,4);
+				}
 				retryCount++;
 			}
 			else
 			{
-			    feature = devinfo.feature_set.FeatureSet.readRetryDefault;
-			    // sandisk case 2/3/4
-    		    if((devinfo.feature_set.FeatureSet.rtype == RTYPE_SANDISK) && (g_sandisk_retry_case < 3))
-    		    {
-    		        g_sandisk_retry_case++;
-    		        printk("Sandisk read retry case#%d\n", g_sandisk_retry_case);
-    		        tempBitMap = 0;
-    		        mtd->ecc_stats.corrected = backup_corrected;
-    			    mtd->ecc_stats.failed = backup_failed;
-    		        mtk_nand_rrtry_func(mtd,devinfo,feature,FALSE);
-    		        //if((g_sandisk_retry_case == 0) || (g_sandisk_retry_case == 2))
-    		        //{
-    		        //    mtk_nand_set_command(0x26);
-    		        //}    		        
-    		        retryCount = 0;
-    		    }else
-    		    {
-    				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
-    				readRetry = FALSE;
-    				g_sandisk_retry_case = 0;
+				if(MLC_DEVICE)
+				{
+					feature = devinfo.feature_set.FeatureSet.readRetryDefault;
+					mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
+					//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+					//			devinfo.feature_set.FeatureSet.readRetryAddress,\
+					//			(u8*)&feature,4);
 				}
-			}
-			if((g_sandisk_retry_case == 1) || (g_sandisk_retry_case == 3))
-	        {
-	            mtk_nand_set_command(0x26);
-	            printk("Case1#3# Set cmd 26\n");
-	        }
+				readRetry = FALSE;
+			}		
 		}
 		else
 		{
@@ -3991,9 +3914,11 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
 			{
 				u32 feature = devinfo.feature_set.FeatureSet.readRetryDefault;
 				mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
+				//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+				//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+				//				(u8*)&feature,4);
 			}
 			readRetry = FALSE;
-			g_sandisk_retry_case = 0;
 		}
 		if(TRUE == readRetry)
 			bRet = ERR_RTN_SUCCESS;
@@ -4004,25 +3929,23 @@ bool mtk_nand_exec_read_sector(struct mtd_info *mtd, u32 u4RowAddr,  u32 u4ColAd
 	    if(bRet == ERR_RTN_SUCCESS)
 	    {
 	        MSG(INIT, "u4RowAddr:0x%x read retry pass, retrycnt:%d ENUM0:%x,ENUM1:%x,\n",u4RowAddr,retryCount,DRV_Reg32(ECC_DECENUM1_REG32),DRV_Reg32(ECC_DECENUM0_REG32));
-	        mtd->ecc_stats.corrected++;
-			if((devinfo.feature_set.FeatureSet.rtype == RTYPE_HYNIX_16NM) || (devinfo.feature_set.FeatureSet.rtype == RTYPE_HYNIX))
-			{
-				g_hynix_retry_count--;
-			}
 	    }
+		if(MLC_DEVICE)
+		{
 		mtk_nand_rrtry_func(mtd,devinfo,feature,TRUE);
-		g_sandisk_retry_case = 0;
+		//mtk_nand_SetFeature(mtd, devinfo.feature_set.FeatureSet.sfeatureCmd,\
+		//				devinfo.feature_set.FeatureSet.readRetryAddress,\
+		//				(u8*)&feature,4);
+		}
 	}	
     if (buf == local_buffer_16_align)
         memcpy(pPageBuf, buf, u4PageSize);
 
     PFM_END_R(pfm_time_read, u4PageSize + 32);
-	if(bRet != ERR_RTN_SUCCESS)
-	{
-		MSG(INIT,"ECC uncorrectable , fake buffer returned\n");
-		memset(pPageBuf,0xff,u4PageSize);
-		memset(pFDMBuf,0xff,u4SecNum*8);
-	}
+	//if(use_randomizer /*&& u4RowAddr >= RAND_START_ADDR*/)
+	//{	mtk_nand_turn_off_randomizer();}
+	//else if(pre_randomizer && u4RowAddr < RAND_START_ADDR)
+	//{	mtk_nand_turn_off_randomizer();}
     return bRet;
 }
 
@@ -4100,22 +4023,11 @@ int mtk_nand_exec_write_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize
     PFM_BEGIN(pfm_time_write);
     if (((u32) pPageBuf % 16) && local_buffer_16_align)
     {
-        printk(KERN_INFO "Data buffer not 16 bytes aligned: %p\n", pPageBuf);
+        printk("Data buffer not 16 bytes aligned: %p\n", pPageBuf);
         memcpy(local_buffer_16_align, pPageBuf, mtd->writesize);
         buf = local_buffer_16_align;
-    } 
-    else
-    {
-    	  if(virt_addr_valid (pPageBuf)==0)
-    	  { // It should be allocated by vmalloc
-        memcpy(local_buffer_16_align, pPageBuf, mtd->writesize);    	  	
-    	  	buf = local_buffer_16_align;
-    	  }
-    	  else
-    	  {    	  	
-        	buf = pPageBuf;
-        }
-    }
+    } else
+        buf = pPageBuf;
 
     if (mtk_nand_ready_for_write(chip, u4RowAddr, 0, true, buf))
     {
@@ -4189,7 +4101,7 @@ static int mtk_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip,
     {
         set_bad_index_to_oob(chip->oob_poi, FAKE_INDEX);
     }
-
+	//printk("[xiaolei] mtk_nand_write_page 0x%x\n", (u32)buf);
     if (mtk_nand_exec_write_page(mtd, page_in_block + mapped_block * page_per_block, mtd->writesize, (u8 *) buf, chip->oob_poi))
     {
         MSG(INIT, "write fail at block: 0x%x, page: 0x%x\n", mapped_block, page_in_block);
@@ -4289,6 +4201,7 @@ static void mtk_nand_command_bp(struct mtd_info *mtd, unsigned int command, int 
           if (g_kCMD.pDataBuf || (0xFF != g_kCMD.au1OOB[0]))
           {
               u8 *pDataBuf = g_kCMD.pDataBuf ? g_kCMD.pDataBuf : nand->buffers->databuf;
+			  //printk("[xiaolei] mtk_nand_command_bp 0x%x\n", (u32)pDataBuf);
               mtk_nand_exec_write_page(mtd, g_kCMD.u4RowAddr, mtd->writesize, pDataBuf, g_kCMD.au1OOB);
               g_kCMD.u4RowAddr = (u32) - 1;
               g_kCMD.u4OOBRowAddr = (u32) - 1;
@@ -5680,7 +5593,6 @@ static void mtk_nand_init_hw(struct mtk_nand_host *host)
     DRV_WriteReg32(NFI_ACCCON_REG32, hw->nfi_access_timing);
     DRV_WriteReg16(NFI_CNFG_REG16, 0);
     DRV_WriteReg16(NFI_PAGEFMT_REG16, 4);
-	DRV_WriteReg32(NFI_ENMPTY_THRESH_REG32, 40);
 
     /* Reset the state machine and data FIFO, because flushing FIFO */
     (void)mtk_nand_reset();
@@ -6374,6 +6286,20 @@ static int mtk_nand_probe(struct platform_device *pdev)
 #if CFG_RANDOMIZER    
     if(devinfo.vendor != VEND_NONE)
     {
+	    //mtk_nand_randomizer_config(&devinfo.feature_set.randConfig);
+	    #if 0
+	    if ((devinfo.feature_set.randConfig.type == RAND_TYPE_SAMSUNG) ||
+	        (devinfo.feature_set.randConfig.type == RAND_TYPE_TOSHIBA))
+	    {
+	        MSG(INIT, "[NAND]USE Randomizer\n");
+            use_randomizer = TRUE;
+        }
+        else
+        {
+            MSG(INIT, "[NAND]OFF Randomizer\n");
+            use_randomizer = FALSE;
+        }
+        #endif // only charge for efuse bonding
 	    if((*EFUSE_RANDOM_CFG)&EFUSE_RANDOM_ENABLE)
         {
             MSG(INIT, "[NAND]EFUSE RANDOM CFG is ON\n");
@@ -6709,10 +6635,6 @@ static int mtk_nand_resume(struct platform_device *pdev)
 //	struct nand_chip *chip = mtd->priv;
 	//struct gFeatureSet *feature_set = &(devinfo.feature_set.FeatureSet); //for test
 	//int val = -1;   // for test
-        //[BUGFIX]-Add-BEGIN by SCDTABLET.(lilin.liu@jrdcom.com), PR981151,981152 04/24/2015
-        u32 timeout = 2000;
-        bool ret = true;
-        //[BUGFIX]-Add-END by SCDTABLET.(lilin.liu@jrdcom.com)
 
 #ifdef CONFIG_PM
 
@@ -6725,22 +6647,7 @@ static int mtk_nand_resume(struct platform_device *pdev)
 			#else
 			hwPowerOn(MT6323_POWER_LDO_VMCH, VOL_3300, "NFI");
 			#endif
-
-                        //[BUGFIX]-Add-BEGIN by SCDTABLET.(lilin.liu@jrdcom.com), PR981151,981152 04/24/2015
-                        MSG(INIT, "[NFI] Resume Add extera 1ms Delay and wait for device reset ready !\n");
-                        mdelay(1);
-                        while (timeout--){
-                            ret = mtk_nand_device_reset();
-                            if(ret == true)
-                                break;
-
-                            udelay(100); //total 200ms polling nand reset status
-                        }
-
-                        if(ret == false){
-                            MSG(INIT, "[NFI] Resume Error, device reset failed here!\n");
-                        }
-                        //[BUGFIX]-Add-END by SCDTABLET.(lilin.liu@jrdcom.com)
+			mtk_nand_device_reset();
             DRV_WriteReg16(NFI_CNFG_REG16 ,host->saved_para.sNFI_CNFG_REG16);
             DRV_WriteReg16(NFI_PAGEFMT_REG16 ,host->saved_para.sNFI_PAGEFMT_REG16);
             DRV_WriteReg32(NFI_CON_REG16 ,host->saved_para.sNFI_CON_REG16);
@@ -7266,83 +7173,9 @@ static struct platform_driver mtk_nand_driver = {
  *   None
  *
  ******************************************************************************/
- #define SEQ_printf(m, x...)	    \
- do {			    \
-    if (m)		    \
-	seq_printf(m, x);	\
-    else		    \
-	printk(x);	    \
- } while (0)
- 
-int mtk_nand_proc_show(struct seq_file *m, void *v)
-{
-    int i;
-    SEQ_printf(m, "ID:");
-    for(i=0;i<devinfo.id_length;i++){
-        SEQ_printf(m, " 0x%x", devinfo.id[i]);
-    }
-    SEQ_printf(m, "\n");
-    SEQ_printf(m, "total size: %dMiB; part number: %s\n", devinfo.totalsize,devinfo.devciename);
-    SEQ_printf(m, "Current working in %s mode\n", g_i4Interrupt ? "interrupt" : "polling");
-    SEQ_printf(m, "NFI_ACCON(0x%x)=0x%x\n",(NFI_BASE+0x000C),DRV_Reg32(NFI_ACCCON_REG32));
-    SEQ_printf(m, "NFI_NAND_TYPE_CNFG_REG32= 0x%x\n",DRV_Reg32(NFI_NAND_TYPE_CNFG_REG32));    
-#if CFG_FPGA_PLATFORM
-    SEQ_printf(m, "[FPGA Dummy]DRV_CFG_NFIA(0x0)=0x0\n");
-    SEQ_printf(m, "[FPGA Dummy]DRV_CFG_NFIB(0x0)=0x0\n");
-#else
-    SEQ_printf(m, "DRV_CFG_NFIA(IO PAD:0x%x)=0x%x\n",(GPIO_BASE+0xC20),*((volatile u32 *)(GPIO_BASE+0xC20)));
-    SEQ_printf(m, "DRV_CFG_NFIB(CTRL PAD:0x%x)=0x%x\n",(GPIO_BASE+0xB50),*((volatile u32 *)(GPIO_BASE+0xB50)));
-#endif
-#if CFG_PERFLOG_DEBUG
-    SEQ_printf(m, "Read Page Count:%d, Read Page totalTime:%lu, Avg. RPage:%lu\r\n",
-                 g_NandPerfLog.ReadPageCount,g_NandPerfLog.ReadPageTotalTime,
-                 g_NandPerfLog.ReadPageCount ? (g_NandPerfLog.ReadPageTotalTime/g_NandPerfLog.ReadPageCount): 0);
-                 
-    SEQ_printf(m, "Read subPage Count:%d, Read subPage totalTime:%lu, Avg. RPage:%lu\r\n",
-                 g_NandPerfLog.ReadSubPageCount,g_NandPerfLog.ReadSubPageTotalTime,
-                 g_NandPerfLog.ReadSubPageCount? (g_NandPerfLog.ReadSubPageTotalTime/g_NandPerfLog.ReadSubPageCount): 0);
-
-    SEQ_printf(m, "Read Busy Count:%d, Read Busy totalTime:%lu, Avg. R Busy:%lu\r\n",
-                 g_NandPerfLog.ReadBusyCount,g_NandPerfLog.ReadBusyTotalTime,
-                 g_NandPerfLog.ReadBusyCount? (g_NandPerfLog.ReadBusyTotalTime/g_NandPerfLog.ReadBusyCount): 0);
-    
-    SEQ_printf(m, "Read DMA Count:%d, Read DMA totalTime:%lu, Avg. R DMA:%lu\r\n",
-                 g_NandPerfLog.ReadDMACount,g_NandPerfLog.ReadDMATotalTime,
-                 g_NandPerfLog.ReadDMACount? (g_NandPerfLog.ReadDMATotalTime/g_NandPerfLog.ReadDMACount): 0);
-
-    SEQ_printf(m, "Write Page Count:%d, Write Page totalTime:%lu, Avg. WPage:%lu\r\n",
-                 g_NandPerfLog.WritePageCount,g_NandPerfLog.WritePageTotalTime,
-                 g_NandPerfLog.WritePageCount? (g_NandPerfLog.WritePageTotalTime/g_NandPerfLog.WritePageCount): 0);
-
-    SEQ_printf(m, "Write Busy Count:%d, Write Busy totalTime:%lu, Avg. W Busy:%lu\r\n",
-                 g_NandPerfLog.WriteBusyCount,g_NandPerfLog.WriteBusyTotalTime,
-                 g_NandPerfLog.WriteBusyCount? (g_NandPerfLog.WriteBusyTotalTime/g_NandPerfLog.WriteBusyCount): 0);
-
-    SEQ_printf(m, "Write DMA Count:%d, Write DMA totalTime:%lu, Avg. W DMA:%lu\r\n",
-                 g_NandPerfLog.WriteDMACount,g_NandPerfLog.WriteDMATotalTime,
-                 g_NandPerfLog.WriteDMACount? (g_NandPerfLog.WriteDMATotalTime/g_NandPerfLog.WriteDMACount): 0);
-
-    SEQ_printf(m, "EraseBlock Count:%d, EraseBlock totalTime:%lu, Avg. Erase:%lu\r\n",
-                 g_NandPerfLog.EraseBlockCount,g_NandPerfLog.EraseBlockTotalTime,
-                 g_NandPerfLog.EraseBlockCount? (g_NandPerfLog.EraseBlockTotalTime/g_NandPerfLog.EraseBlockCount): 0);
-
-#endif
-    return 0;
-}
-
-
-static int mt_nand_proc_open(struct inode *inode, struct file *file) 
-{ 
-    return single_open(file, mtk_nand_proc_show, inode->i_private); 
-} 
-
-
 static const struct file_operations mtk_nand_fops = {
-    .open = mt_nand_proc_open,
-    .write = mtk_nand_proc_write,
-    .read = seq_read,
-	.llseek = seq_lseek, 
-    .release = single_release, 
+    .read = mtk_nand_proc_read,
+	.write = mtk_nand_proc_write,
 };
 static int __init mtk_nand_init(void)
 {

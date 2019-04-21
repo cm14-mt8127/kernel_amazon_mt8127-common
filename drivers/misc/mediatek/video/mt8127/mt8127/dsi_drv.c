@@ -34,10 +34,7 @@ static wait_queue_head_t _dsi_wait_queue;
 static wait_queue_head_t _dsi_dcs_read_wait_queue;
 static wait_queue_head_t _dsi_wait_bta_te;
 static wait_queue_head_t _dsi_wait_ext_te;
-/* [PLATFORM]-Mod-BEGIN by TCTSZ.yaohui.zeng, 2015/04/15,MTK patch,fix FB suspend/resume DSI issue*/
-wait_queue_head_t _dsi_wait_vm_done_queue;
-/* [PLATFORM]-Mod-END by TCTSZ.yaohui.zeng, 2015/04/15*/
-
+static wait_queue_head_t _dsi_wait_vm_done_queue;
 #endif
 //static unsigned int _dsi_reg_update_wq_flag = 0;
 static DECLARE_WAIT_QUEUE_HEAD(_dsi_reg_update_wq);
@@ -209,6 +206,10 @@ unsigned int custom_pll_clock_remap(int input_mipi_clock)
     return ret;
 }
 #endif
+static void lcm_mdelay(UINT32 ms)
+{
+    udelay(1000 * ms);
+}
 void DSI_Enable_Log(bool enable)
 {
     dsi_log_on = enable;
@@ -448,8 +449,7 @@ void DSI_InitVSYNC(unsigned int vsync_interval)
 #endif
 }
 
-/* [PLATFORM]-Mod-BEGIN by TCTSZ.yaohui.zeng, 2015/04/15,MTK patch,fix FB suspend/resume DSI issue*/
-BOOL _IsEngineBusy(void)
+static BOOL _IsEngineBusy(void)
 {
     DSI_INT_STATUS_REG status;
 
@@ -459,15 +459,13 @@ BOOL _IsEngineBusy(void)
         return TRUE;
     return FALSE;
 }
-/* [PLATFORM]-Mod-END by TCTSZ.yaohui.zeng, 2015/04/15*/
 
 
 static void _WaitForEngineNotBusy(void)
 {
     int timeOut;
 #if ENABLE_DSI_INTERRUPT
-   
- long int time;
+    long int time;
     static const long WAIT_TIMEOUT = 2 * HZ;    // 2 sec
 #endif
 
@@ -531,7 +529,11 @@ void hdmi_dsi_waitnotbusy(void)
     _WaitForEngineNotBusy();
 }
 
-
+void wait_dsi_engine_notbusy(void)
+{
+	if (wait_event_timeout(_dsi_wait_vm_done_queue, !_IsEngineBusy(), HZ / 10) == 0)
+		pr_err("Wait dsi engine not busy timeout\n");
+}
 
 DSI_STATUS DSI_BackupRegisters(void)
 {
@@ -1566,7 +1568,7 @@ DSI_STATUS DSI_Reset(void)
 {
     //DSI_REG->DSI_COM_CTRL.DSI_RESET = 1;
     OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
-//  mdelay(5);
+//  lcm_mdelay(5);
     //DSI_REG->DSI_COM_CTRL.DSI_RESET = 0;
     OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
 
@@ -1711,7 +1713,7 @@ DSI_STATUS DSI_handle_TE(void)
     //data_array=0x00351504;
     //DSI_set_cmdq(&data_array, 1, 1);
 
-    //mdelay(10);
+    //lcm_mdelay(10);
 
     // RACT
     //data_array=1;
@@ -2264,22 +2266,22 @@ void DSI_lane0_ULP_mode(bool enter)
         // suspend
         tmp_reg1.L0_HS_TX_EN=0;
         OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        mdelay(1);
+        lcm_mdelay(1);
         tmp_reg1.L0_ULPM_EN=1;
         OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        mdelay(1);
+        lcm_mdelay(1);
     }
     else {
         // resume
         tmp_reg1.L0_ULPM_EN=0;
         OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        mdelay(1);
+        lcm_mdelay(1);
         tmp_reg1.L0_WAKEUP_EN=1;
         OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        mdelay(1);
+        lcm_mdelay(1);
         tmp_reg1.L0_WAKEUP_EN=0;
         OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        mdelay(1);
+        lcm_mdelay(1);
     }
 }
 
@@ -3745,7 +3747,7 @@ DSI_STATUS Wait_ULPS_Mode(void)
 
     while(((INREG32(DSI_BASE + 0x14C)>> 24) & 0xFF) != 0x04)
     {
-        mdelay(5);
+        lcm_mdelay(5);
 #ifdef DDI_DRV_DEBUG_LOG_ENABLE
         DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI+%04x : 0x%08x \n", DSI_BASE, INREG32(DSI_BASE + 0x14C));
 #endif
@@ -3775,7 +3777,7 @@ DSI_STATUS Wait_WakeUp(void)
     OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&lccon_reg));
     OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&ld0con));
 
-    mdelay(1);//Wait 1ms for LCM Spec
+    lcm_mdelay(1);//Wait 1ms for LCM Spec
 
     lccon_reg.LC_WAKEUP_EN =1;
     ld0con.L0_WAKEUP_EN=1;
@@ -3784,7 +3786,7 @@ DSI_STATUS Wait_WakeUp(void)
 
     while(((INREG32(DSI_BASE + 0x148)>> 8) & 0xFF) != 0x01)
     {
-        mdelay(5);
+        lcm_mdelay(5);
 #ifdef DDI_DRV_DEBUG_LOG_ENABLE
         DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[soso]DSI+%04x : 0x%08x \n", DSI_BASE, INREG32(DSI_BASE + 0x148));
 #endif

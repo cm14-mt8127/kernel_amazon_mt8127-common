@@ -60,7 +60,11 @@ MTKSTP_DBG_T *g_stp_dbg = NULL;
 #define STP_DBG_FAMILY_NAME        "STP_DBG"
 #define MAX_BIND_PROCESS    (4)
 #ifdef WMT_PLAT_ALPS
+#ifdef CONFIG_MTK_AEE_AED
 #define STP_DBG_AEE_EXP_API (1)
+#else
+#define STP_DBG_AEE_EXP_API (0)
+#endif
 #else
 #define STP_DBG_AEE_EXP_API (0)
 #endif

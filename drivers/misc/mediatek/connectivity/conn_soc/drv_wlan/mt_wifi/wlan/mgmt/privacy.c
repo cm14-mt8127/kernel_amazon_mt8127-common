@@ -559,7 +559,7 @@ secTxPortControlCheck(
         if (IS_STA_IN_AIS(prStaRec)) {
             if (!prAdapter->rWifiVar.rAisSpecificBssInfo.fgTransmitKeyExist &&
                 (prAdapter->rWifiVar.rConnSettings.eEncStatus == ENUM_ENCRYPTION1_ENABLED)){
-                DBGLOG(INIT, TRACE, ("Drop Tx packet due the key is removed!!!\n"));
+                DBGLOG(INIT, INFO, ("Drop Tx packet due the key is removed!!!\n"));
                 return FALSE;
             }
         }

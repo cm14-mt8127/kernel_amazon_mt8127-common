@@ -1241,20 +1241,18 @@ wlanAdapterStart (
     PARAM_PTA_IPC_T rBwcsPta;
     UINT_32 u4SetInfoLen;
 #endif
+    enum Adapter_Start_Fail_Reason {
+        ALLOC_ADAPTER_MEM_FAIL,
+        DRIVER_OWN_FAIL,
+        INIT_ADAPTER_FAIL,
+        RAM_CODE_DOWNLOAD_FAIL,
+        WAIT_FIRMWARE_READY_FAIL,
+    } eFailReason;
 
-	enum Adapter_Start_Fail_Reason {
-		ALLOC_ADAPTER_MEM_FAIL,
-		DRIVER_OWN_FAIL,
-		INIT_ADAPTER_FAIL,
-		RAM_CODE_DOWNLOAD_FAIL,
-		WAIT_FIRMWARE_READY_FAIL,
-		FAIL_REASON_MAX
-	} eFailReason;
     ASSERT(prAdapter);
 
     DEBUGFUNC("wlanAdapterStart");
 
-	eFailReason = FAIL_REASON_MAX;
     //4 <0> Reset variables in ADAPTER_T
     prAdapter->fgIsFwOwn = TRUE;
     prAdapter->fgIsEnterD3ReqIssued = FALSE;
@@ -1288,7 +1286,7 @@ wlanAdapterStart (
         if(prAdapter->fgIsFwOwn == TRUE) {
             DBGLOG(INIT, ERROR, ("nicpmSetDriverOwn() failed!\n"));
             u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = DRIVER_OWN_FAIL;
+            eFailReason = DRIVER_OWN_FAIL;
             break;
         }
 
@@ -1296,7 +1294,7 @@ wlanAdapterStart (
         if ( (u4Status = nicInitializeAdapter(prAdapter)) != WLAN_STATUS_SUCCESS ) {
             DBGLOG(INIT, ERROR, ("nicInitializeAdapter failed!\n"));
             u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = INIT_ADAPTER_FAIL;
+            eFailReason = INIT_ADAPTER_FAIL;
             break;
         }
 #endif
@@ -1371,14 +1369,16 @@ wlanAdapterStart (
                                     u4ImgSecSize,
                                     (PUINT_8)pvFwImageMapFile + prFwHead->arSection[i].u4Offset + j) != WLAN_STATUS_SUCCESS) {
                             DBGLOG(INIT, ERROR, ("Firmware scatter download failed %d!\n", (int)i));
-                            u4Status = WLAN_STATUS_FAILURE;
+							/* Firmware download dead means 0xFDEAD */
+                            u4Status = 0xFDEAD;
                             break;
                         }
                     }
             #endif
 
                     /* escape from loop if any pending error occurs */
-                    if(u4Status == WLAN_STATUS_FAILURE) {
+                    if(u4Status == WLAN_STATUS_FAILURE || u4Status == 0xFDEAD) {
+                        eFailReason = RAM_CODE_DOWNLOAD_FAIL;
                         break;
                     }
                 }
@@ -1412,7 +1412,7 @@ wlanAdapterStart (
         #endif
 
             if(u4Status != WLAN_STATUS_SUCCESS) {
-				eFailReason = RAM_CODE_DOWNLOAD_FAIL;
+                eFailReason = RAM_CODE_DOWNLOAD_FAIL;
                 break;
             }
 
@@ -1428,7 +1428,7 @@ wlanAdapterStart (
         else {
             DBGLOG(INIT, ERROR, ("No Firmware found!\n"));
             u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = RAM_CODE_DOWNLOAD_FAIL;
+            eFailReason = RAM_CODE_DOWNLOAD_FAIL;
             break;
         }
 
@@ -1616,7 +1616,7 @@ wlanAdapterStart (
             else if(kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE
                     || fgIsBusAccessFailed == TRUE) {
                 u4Status = WLAN_STATUS_FAILURE;
-				eFailReason = WAIT_FIRMWARE_READY_FAIL;
+                eFailReason = WAIT_FIRMWARE_READY_FAIL;
                 break;
             }
             else if(i >= CFG_RESPONSE_POLLING_TIMEOUT) {
@@ -1626,7 +1626,7 @@ wlanAdapterStart (
                 DBGLOG(INIT, ERROR, ("Waiting for Ready bit: Timeout, ID=%u\n",
                         (u4MailBox0 & 0x0000FFFF)));
                 u4Status = WLAN_STATUS_FAILURE;
-				eFailReason = WAIT_FIRMWARE_READY_FAIL;
+                eFailReason = WAIT_FIRMWARE_READY_FAIL;
                 break;
             }
             else {
@@ -1697,7 +1697,6 @@ wlanAdapterStart (
         RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
 
         if(u4Status != WLAN_STATUS_SUCCESS) {
-			eFailReason = WAIT_FIRMWARE_READY_FAIL;
             break;
         }
 
@@ -1878,27 +1877,22 @@ wlanAdapterStart (
 
     }
     else {
-        // release allocated memory
-		switch (eFailReason)
-		{
-		case WAIT_FIRMWARE_READY_FAIL:
-		case RAM_CODE_DOWNLOAD_FAIL:
-			DBGLOG(INIT, ERROR, ("Wait firmware ready fail or ram code download fail, FailReason: %d\n",
-					eFailReason));
-			KAL_WAKE_LOCK_DESTROY(prAdapter, &prAdapter->rTxThreadWakeLock);
-			nicRxUninitialize(prAdapter);
-			nicTxRelease(prAdapter);
-			/* System Service Uninitialization */
-		    nicUninitSystemService(prAdapter);
-		case INIT_ADAPTER_FAIL:
-		case DRIVER_OWN_FAIL:
-			nicReleaseAdapterMemory(prAdapter);
-		case ALLOC_ADAPTER_MEM_FAIL:
-			break;
-		default:
-			break;
-		}
-	}
+		/* error handle: release allocated memory */
+        switch (eFailReason) {
+            case WAIT_FIRMWARE_READY_FAIL:
+            case RAM_CODE_DOWNLOAD_FAIL:
+                KAL_WAKE_LOCK_DESTROY(prAdapter, &prAdapter->rTxThreadWakeLock);
+                nicRxUninitialize(prAdapter);
+                nicTxRelease(prAdapter);
+                /* System Service Uninitialization */
+                nicUninitSystemService(prAdapter);
+            case INIT_ADAPTER_FAIL:
+            case DRIVER_OWN_FAIL:
+                nicReleaseAdapterMemory(prAdapter);
+            case ALLOC_ADAPTER_MEM_FAIL:
+                break;
+         }
+    }
 
     return u4Status;
 } /* wlanAdapterStart */
@@ -3990,13 +3984,13 @@ wlanUpdateNetworkAddress (
         // eFUSE has a valid address, don't do anything
         if(prAdapter->fgIsEmbbededMacAddrValid == TRUE) {
 #if CFG_SHOW_MACADDR_SOURCE
-            DBGLOG(INIT, INFO, ("Using embedded MAC address"));
+            DBGLOG(INIT, TRACE, ("Using embedded MAC address"));
 #endif
             return WLAN_STATUS_SUCCESS;
         }
         else {
 #if CFG_SHOW_MACADDR_SOURCE
-            DBGLOG(INIT, INFO, ("Using dynamically generated MAC address"));
+            DBGLOG(INIT, TRACE, ("Using dynamically generated MAC address"));
 #endif
             // dynamic generate
             u4SysTime = kalGetTimeTick();
@@ -4569,7 +4563,7 @@ wlanQueryPermanentAddress(
 
     // header checking ..
     prHifRxHdr = (P_HIF_RX_HEADER_T)aucBuffer;
-	if ((prHifRxHdr->u2PacketType & HIF_RX_HDR_PACKET_TYPE_MASK) != HIF_RX_PKT_TYPE_EVENT) {
+    if(prHifRxHdr->u2PacketType != HIF_RX_PKT_TYPE_EVENT) {
         return WLAN_STATUS_FAILURE;
     }
 
@@ -4659,7 +4653,7 @@ wlanQueryNicCapability(
 
     // header checking ..
     prHifRxHdr = (P_HIF_RX_HEADER_T)aucBuffer;
-	if ((prHifRxHdr->u2PacketType & HIF_RX_HDR_PACKET_TYPE_MASK) != HIF_RX_PKT_TYPE_EVENT) {
+    if(prHifRxHdr->u2PacketType != HIF_RX_PKT_TYPE_EVENT) {
         return WLAN_STATUS_FAILURE;
     }
 
@@ -4998,7 +4992,7 @@ wlanQueryPdMcr(
 
     // header checking ..
     prHifRxHdr = (P_HIF_RX_HEADER_T)aucBuffer;
-	if ((prHifRxHdr->u2PacketType & HIF_RX_HDR_PACKET_TYPE_MASK) != HIF_RX_PKT_TYPE_EVENT) {
+    if(prHifRxHdr->u2PacketType != HIF_RX_PKT_TYPE_EVENT) {
         return WLAN_STATUS_FAILURE;
     }
 
@@ -5139,6 +5133,30 @@ static VOID wlanChangeNvram6620to6628(PUINT_8 pucEFUSE){
 }
 #endif
 
+ENUM_BAND_EDGE_CERT_T getBandEdgeCert(P_ADAPTER_T prAdapter)
+{
+	P_DOMAIN_INFO_ENTRY prDomainInfo;
+	P_DOMAIN_SUBBAND_INFO prSubband;
+	UINT32 i;
+
+	prDomainInfo = rlmDomainGetDomainInfo(prAdapter);
+	ASSERT(prDomainInfo);
+
+	for (i = 0; i < MAX_SUBBAND_NUM; i++) {
+		prSubband = &prDomainInfo->rSubBand[i];
+
+		if (prSubband->ucBand == BAND_2G4) {
+			if (prSubband->ucFirstChannelNum == 1) {
+				if (prSubband->ucNumChannels == 13)
+					return BAND_EDGE_CERT_KCC;
+				else
+					return BAND_EDGE_CERT_FCC;
+			}
+		}
+	}
+	return BAND_EDGE_CERT_FCC;
+}
+
 /*----------------------------------------------------------------------------*/
 /*!
 * @brief This function is called to load manufacture data from NVRAM
@@ -5274,11 +5292,12 @@ wlanLoadManufactureData (
         rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM40
             = prRegInfo->cBandEdgeMaxPwrOFDM40;
 
-        printk("NVRAM 2G Bandedge CCK(%d) HT20(%d)HT40(%d)\n",
-            rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrCCK,
-            rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM20,
-            rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM40
-            );
+		rCmdEdgeTxPwrLimit.cBandEdgeCert = getBandEdgeCert(prAdapter);
+
+		DBGLOG(INIT, TRACE, ("NVRAM 2G Bandedge CCK(%d) HT20(%d)HT40(%d)\n",
+		       rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrCCK,
+		       rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM20,
+		       rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM40));
 
         wlanSendSetQueryCmd(prAdapter,
                 CMD_ID_SET_EDGE_TXPWR_LIMIT,
@@ -5951,10 +5970,10 @@ wlanCheckSystemConfiguration (
     if(fgIsConfExist == TRUE &&
             (CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2Part1CfgPeerVersion
             || CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2Part2CfgPeerVersion
-            || prAdapter->rVerInfo.u2Part1CfgOwnVersion < CFG_DRV_PEER_VERSION
-            || prAdapter->rVerInfo.u2Part2CfgOwnVersion < CFG_DRV_PEER_VERSION /* NVRAM */
+            || prAdapter->rVerInfo.u2Part1CfgOwnVersion <= CFG_DRV_PEER_VERSION
+            || prAdapter->rVerInfo.u2Part2CfgOwnVersion <= CFG_DRV_PEER_VERSION /* NVRAM */
             || CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2FwPeerVersion
-            || prAdapter->rVerInfo.u2FwOwnVersion < CFG_DRV_PEER_VERSION
+            || prAdapter->rVerInfo.u2FwOwnVersion <= CFG_DRV_PEER_VERSION
             || (prAdapter->fgIsEmbbededMacAddrValid == FALSE &&
                 (IS_BMCAST_MAC_ADDR(prRegInfo->aucMacAddr)
                  || EQUAL_MAC_ADDR(aucZeroMacAddr, prRegInfo->aucMacAddr)))
@@ -6025,10 +6044,10 @@ wlanCheckSystemConfiguration (
     if(fgIsConfExist == TRUE) {
         if((CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2Part1CfgPeerVersion
                     || CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2Part2CfgPeerVersion
-                    || prAdapter->rVerInfo.u2Part1CfgOwnVersion < CFG_DRV_PEER_VERSION
-                    || prAdapter->rVerInfo.u2Part2CfgOwnVersion < CFG_DRV_PEER_VERSION /* NVRAM */
+                    || prAdapter->rVerInfo.u2Part1CfgOwnVersion <= CFG_DRV_PEER_VERSION
+                    || prAdapter->rVerInfo.u2Part2CfgOwnVersion <= CFG_DRV_PEER_VERSION /* NVRAM */
                     || CFG_DRV_OWN_VERSION < prAdapter->rVerInfo.u2FwPeerVersion
-                    || prAdapter->rVerInfo.u2FwOwnVersion < CFG_DRV_PEER_VERSION)) {
+                    || prAdapter->rVerInfo.u2FwOwnVersion <= CFG_DRV_PEER_VERSION)) {
             u4ErrCode |= NVRAM_ERROR_VERSION_MISMATCH;
         }
 

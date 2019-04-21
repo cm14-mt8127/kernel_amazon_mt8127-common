@@ -371,8 +371,8 @@ typedef struct _AIS_FSM_INFO_T {
 
     UINT_8              ucConnTrialCount;
 
-    UINT_8              ucScanSSIDLen;
-    UINT_8              aucScanSSID[ELEM_MAX_LEN_SSID];
+    UINT_8              ucScanSSIDNum;
+	PARAM_SSID_T		arScanSSID[SCN_SSID_MAX_NUM];
 
     UINT_32             u4ScanIELength;
     UINT_8              aucScanIEBuf[MAX_IE_LENGTH];
@@ -388,6 +388,9 @@ typedef struct _AIS_FSM_INFO_T {
 
 	/* Packet filter for AIS module. */
 	UINT_32 			u4AisPacketFilter;
+
+	/* for roaming target */
+	PARAM_SSID_T rRoamingSSID;
 
 } AIS_FSM_INFO_T, *P_AIS_FSM_INFO_T;
 
@@ -715,6 +718,15 @@ aisFsmScanRequest (
     IN PUINT_8  pucIe,
     IN UINT_32  u4IeLength
     );
+
+VOID
+aisFsmScanRequestAdv(
+	IN P_ADAPTER_T prAdapter,
+	IN UINT_8   ucSsidNum,
+	IN P_PARAM_SSID_T prSsid,
+	IN PUINT_8  pucIe,
+	IN UINT_32  u4IeLength
+);
 
 /*----------------------------------------------------------------------------*/
 /* Internal State Checking                                                    */

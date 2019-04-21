@@ -468,6 +468,9 @@ typedef struct _RX_BA_ENTRY_T {
     //UINT_8                  ucTxBufferSize;
     //BOOL                    fgIsAcConstrain;
     //BOOL                    fgIsBaEnabled;
+	TIMER_T					rReorderBubbleTimer;
+	UINT_16                 u2FirstBubbleSn;
+	BOOLEAN                 fgHasBubble;
 } RX_BA_ENTRY_T, *P_RX_BA_ENTRY_T;
 
 /* The mailbox message (could be used for Host-To-Device or Device-To-Host Mailbox) */
@@ -626,8 +629,18 @@ typedef struct _EVENT_STA_UPDATE_FREE_QUOTA_T {
     UINT_8      aucReserved[1];
 } EVENT_STA_UPDATE_FREE_QUOTA_T, *P_EVENT_STA_UPDATE_FREE_QUOTA_T;
 
-
-
+typedef struct _EVENT_CHECK_REORDER_BUBBLE_T {
+	/* Event header */
+	UINT_16     u2Length;
+	UINT_16     u2Reserved1;
+	/* Must be filled with 0x0001 (EVENT Packet) */
+	UINT_8		ucEID;
+	UINT_8      ucSeqNum;
+	UINT_8		aucReserved2[2];
+	/* Event Body */
+	UINT_8      ucStaRecIdx;
+	UINT_8      ucTid;
+	} EVENT_CHECK_REORDER_BUBBLE_T, *P_EVENT_CHECK_REORDER_BUBBLE_T;
 
 /* WMM-2.2.1 WMM Information Element */
 typedef struct _IE_WMM_INFO_T {
@@ -987,19 +1000,23 @@ qmInsertFallAheadReorderPkt(
     IN P_RX_BA_ENTRY_T prReorderQueParm,
     OUT P_QUE_T prReturnedQue
     );
+BOOLEAN qmPopOutDueToFallWithin(
+	IN P_ADAPTER_T prAdapter,
+	IN P_RX_BA_ENTRY_T prReorderQueParm,
+	OUT P_QUE_T prReturnedQue);
 
-BOOLEAN
-qmPopOutDueToFallWithin(
-    IN P_RX_BA_ENTRY_T prReorderQueParm,
-    OUT P_QUE_T prReturnedQue
-    );
+VOID qmPopOutDueToFallAhead(
+	IN P_ADAPTER_T prAdapter,
+	IN P_RX_BA_ENTRY_T prReorderQueParm,
+	OUT P_QUE_T prReturnedQue);
 
-VOID
-qmPopOutDueToFallAhead(
-    IN P_RX_BA_ENTRY_T prReorderQueParm,
-    OUT P_QUE_T prReturnedQue
-    );
+VOID qmHandleReorderBubbleTimeout(
+	IN P_ADAPTER_T prAdapter,
+	IN UINT_32 u4Param);
 
+VOID qmHandleEventCheckReorderBubble(
+	IN P_ADAPTER_T prAdapter,
+	IN P_WIFI_EVENT_T prEvent);
 
 VOID
 qmHandleMailboxRxMessage(

@@ -701,6 +701,10 @@ typedef struct _CONNECTION_SETTINGS_T {
 
     UINT_32                         u4FreqInKHz; /* Center frequency */
 
+	BOOLEAN							fgSpecificChnl;
+	RF_CHANNEL_INFO_T				rSpecificRfChnlInfo;
+
+
     /* ATIM windows using for IBSS power saving function */
     UINT_16                         u2AtimWindow;
 
@@ -920,7 +924,6 @@ struct _BSS_INFO_T {
 	BOOLEAN fgTdlsIsProhibited; /* TRUE: AP prohibits TDLS links */
 	BOOLEAN	fgTdlsIsChSwProhibited; /* TRUE: AP prohibits TDLS chan switch */
 #endif /* CFG_SUPPORT_TDLS */
-    BOOLEAN fgIsIndicatedPMBssConn;
 };
 
 
@@ -1357,6 +1360,10 @@ struct _ADAPTER_T {
 	BOOLEAN		fgEnDbgPowerMode;	/*  dbg priviledge power mode, always keep in active */
 #endif
 
+#if	CFG_SUPPORT_WAKEUP_STATISTICS
+	WAKEUP_STATISTIC arWakeupStatistic[WAKEUP_TYPE_NUM];
+#endif
+	unsigned char dtim_skip_count;
 };/* end of _ADAPTER_T */
 
 /*******************************************************************************

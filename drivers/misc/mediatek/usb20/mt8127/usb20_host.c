@@ -125,7 +125,7 @@ int mt_usb_get_vbus_status(struct musb *musb)
 void mt_usb_init_drvvbus(void)
 {
 #ifndef MTK_ALPS_BOX_SUPPORT    //because 8127 box have no charger IC
-#if !(defined(OTG_BOOST_BY_SWITCH_CHARGER) || defined(FPGA_PLATFORM))
+#if !(defined(SWITCH_CHARGER) || defined(FPGA_PLATFORM))
 	mt_set_gpio_mode(GPIO_OTG_DRVVBUS_PIN,GPIO_OTG_DRVVBUS_PIN_M_GPIO);//should set GPIO2 as gpio mode.
 	mt_set_gpio_dir(GPIO_OTG_DRVVBUS_PIN,GPIO_DIR_OUT);
 	mt_get_gpio_pull_enable(GPIO_OTG_DRVVBUS_PIN);
@@ -142,23 +142,38 @@ extern int ep_config_from_table_for_host(struct musb *musb);
 static bool musb_is_host(void)
 {
 	u8 devctl = 0;
-    int iddig_state = 1;
-    bool usb_is_host = 0;
+	int iddig_state = 1;
+	bool usb_is_host = 0;
+#if CONFIG_AUSTIN_PROJECT
+	int i = 0;
+#endif
 
-    DBG(0,"will mask PMIC charger detection\n");
+	DBG(0,"will mask PMIC charger detection\n");
 #ifndef FPGA_PLATFORM
 #ifdef CONFIG_MTK_DUAL_INPUT_CHARGER_SUPPORT
 #ifdef CONFIG_MTK_LOAD_SWITCH_FPF3040
-    pmic_chrdet_int_en(0);
+	pmic_chrdet_int_en(0);
 #endif
 #endif
 #endif
 
-    musb_platform_enable(mtk_musb);
+	musb_platform_enable(mtk_musb);
 
 #ifdef ID_PIN_USE_EX_EINT
-    iddig_state = mt_get_gpio_in(GPIO38);
+	/* iddig_state = mt_get_gpio_in(GPIO38); */
+	iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
 	DBG(0,"iddig_state = %d\n", iddig_state);
+#if CONFIG_AUSTIN_PROJECT
+	for (i=0; i<3; i++) {
+		if (likely(iddig_state)) {
+			break;
+		} else {
+			mdelay(delay_time1); /* anti-shake */
+			iddig_state = mt_get_gpio_in(GPIO_OTG_IDDIG_EINT_PIN);
+			DBG(0,"iddig_state = %d after sleep 50ms\n", iddig_state);
+		}
+	}
+#endif
 #else
     iddig_state = 0 ;
     devctl = musb_readb(mtk_musb->mregs,MUSB_DEVCTL);
@@ -261,7 +276,9 @@ static void musb_id_pin_work(struct work_struct *data)
 		DBG(0, "do nothing due to in_ipo_off\n");
 		goto out;
 	}
-
+	#if CONFIG_AUSTIN_PROJECT
+	wake_lock(&mtk_musb->usb_lock);
+    #endif
 	mtk_musb ->is_host = musb_is_host();
 	DBG(0,"musb is as %s\n",mtk_musb->is_host?"host":"device");
 	switch_set_state((struct switch_dev *)&otg_state, mtk_musb->is_host);
@@ -272,7 +289,12 @@ static void musb_id_pin_work(struct work_struct *data)
         #endif
 		//setup fifo for host mode
 		ep_config_from_table_for_host(mtk_musb);
-		wake_lock(&mtk_musb->usb_lock);
+		#if CONFIG_AUSTIN_PROJECT
+		if (!wake_lock_active(&mtk_musb->usb_lock))
+			wake_lock(&mtk_musb->usb_lock);
+		#else
+			wake_lock(&mtk_musb->usb_lock);
+		#endif
 		musb_platform_set_vbus(mtk_musb, 1);
 
         /* for no VBUS sensing IP*/
@@ -336,8 +358,8 @@ out:
 static void mt_usb_ext_iddig_int(void)
 {
     if (!mtk_musb->is_ready) {
-        /* dealy 5 sec if usb function is not ready */
-        schedule_delayed_work(&mtk_musb->id_pin_work,5000*HZ/1000);
+        /* dealy 7 sec if usb function is not ready */
+        schedule_delayed_work(&mtk_musb->id_pin_work,7000*HZ/1000);
     } else {
         schedule_delayed_work(&mtk_musb->id_pin_work,sw_deboun_time*HZ/1000);
     }
@@ -369,13 +391,13 @@ void mt_usb_iddig_int(struct musb *musb)
 void static otg_int_init(void)
 {
 #ifdef ID_PIN_USE_EX_EINT
-    mt_set_gpio_mode(GPIO38, GPIO_MODE_02);
-    mt_set_gpio_dir(GPIO38, GPIO_DIR_IN);
-    mt_set_gpio_pull_enable(GPIO38, GPIO_PULL_ENABLE);
-    mt_set_gpio_pull_select(GPIO38, GPIO_PULL_UP);
-    mt_eint_set_sens(49, MT_LEVEL_SENSITIVE);
-    mt_eint_set_hw_debounce(49,64);
-    mt_eint_registration(49, EINTF_TRIGGER_LOW, mt_usb_ext_iddig_int, FALSE);
+	mt_set_gpio_mode(GPIO_OTG_IDDIG_EINT_PIN, GPIO_MODE_00);
+	mt_set_gpio_dir(GPIO_OTG_IDDIG_EINT_PIN, GPIO_DIR_IN);
+	mt_set_gpio_pull_enable(GPIO_OTG_IDDIG_EINT_PIN, GPIO_PULL_ENABLE);
+	mt_set_gpio_pull_select(GPIO_OTG_IDDIG_EINT_PIN, GPIO_PULL_UP);
+	mt_eint_set_sens(49, MT_LEVEL_SENSITIVE);
+	mt_eint_set_hw_debounce(49,64);
+	mt_eint_registration(49, EINTF_TRIGGER_LOW, mt_usb_ext_iddig_int, FALSE);
 #if 0
 	mt_set_gpio_mode(GPIO_OTG_IDDIG_EINT_PIN, GPIO_OTG_IDDIG_EINT_PIN_M_IDDIG);
 	mt_set_gpio_dir(GPIO_OTG_IDDIG_EINT_PIN, GPIO_DIR_IN);

@@ -778,6 +778,12 @@ config MTK_MLC_NAND_SUPPORT
   depends on MTK_MTD_NAND
   ---help---
 	  Enables support for MLC NAND.
+
+config MTK_COMBO_NAND_SUPPORT
+  tristate "Mediatek COMBO NAND Support"
+  depends on MTK_MTD_NAND
+  ---help---
+	  Enables support for COMBO NAND.
 	  
 # Power Related
 if POWER_SUPPLY
@@ -855,6 +861,12 @@ config X2_BQ27531_SUPPORT
 	bool "X2_BQ27531 support"
 	default n
 
+config MTK_AUTO_POWER_ON_WITH_CHARGER
+	bool "Device auto boot into android when charger plug-in"
+	default n
+	help
+	  Auto boot into android when charger in
+
 config MTK_BQ24250_SUPPORT
 	bool "MediaTek Battery driver for BQ24250"
 	default n
@@ -891,6 +903,12 @@ config MTK_BQ24296_SUPPORT
 	help
 	  BQ24296 charger IC support Yes to support bq24296 No to not
 	  support bq24296
+
+config MTK_SN2871_SUPPORT
+        bool "MTK_SN2871_SUPPORT"
+        help
+          SN2871 charger IC support Yes to support sn2871 No to not
+          support sn2871
 
 config MTK_BQ27541_SUPPORT
 	bool "MTK_BQ27541_SUPPORT"
@@ -1079,6 +1097,18 @@ config MTK_BMA250
 	bool "Accelerometer BMA250 for MediaTek package"
 	default n
 
+config MTK_BMA253
+	bool "Accelerometer BMA253 for MediaTek package"
+	default n
+
+config MTK_MC3410
+	bool "Accelerometer MC3410 for MediaTek package"
+	default n
+
+config MTK_HALL_SENSOR
+	bool "HALL Sensor BU52013 for MediaTek Package"
+	default n
+
 config MTK_MPU6515A
         bool "MPU6515A for MediaTek package"
         default n
@@ -1094,14 +1124,6 @@ config MTK_BMA250E
 config MTK_BMA056
         bool "MTK_BMA056 for MediaTek package"
         default n
-
-config MTK_BMA2XX
-	bool "BMA2XX for MediaTek package"
-	default n
-
-config MTK_HALL
-    bool "Hall sensor for MediaTek package"
-    default n
 
 # Gyro sensor
 config MTK_MPU3050C
@@ -1572,6 +1594,15 @@ config MTK_KERNEL_POWER_OFF_CHARGING
 	  kernel and charging animation by IPO service. no: not support KPOC
 	  feature, and power off charging would running by lk.
 
+config MTK_BATTERY_LIFETIME_DATA_SUPPORT
+        bool "Enable Battery LifeTime Data Logging"
+        help
+          This config is to log battery related info.
+          Set yes and it would keep max/min voltage,
+          max/min charging current, max/min battery
+          temperature, etc.
+        default n
+
 config MTK_BQ24160_SUPPORT
 	bool "MTK_BQ24160_SUPPORT"
 	help
@@ -1601,11 +1632,6 @@ config MTK_MT8193_HDCP_SUPPORT
 	help
 	  Enable hdmi tx hdcp support
 
-config MTK_HDMI_HDCP_SUPPORT
-	bool "MTK_HDMI_HDCP_SUPPORT"
-	help
-	  Enable hdmi tx hdcp support
-	    
 config CUSTOM_KERNEL_HDMI
 	string "CUSTOM_KERNEL_HDMI"
 	help
@@ -1633,12 +1659,6 @@ config MTK_THERMAL_PA_VIA_ATCMD
 	help
 	  Internal switch for thermal management to query modem RF
 	  temperature via AT command.
-
-config MTK_COMBO_NAND_SUPPORT
-	bool "MTK_COMBO_NAND_SUPPORT"
-	depends on MTK_MTD_NAND && !MTK_EMMC_SUPPORT
-	help
-	  To support different NAND page size on the same load
 
 config MTK_UMTS_TDD128_MODE
 	bool "MTK_UMTS_TDD128_MODE"

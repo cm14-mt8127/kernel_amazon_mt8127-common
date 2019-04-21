@@ -127,7 +127,7 @@ INT32 stp_notify_btm_poll_cpupcr_ctrl(UINT32 en);
 INT32 stp_btm_notify_wmt_trace_wq(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_do_fw_assert_via_emi(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm);
-
+INT32 wmt_btm_trigger_reset(VOID);
 MTKSTP_BTM_T *stp_btm_init(void);
 
 /*******************************************************************************

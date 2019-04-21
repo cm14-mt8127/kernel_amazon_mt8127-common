@@ -41,7 +41,7 @@ extern kal_int32 battery_meter_get_battery_temperature(void);
 extern kal_int32 battery_meter_get_charger_voltage(void);
 extern kal_int32 battery_meter_get_battery_percentage(void);
 extern kal_int32 battery_meter_initial(void);
-extern kal_int32 battery_meter_reset(void);
+extern kal_int32 battery_meter_reset(kal_bool bUI_SOC);
 extern kal_int32 battery_meter_sync(kal_int32 bat_i_sense_offset);
 
 extern kal_int32 battery_meter_get_battery_zcv(void);
@@ -51,6 +51,7 @@ extern kal_int32 battery_meter_get_battery_nPercent_UI_SOC(void);	/* tracking po
 extern kal_int32 battery_meter_get_tempR(kal_int32 dwVolt);
 extern kal_int32 battery_meter_get_tempV(void);
 extern kal_int32 battery_meter_get_VSense(void);	/* isense voltage */
+extern kal_int32 battery_meter_get_battery_soc(void);
 
 
 #endif				/* #ifndef _BATTERY_METER_H */

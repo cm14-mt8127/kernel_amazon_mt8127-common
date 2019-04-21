@@ -179,6 +179,6 @@ static int __init fiq_smp_call_init(void)
 
 	return 0;
 }
-arch_initcall(fiq_smp_call_init);
+arch_initcall_sync(fiq_smp_call_init);
 
 #endif				/* CONFIG_FIQ_GLUE */

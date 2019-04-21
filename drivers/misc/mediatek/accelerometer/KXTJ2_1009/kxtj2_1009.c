@@ -45,7 +45,7 @@
 /*----------------------------------------------------------------------------*/
 #define DEBUG 1
 /*----------------------------------------------------------------------------*/
-//#define CONFIG_KXTJ2_1009_LOWPASS   /*apply low pass filter on output*/       
+#define CONFIG_KXTJ2_1009_LOWPASS   /*apply low pass filter on output*/
 #define SW_CALIBRATION
 //#define USE_EARLY_SUSPEND
 /*----------------------------------------------------------------------------*/
@@ -71,6 +71,7 @@ static int kxtj2_1009_i2c_remove(struct i2c_client *client);
 static int kxtj2_1009_i2c_detect(struct i2c_client *client/*, int kind*/, struct i2c_board_info *info);
 static int kxtj2_1009_suspend(struct i2c_client *client, pm_message_t msg);
 static int kxtj2_1009_resume(struct i2c_client *client);
+extern struct acc_hw* get_kxtj2_1009_cust_acc_hw(void);
 
 /*----------------------------------------------------------------------------*/
 typedef enum {
@@ -154,6 +155,18 @@ static char selftestRes[8]= {0};
 static DEFINE_MUTEX(kxtj2_1009_mutex);
 static bool enable_status = false;
 
+/* auto detect driver */
+#if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
+static int kxtj2_init_flag = -1; // 0 means ok, -1 means fail.
+static int kxtj2_local_init(void);
+static int kxtj2_local_remove(void);
+
+static struct sensor_init_info kxtj2_init_info = {	
+    .name = "kxtj2_1009",
+	.init = kxtj2_local_init,
+	.uninit = kxtj2_local_init,
+};
+#endif
 
 /*----------------------------------------------------------------------------*/
 #define GSE_TAG                  "[Gsensor] "
@@ -230,7 +243,7 @@ static int KXTJ2_1009_SetDataResolution(struct kxtj2_1009_i2c_data *obj)
 
 	KXTJ2_1009_SetPowerMode(obj->client, cur_sensor_power/*true*/);
 
-	//kxtj2_1009_data_resolution[0] has been set when initialize: +/-2g  in 8-bit resolution:  15.6 mg/LSB*/   
+	/*kxtj2_1009_data_resolution[0] has been set when initialize: +/-2g  in 8-bit resolution:  15.6 mg/LSB*/
 	obj->reso = &kxtj2_1009_data_resolution[0];
 
 	return 0;
@@ -292,7 +305,7 @@ static int KXTJ2_1009_ReadData(struct i2c_client *client, s16 data[KXTJ2_1009_AX
 					priv->fir.raw[priv->fir.num][KXTJ2_1009_AXIS_Y] = data[KXTJ2_1009_AXIS_Y];
 					priv->fir.raw[priv->fir.num][KXTJ2_1009_AXIS_Z] = data[KXTJ2_1009_AXIS_Z];
 					priv->fir.sum[KXTJ2_1009_AXIS_X] += data[KXTJ2_1009_AXIS_X];
-					priv->fir.sum[KXTJ2_1009_AXIS_Y] += data[KXTJ2_1009IK_AXIS_Y];
+					priv->fir.sum[KXTJ2_1009_AXIS_Y] += data[KXTJ2_1009_AXIS_Y];
 					priv->fir.sum[KXTJ2_1009_AXIS_Z] += data[KXTJ2_1009_AXIS_Z];
 					if(atomic_read(&priv->trace) & ADX_TRC_FILTER)
 					{
@@ -610,7 +623,6 @@ static int KXTJ2_1009_SetBWRate(struct i2c_client *client, u8 bwrate)
 
 	memset(databuf, 0, sizeof(u8)*10);    
 
-	
 	KXTJ2_1009_SetPowerMode(client, false);
 
 	if(hwmsen_read_block(client, KXTJ2_1009_REG_BW_RATE, databuf, 0x01))
@@ -632,7 +644,6 @@ static int KXTJ2_1009_SetBWRate(struct i2c_client *client, u8 bwrate)
 		return KXTJ2_1009_ERR_I2C;
 	}
 
-	
 	KXTJ2_1009_SetPowerMode(client, cur_sensor_power/*true*/);
 	printk("KXTJ2_1009_SetBWRate OK! \n");
 	
@@ -826,7 +837,6 @@ static int KXTJ2_1009_ReadRawData(struct i2c_client *client, char *buf)
 	{
 		sprintf(buf, "KXTJ2_1009_ReadRawData %04x %04x %04x", obj->data[KXTJ2_1009_AXIS_X], 
 			obj->data[KXTJ2_1009_AXIS_Y], obj->data[KXTJ2_1009_AXIS_Z]);
-	
 	}
 	
 	return 0;
@@ -1448,7 +1458,7 @@ static int kxtj2_1009_delete_attr(struct device_driver *driver)
 }
 
 /*----------------------------------------------------------------------------*/
-int gsensor_operate(void* self, uint32_t command, void* buff_in, int size_in,
+static int gsensor_operate(void* self, uint32_t command, void* buff_in, int size_in,
 		void* buff_out, int size_out, int* actualout)
 {
 	int err = 0;
@@ -1456,7 +1466,7 @@ int gsensor_operate(void* self, uint32_t command, void* buff_in, int size_in,
 	struct kxtj2_1009_i2c_data *priv = (struct kxtj2_1009_i2c_data*)self;
 	hwm_sensor_data* gsensor_data;
 	char buff[KXTJ2_1009_BUFSIZE];
-	
+
 	//GSE_FUN(f);
 	switch (command)
 	{
@@ -1621,7 +1631,6 @@ static long kxtj2_1009_unlocked_ioctl(struct file *file, unsigned int cmd,unsign
 		case GSENSOR_IOCTL_INIT:
 			kxtj2_1009_init_client(client, 0);			
 			break;
-
 		case GSENSOR_IOCTL_READ_CHIPINFO:
 			data = (void __user *) arg;
 			if(data == NULL)
@@ -1875,7 +1884,7 @@ static int kxtj2_1009_i2c_detect(struct i2c_client *client/*, int kind*/, struct
 	strcpy(info->type, KXTJ2_1009_DEV_NAME);
 	return 0;
 }
-
+char *kxtj2_1009_name = "kxtj2_1009";
 /*----------------------------------------------------------------------------*/
 static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
@@ -1893,7 +1902,7 @@ static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_devi
 	
 	memset(obj, 0, sizeof(struct kxtj2_1009_i2c_data));
 
-	obj->hw = get_cust_acc_hw();
+	obj->hw = get_kxtj2_1009_cust_acc_hw();
 	
 	if(0 != (err = hwmsen_get_convert(obj->hw->direction, &obj->cvt)))
 	{
@@ -1939,12 +1948,19 @@ static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_devi
 		GSE_ERR("kxtj2_1009_device register failed\n");
 		goto exit_misc_device_register_failed;
 	}
-
+#if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
+	if(0 != (err = kxtj2_1009_create_attr(&kxtj2_init_info.platform_diver_addr->driver)))
+	{
+		GSE_ERR("create attribute err = %d\n", err);
+		goto exit_create_attr_failed;
+	}
+#else
 	if(0 != (err = kxtj2_1009_create_attr(&kxtj2_1009_gsensor_driver.driver)))
 	{
 		GSE_ERR("create attribute err = %d\n", err);
 		goto exit_create_attr_failed;
 	}
+#endif
 
 	sobj.self = obj;
     sobj.polling = 1;
@@ -1962,7 +1978,9 @@ static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_devi
 	register_early_suspend(&obj->early_drv);
 #endif 
 
-	GSE_LOG("%s: OK\n", __func__);    
+	GSE_LOG("%s: OK\n", __func__);
+	kxtj2_init_flag = 0;    
+	/*g_gsensor_name =kxtj2_1009_name;*/
 	return 0;
 
 	exit_create_attr_failed:
@@ -1974,6 +1992,7 @@ static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_devi
 	kfree(obj);
 	exit:
 	GSE_ERR("%s: err = %d\n", __func__, err);        
+	kxtj2_init_flag = -1;
 	return err;
 }
 
@@ -1981,11 +2000,17 @@ static int kxtj2_1009_i2c_probe(struct i2c_client *client, const struct i2c_devi
 static int kxtj2_1009_i2c_remove(struct i2c_client *client)
 {
 	int err = 0;	
-	
+#if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
+	if(0 != (err = kxtj2_1009_delete_attr(&kxtj2_init_info.platform_diver_addr->driver)))
+	{
+		GSE_ERR("kxtj2_1009_delete_attr fail: %d\n", err);
+	}	
+#else	
 	if(0 != (err = kxtj2_1009_delete_attr(&kxtj2_1009_gsensor_driver.driver)))
 	{
 		GSE_ERR("kxtj2_1009_delete_attr fail: %d\n", err);
 	}
+#endif
 	
 	if(0 != (err = misc_deregister(&kxtj2_1009_device)))
 	{
@@ -2002,10 +2027,42 @@ static int kxtj2_1009_i2c_remove(struct i2c_client *client)
 	kfree(i2c_get_clientdata(client));
 	return 0;
 }
+
+#if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
+/*----------------------------------------------------------------------------*/
+static int  kxtj2_local_remove(void)
+{
+	 struct acc_hw *hw = get_kxtj2_1009_cust_acc_hw();
+	 GSE_FUN();
+	 
+	 KXTJ2_1009_power(hw, 0);
+	 if (i2c_add_driver(&kxtj2_1009_i2c_driver)) {
+		 GSE_ERR("add i2c driver failed\n");
+		 return -1;
+	 }
+	 
+	 return 0;
+}
+
+/*----------------------------------------------------------------------------*/
+static int  kxtj2_local_init(void)
+{
+  	struct acc_hw *hw = get_kxtj2_1009_cust_acc_hw();
+	GSE_FUN();
+
+	KXTJ2_1009_power(hw, 0);
+	if (i2c_add_driver(&kxtj2_1009_i2c_driver)) {
+		GSE_ERR("add i2c driver failed\n");
+		return -1;
+	}
+	
+	return kxtj2_init_flag; // return init result.
+}
+#else
 /*----------------------------------------------------------------------------*/
 static int kxtj2_1009_probe(struct platform_device *pdev) 
 {
-	struct acc_hw *hw = get_cust_acc_hw();
+	struct acc_hw *hw = get_kxtj2_1009_cust_acc_hw();
 	GSE_FUN();
 
 	KXTJ2_1009_power(hw, 1);
@@ -2020,7 +2077,7 @@ static int kxtj2_1009_probe(struct platform_device *pdev)
 /*----------------------------------------------------------------------------*/
 static int kxtj2_1009_remove(struct platform_device *pdev)
 {
-    struct acc_hw *hw = get_cust_acc_hw();
+    struct acc_hw *hw = get_kxtj2_1009_cust_acc_hw();
 
     GSE_FUN();    
     KXTJ2_1009_power(hw, 0);    
@@ -2036,26 +2093,32 @@ static struct platform_driver kxtj2_1009_gsensor_driver = {
 		.owner = THIS_MODULE,
 	}
 };
-
+#endif
 /*----------------------------------------------------------------------------*/
 static int __init kxtj2_1009_init(void)
 {
-	struct acc_hw *hw = get_cust_acc_hw();
-    GSE_FUN();
+	struct acc_hw *hw = get_kxtj2_1009_cust_acc_hw();
+	GSE_FUN();
 	GSE_LOG("%s: i2c_number=%d\n", __func__,hw->i2c_num);
 	i2c_register_board_info(hw->i2c_num, &i2c_kxtj2_1009, 1);
+#if defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
+	hwmsen_gsensor_add(&kxtj2_init_info);
+#else
 	if(platform_driver_register(&kxtj2_1009_gsensor_driver))
 	{
 		GSE_ERR("failed to register driver");
 		return -ENODEV;
 	}
+#endif
 	return 0;    
 }
 /*----------------------------------------------------------------------------*/
 static void __exit kxtj2_1009_exit(void)
 {
 	GSE_FUN();
+#if !defined(CONFIG_MTK_AUTO_DETECT_ACCELEROMETER)
 	platform_driver_unregister(&kxtj2_1009_gsensor_driver);
+#endif
 }
 /*----------------------------------------------------------------------------*/
 module_init(kxtj2_1009_init);

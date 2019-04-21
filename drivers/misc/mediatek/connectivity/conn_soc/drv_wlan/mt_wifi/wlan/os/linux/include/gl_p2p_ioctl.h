@@ -810,6 +810,14 @@ mtk_p2p_cfg80211_mgmt_frame_register(
     );
 
 #endif
+
+BOOLEAN
+mtk_p2p_cfg80211func_channel_format_switch(
+	IN struct ieee80211_channel *channel,
+	IN enum nl80211_channel_type channel_type,
+	IN P_RF_CHANNEL_INFO_T prRfChnlInfo, 
+	IN P_ENUM_CHNL_EXT_T prChnlSco);
+
 int
 mtk_p2p_cfg80211_set_bitrate_mask(
     IN struct wiphy *wiphy,

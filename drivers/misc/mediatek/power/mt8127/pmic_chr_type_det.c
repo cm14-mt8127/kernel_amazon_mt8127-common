@@ -39,6 +39,12 @@
 #include <mach/battery_common.h>
 #include <linux/time.h>
 
+#if defined(CONFIG_AUSTIN_PROJECT)
+#ifdef CONFIG_MTK_BQ24296_SUPPORT
+#include "bq24296.h"
+#endif
+#endif
+
 // ============================================================ //
 //extern function
 // ============================================================ //
@@ -240,16 +246,17 @@ CHARGER_TYPE hw_charger_type_detection(void)
 CHARGER_TYPE hw_charger_type_detection(void)
 {
     CHARGER_TYPE ret = CHARGER_UNKNOWN;
+
+#if defined(CONFIG_AUSTIN_PROJECT)
+#ifdef CONFIG_MTK_BQ24296_SUPPORT
+	bq24296_set_vindpm(0x9); /*VIN DPM check 4.6V*/
+#endif
+#endif
+
 	hw_bc11_init();
- 
-	if(1 == hw_bc11_DCD())
-	{
-		if(1 == hw_bc11_stepA1())
-		{
-			ret = APPLE_2_1A_CHARGER;
-		} else {
-			ret = NONSTANDARD_CHARGER;
-		}
+
+	if(1 == hw_bc11_DCD()) {
+		ret = NONSTANDARD_CHARGER;
 	} else {
 		 if(1 == hw_bc11_stepA2())
 		 {

@@ -1,44 +1,14 @@
-/*
- * Copyright (C) 2007 The Android Open Source Project
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
-/*******************************************************************************
- *
- * Filename:
- * ---------
- *   AudioAfe.c
- *
- * Project:
- * --------
- *   MT8127  Audio Driver Afe Register setting
- *
- * Description:
- * ------------
- *   Audio register
- *
- * Author:
- * -------
- * Luke Liu
- * Chipeng Chang
- *
- *------------------------------------------------------------------------------
- * $Revision: #1 $
- * $Modtime:$
- * $Log:$
- *
- *
- *******************************************************************************/
 
 /*****************************************************************************
  *                     C O M P I L E R   F L A G S
@@ -72,6 +42,8 @@ uint32 Afe_Get_Reg(uint32 offset);
 
 void Afe_Set_Reg(uint32 offset, uint32 value, uint32 mask)
 {
+    if (offset > AFE_MAX_ADDR_OFFSET)
+        return;
 #ifdef AUDIO_MEM_IOREMAP
     extern void *AFE_BASE_ADDRESS;
     //PRINTK_AUDDRV("Afe_Set_Reg AUDIO_MEM_IOREMAP AFE_BASE_ADDRESS = %p\n",AFE_BASE_ADDRESS);
@@ -83,10 +55,7 @@ void Afe_Set_Reg(uint32 offset, uint32 value, uint32 mask)
     volatile uint32 *AFE_Register = (volatile uint32 *)address;
     volatile uint32 val_tmp;
 
-	if (offset > AFE_MAX_ADDR_OFFSET)
-		return;
-
-
+    //PRINTK_AFE_REG("Afe_Set_Reg offset=%x, value=%x, mask=%x \n",offset,value,mask);
     val_tmp = Afe_Get_Reg(offset);
     val_tmp &= (~mask);
     val_tmp |= (value & mask);
@@ -95,6 +64,8 @@ void Afe_Set_Reg(uint32 offset, uint32 value, uint32 mask)
 
 uint32 Afe_Get_Reg(uint32 offset)
 {
+    if (offset > AFE_MAX_ADDR_OFFSET)
+        return 0;
 #ifdef AUDIO_MEM_IOREMAP
     extern void *AFE_BASE_ADDRESS;
     //PRINTK_AUDDRV("Afe_Get_Reg AUDIO_MEM_IOREMAP AFE_BASE_ADDRESS = %p\ offset = %xn",AFE_BASE_ADDRESS,offset);
@@ -103,11 +74,7 @@ uint32 Afe_Get_Reg(uint32 offset)
     volatile uint32 address = (AFE_BASE + offset);
 #endif
     volatile uint32 *value;
-
-	if (offset > AFE_MAX_ADDR_OFFSET)
-		return 0;
-
-
+    //PRINTK_AFE_REG("Afe_Get_Reg offset=%x address = %x \n",offset,address);
     value = (volatile uint32 *)(address);
     return *value;
 }

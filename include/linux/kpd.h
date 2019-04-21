@@ -82,6 +82,8 @@
 #define RELEASE_POWER_KEY	_IO('k', 31)
 #endif
 #define SET_KPD_KCOL		_IO('k', 29)
+#define SET_KPD_KSWT_DEF		_IO('k', 32)
+#define SET_KPD_KSWT_REV                _IO('k', 33)
 
 
 #define KPD_SAY		"kpd: "

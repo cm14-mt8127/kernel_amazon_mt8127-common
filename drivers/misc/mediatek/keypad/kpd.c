@@ -23,18 +23,30 @@
 #include <linux/of_irq.h>
 #endif
 
+#ifdef CONFIG_AUSTIN_PROJECT
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+
+static struct proc_dir_entry *proc_root;
+static struct proc_dir_entry *proc_entry;
+#define USER_ROOT_DIR "driver"
+#define USER_ENTRY "hall_sensor"
+#endif
+
 #define KPD_NAME	"mtk-kpd"
 #define MTK_KP_WAKESOURCE	/* this is for auto set wake up source */
 
 #ifdef CONFIG_OF
 void __iomem *kp_base;
 static unsigned int kp_irqnr;
-#endif	
+#endif
 struct input_dev *kpd_input_dev;
 static bool kpd_suspend = false;
 static int kpd_show_hw_keycode = 1;
 static int kpd_show_register = 1;
 static volatile int call_status = 0;
+static int kpd_swap_hw_vol_key = 0;
+static u32 kpd_swap_up_code, kpd_swap_down_code;
 
 /*for kpd_memory_setting() function*/
 static u16 kpd_keymap[KPD_NUM_KEYS];
@@ -306,6 +318,9 @@ static enum hrtimer_restart aee_timer_5s_func(struct hrtimer *timer)
 /************************************************************************************************************************************************/
 
 #if KPD_HAS_SLIDE_QWERTY
+#ifdef CONFIG_AUSTIN_PROJECT
+static int slide_st = 0;
+#endif
 static void kpd_slide_handler(unsigned long data)
 {
 	bool slid;
@@ -318,17 +333,20 @@ static void kpd_slide_handler(unsigned long data)
 	input_sync(kpd_input_dev);
 	kpd_print("report QWERTY = %s\n", slid ? "slid" : "closed");
 
+#ifdef CONFIG_AUSTIN_PROJECT
+	slide_st = slid;
+#endif
 	if (old_state) {
 		mt_set_gpio_pull_select(GPIO_QWERTYSLIDE_EINT_PIN, 0);
 	} else {
 		mt_set_gpio_pull_select(GPIO_QWERTYSLIDE_EINT_PIN, 1);
 	}
 	/* for detecting the return to old_state */
-	mt65xx_eint_set_polarity(KPD_SLIDE_EINT, old_state);
-	mt65xx_eint_unmask(KPD_SLIDE_EINT);
+	mt_eint_set_polarity(KPD_SLIDE_EINT, old_state);
+	mt_eint_unmask(KPD_SLIDE_EINT);
 }
 
-static void kpd_slide_eint_handler(void)
+void kpd_slide_eint_handler(void)
 {
 	tasklet_schedule(&kpd_slide_tasklet);
 }
@@ -411,6 +429,29 @@ static void kpd_keymap_handler(unsigned long data)
 			kpd_aee_handler(linux_keycode, pressed);
 
 			kpd_backlight_handler(pressed, linux_keycode);
+			if (pressed) {
+				u32 kc = linux_keycode;
+				/* Swap keycode is neccessary*/
+				if(kpd_swap_hw_vol_key) {
+					if (kc == KEY_VOLUMEUP)
+						linux_keycode = KEY_VOLUMEDOWN;
+					else if (kc == KEY_VOLUMEDOWN)
+						linux_keycode = KEY_VOLUMEUP;
+					kpd_print("[kpd kc = %d keycode=%d \n", kc, linux_keycode);
+				}
+
+				/* Save the pressed volume keycode */
+				if (kc == KEY_VOLUMEUP)
+					kpd_swap_up_code = linux_keycode;
+				else if (kc == KEY_VOLUMEDOWN)
+					kpd_swap_down_code = linux_keycode;
+			} else {
+				/* Unpressed keycode should match the pressed keycode */
+				if (linux_keycode == KEY_VOLUMEUP && kpd_swap_up_code != 0)
+					linux_keycode = kpd_swap_up_code;
+				else if (linux_keycode == KEY_VOLUMEDOWN && kpd_swap_down_code != 0)
+					linux_keycode = kpd_swap_down_code;
+			}
 			input_report_key(kpd_input_dev, linux_keycode, pressed);
 			input_sync(kpd_input_dev);
 			kpd_print("report Linux keycode = %u\n", linux_keycode);
@@ -726,6 +767,13 @@ long kpd_dev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		kpd_auto_test_for_factorymode();	/* API 3 for kpd factory mode auto-test */
 		printk("[kpd_auto_test_for_factorymode] test performed!!\n");
 		break;
+	case SET_KPD_KSWT_DEF:
+		kpd_swap_hw_vol_key = 0;
+		break;
+	case SET_KPD_KSWT_REV:
+		kpd_swap_hw_vol_key = 1;
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -754,10 +802,61 @@ static struct miscdevice kpd_dev = {
 
 static int kpd_open(struct input_dev *dev)
 {
-	kpd_slide_qwerty_init();	/* API 1 for kpd slide qwerty init settings */
+	kpd_slide_qwerty_init(dev);	/* API 1 for kpd slide qwerty init settings */
 	return 0;
 }
 
+#ifdef CONFIG_AUSTIN_PROJECT
+static ssize_t proc_hall_show(struct seq_file *m, char *page, size_t count, loff_t *f_ops)
+{
+	int status = slide_st;
+
+	if(status)
+		seq_printf(m,"0xa\n");
+	else
+		seq_printf(m,"0xb\n");
+
+	return 0;
+}
+
+static int proc_hall_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_hall_show, PDE_DATA(inode));
+}
+
+static const struct file_operations hall_proc_fops = {
+	.owner	= THIS_MODULE,
+	.open	= proc_hall_open,
+	.read	= seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int hall_create_proc_entry(void)
+{
+	int error = 0;
+
+	proc_root = proc_mkdir(USER_ROOT_DIR, NULL);
+	if (!proc_root){
+		printk(KERN_ALERT"Create dir /proc/%s error!\n", USER_ROOT_DIR);
+		return -ENOMEM;
+	}
+
+	proc_entry = proc_create(USER_ENTRY, 00644, proc_root, &hall_proc_fops);
+	if (!proc_entry){
+		printk(KERN_ALERT"Create entry %s under /proc/%s error!\n", USER_ENTRY,USER_ROOT_DIR);
+		error = -ENOMEM;
+		goto err_out;
+	}
+
+	return 0;
+
+err_out:
+	remove_proc_entry(USER_ENTRY, proc_root);
+	remove_proc_entry(USER_ROOT_DIR, NULL);
+	return error;
+}
+#endif
 
 static int kpd_pdrv_probe(struct platform_device *pdev)
 {
@@ -782,6 +881,9 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 
 	kpd_ldvt_test_init();	/* API 2 for kpd LFVT test enviroment settings */
 
+#ifdef CONFIG_AUSTIN_PROJECT
+	hall_create_proc_entry();
+#endif
 	/* initialize and register input device (/dev/input/eventX) */
 	kpd_input_dev = input_allocate_device();
 	if (!kpd_input_dev)

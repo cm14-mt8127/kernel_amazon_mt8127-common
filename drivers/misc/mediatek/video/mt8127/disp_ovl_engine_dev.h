@@ -24,7 +24,6 @@ struct disp_ovl_engine_config_mem_out_struct
     unsigned int dirty;
 	unsigned int outFormat;
     unsigned int dstAddr;
-    unsigned int dstPitch;
     struct DISP_OVL_ENGINE_REGION srcROI;        // ROI
     unsigned int security;
 	int ion_fd;

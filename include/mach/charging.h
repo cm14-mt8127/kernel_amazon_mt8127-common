@@ -39,6 +39,7 @@
 /*****************************************************************************
  *  Log
  ****************************************************************************/
+#define BAT_LOG_ERROR 0
 #define BAT_LOG_CRTI 1
 #define BAT_LOG_FULL 2
 
@@ -90,9 +91,6 @@ typedef enum {
 	CHARGING_HOST,
 	NONSTANDARD_CHARGER,	/* AC : 450mA~1A */
 	STANDARD_CHARGER,	/* AC : ~1A */
-	APPLE_2_1A_CHARGER,	/* 2.1A apple charger */
-	APPLE_1_0A_CHARGER,	/* 1A apple charger */
-	APPLE_0_5A_CHARGER,	/* 0.5A apple charger */
 	WIRELESS_CHARGER,
 } CHARGER_TYPE;
 
@@ -412,6 +410,7 @@ typedef enum {
 	CHARGE_CURRENT_1450_00_MA = 145000,
 	CHARGE_CURRENT_1500_00_MA = 150000,
 	CHARGE_CURRENT_1525_00_MA = 152500,
+	CHARGE_CURRENT_1550_00_MA = 155000,
 	CHARGE_CURRENT_1575_00_MA = 157500,
 	CHARGE_CURRENT_1600_00_MA = 160000,
 	CHARGE_CURRENT_1650_00_MA = 165000,
@@ -421,6 +420,7 @@ typedef enum {
 	CHARGE_CURRENT_1750_00_MA = 175000,
 	CHARGE_CURRENT_1800_00_MA = 180000,
 	CHARGE_CURRENT_1825_00_MA = 182500,
+	CHARGE_CURRENT_1850_00_MA = 185000,
 	CHARGE_CURRENT_1875_00_MA = 187500,
 	CHARGE_CURRENT_1900_00_MA = 190000,
 	CHARGE_CURRENT_1950_00_MA = 195000,
@@ -430,6 +430,7 @@ typedef enum {
 	CHARGE_CURRENT_2050_00_MA = 205000,
 	CHARGE_CURRENT_2100_00_MA = 210000,
 	CHARGE_CURRENT_2125_00_MA = 212500,
+	CHARGE_CURRENT_2150_00_MA = 215000,
 	CHARGE_CURRENT_2175_00_MA = 217500,
 	CHARGE_CURRENT_2200_00_MA = 220000,
 	CHARGE_CURRENT_2300_00_MA = 230000,
@@ -450,7 +451,7 @@ typedef enum {
 	CHARGE_CURRENT_2900_00_MA = 290000,
 	CHARGE_CURRENT_3000_00_MA = 300000,
 	CHARGE_CURRENT_3100_00_MA = 310000,
-	CHARGE_CURRENT_MAX
+	CHARGE_CURRENT_MAX = 200000
 } CHR_CURRENT_ENUM;
 
 /* ============================================================ */
@@ -469,10 +470,21 @@ typedef kal_int32(*CHARGING_CONTROL) (CHARGING_CTRL_CMD cmd, void *data);
 /* ============================================================ */
 extern int Enable_BATDRV_LOG;
 extern kal_bool chargin_hw_init_done;
+#ifdef CONFIG_MTK_SN2871_SUPPORT
+extern kal_bool sn2871_is_found;
+#endif
+#ifdef CONFIG_MTK_BQ24296_SUPPORT
+extern kal_bool bq24296_is_found;
+#endif
 
 
 /* ============================================================ */
 /* External function */
 /* ============================================================ */
-extern kal_int32 chr_control_interface(CHARGING_CTRL_CMD cmd, void *data);
+#ifdef CONFIG_MTK_BQ24296_SUPPORT
+extern kal_int32 chr_control_interface_bq24296(CHARGING_CTRL_CMD cmd, void *data);
+#endif
+#ifdef CONFIG_MTK_SN2871_SUPPORT
+extern kal_int32 chr_control_interface_sn2871(CHARGING_CTRL_CMD cmd, void *data);
+#endif
 #endif				/* #ifndef _CHARGING_H */

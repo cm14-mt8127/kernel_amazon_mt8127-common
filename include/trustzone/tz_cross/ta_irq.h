@@ -15,6 +15,8 @@
 #define TZCMD_IRQ_MASK_ALL        5
 #define TZCMD_IRQ_MASK_RESTORE    6
 #define TZCMD_IRQ_QUERY_FIQ       7
+#define TZCMD_IRQ_SET_FIQ_AFFINITY 8
+
 
 
 /* TZ Flags for TZCMD_IRQ_SET_FIQ */

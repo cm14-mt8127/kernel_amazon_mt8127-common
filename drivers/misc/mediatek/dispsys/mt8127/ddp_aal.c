@@ -130,6 +130,8 @@ int disp_is_aal_config()
 
 void disp_onConfig_aal(int i4FrameUpdate)
 {
+	if(g_Shutdown == 1)
+		return ;
     if (i4FrameUpdate)
         g_AAL_NewFrameUpdate = 1;
     
@@ -240,4 +242,9 @@ void disp_aal_notify_backlight_changed(int bl_1024)
     }
 }
 
+int disp_disable_aal_service(void)
+{
+	g_aal_service_running = 0;
 
+	return 0;
+}

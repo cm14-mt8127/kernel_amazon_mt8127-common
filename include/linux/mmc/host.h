@@ -338,6 +338,9 @@ struct mmc_host {
 	unsigned long           clkgate_delay;
 #endif
 
+#ifdef CONFIG_MMC_ERR_REMOVE
+	bool			rest_remove_flags;
+#endif
 	/* host specific block data */
 	unsigned int		max_seg_size;	/* see blk_queue_max_segment_size */
 	unsigned short		max_segs;	/* see blk_queue_max_segments */

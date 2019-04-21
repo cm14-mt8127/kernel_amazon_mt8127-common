@@ -2530,6 +2530,63 @@ int orderly_poweroff(bool force)
 }
 EXPORT_SYMBOL_GPL(orderly_poweroff);
 
+char reboot_cmd[POWEROFF_CMD_PATH_LEN] = "/system/bin/reboot";
+
+static int __orderly_reboot(bool force)
+{
+	char **argv;
+	static char *envp[] = {
+		"HOME=/",
+		"PATH=/sbin:/bin:/usr/sbin:/usr/bin",
+		NULL
+	};
+	int ret;
+
+	argv = argv_split(GFP_KERNEL, reboot_cmd, NULL);
+	if (argv) {
+		ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
+		argv_free(argv);
+	} else {
+		printk(KERN_WARNING "%s failed to allocate memory for \"%s\"\n",
+					 __func__, reboot_cmd);
+		ret = -ENOMEM;
+	}
+
+	if (ret && force) {
+		printk(KERN_WARNING "Failed to start orderly reboot: "
+					"forcing the issue\n");
+		emergency_sync();
+		kernel_restart(NULL);
+	}
+
+	return ret;
+}
+
+static bool reboot_force;
+
+static void reboot_work_func(struct work_struct *work)
+{
+	__orderly_reboot(reboot_force);
+}
+
+static DECLARE_WORK(reboot_work, reboot_work_func);
+
+/**
+ * orderly_reboot - Trigger an orderly system reboot
+ * @force: force reboot if command execution fails
+ *
+ * This may be called from any context to trigger a system reboot.
+ * If the orderly reboot fails, it will force an immediate reboot.
+ */
+int orderly_reboot(bool force)
+{
+	if (force) /* do not override the pending "true" */
+		reboot_force = true;
+	schedule_work(&reboot_work);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(orderly_reboot);
+
 /**
  * do_sysinfo - fill in sysinfo struct
  * @info: pointer to buffer to fill

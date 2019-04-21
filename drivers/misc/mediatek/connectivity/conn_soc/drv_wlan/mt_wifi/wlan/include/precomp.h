@@ -220,8 +220,6 @@
 /* Dependency:  hif_rx.h (P_HIF_RX_HEADER_T) */
 #include "nic_rx.h"
 
-#include "que_mgt.h"
-
 #if CFG_ENABLE_WIFI_DIRECT
 #include "p2p_typedef.h"
 #include "p2p_cmd_buf.h"
@@ -272,7 +270,7 @@
 #include "aa_fsm.h"
 
 #include "cnm_timer.h"
-
+#include "que_mgt.h"
 
 #if CFG_ENABLE_BT_OVER_WIFI
 #include "bow.h"

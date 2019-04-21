@@ -552,6 +552,15 @@ INT32 mtk_wcn_wmt_wlan_unreg()
 	return 0;
 }
 
+MTK_WCN_BOOL mtk_wcn_wmt_do_reset(ENUM_WMTDRV_TYPE_T type)
+{
+	INT32 iRet = -1;
+	WMT_INFO_FUNC("reset source:%d\n", type);
+	iRet = wmt_lib_trigger_reset();
+	return 0 == iRet ? MTK_WCN_BOOL_TRUE : MTK_WCN_BOOL_FALSE;
+}
+EXPORT_SYMBOL(mtk_wcn_wmt_do_reset);
+
 #ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 VOID mtk_wcn_wmt_exp_init()
 {

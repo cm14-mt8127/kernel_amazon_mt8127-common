@@ -35,6 +35,8 @@ enum ReeServiceCommand {
     REE_SERV_ENABLE_CLOCK,
     REE_SERV_DISABLE_CLOCK,
     REE_SERV_THREAD_CREATE,
+
+    REE_SERV_SEMAPHORE_DOWNINT,	/* interruptible down */
 };
 
 ////////// Param structure for commands 
@@ -65,10 +67,10 @@ struct REE_THREAD_INFO {
 
 struct ree_service_irq
 {
+    void *token;
     unsigned int irq;
     int enable;
     unsigned int flags;
-    unsigned int token;
 };
 
 struct ree_service_clock

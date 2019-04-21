@@ -1,11 +1,11 @@
 /*
- * This confidential and proprietary software may be used only as
- * authorised by a licensing agreement from ARM Limited
- * (C) COPYRIGHT 2013 ARM Limited
- * ALL RIGHTS RESERVED
- * The entire notice above must be reproduced on all authorised
- * copies and copies may only be made to the extent permitted
- * by a licensing agreement from ARM Limited.
+ * Copyright (C) 2010, 2012-2014 ARM Limited. All rights reserved.
+ * 
+ * This program is free software and is provided to you under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+ * 
+ * A copy of the licence is included with the program, and can also be obtained from Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <linux/list.h>
@@ -27,6 +27,9 @@
 #include "mali_memory_dma_buf.h"
 #include "mali_memory_os_alloc.h"
 #include "mali_memory_block_alloc.h"
+
+extern unsigned int mali_dedicated_mem_size;
+extern unsigned int mali_shared_mem_size;
 
 /* session->memory_lock must be held when calling this function */
 static void mali_mem_release(mali_mem_allocation *descriptor)
@@ -55,6 +58,9 @@ static void mali_mem_release(mali_mem_allocation *descriptor)
 		break;
 	case MALI_MEM_BLOCK:
 		mali_mem_block_release(descriptor);
+		break;
+	default:
+		MALI_DEBUG_PRINT(1, ("mem type %d is not in the mali_mem_type enum.\n", descriptor->type));
 		break;
 	}
 }
@@ -268,6 +274,12 @@ u32 _mali_ukk_report_memory_usage(void)
 
 	return sum;
 }
+
+u32 _mali_ukk_report_total_memory_size(void)
+{
+	return mali_dedicated_mem_size + mali_shared_mem_size;
+}
+
 
 /**
  * Per-session memory descriptor mapping table sizes

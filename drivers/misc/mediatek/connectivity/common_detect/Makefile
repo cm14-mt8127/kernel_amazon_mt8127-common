@@ -3,8 +3,12 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	include $(srctree)/drivers/misc/mediatek/Makefile.custom
-	subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct
-	
+	ifeq ($(CONFIG_AUSTIN_PROJECT),y)
+		subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct_austin
+	else
+		subdir-ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/$(ARCH_MTK_PROJECT)/dct/dct
+	endif
+
 	COMBO_CHIP_SUPPORT := false
 	ifneq ($(filter "MT6620E3",$(CONFIG_MTK_COMBO_CHIP)),)
 		COMBO_CHIP_SUPPORT := true

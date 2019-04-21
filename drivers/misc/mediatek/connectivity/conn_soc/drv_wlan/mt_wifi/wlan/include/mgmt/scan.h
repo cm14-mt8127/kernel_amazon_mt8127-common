@@ -256,6 +256,7 @@
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
 */
+#define AMZN_5GHZ_PREF  1
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -309,6 +310,11 @@
 /*----------------------------------------------------------------------------*/
 #define SCN_SSID_MAX_NUM                        4
 
+#define SCAN_ONE_CHNL_DEFAULT_DWELL_TIME	150
+
+#define SCN_BSS_JOIN_FAIL_THRESOLD				4
+#define SCN_BSS_JOIN_FAIL_CNT_RESET_SEC				15
+#define SCN_BSS_JOIN_FAIL_RESET_STEP				2
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -451,6 +457,8 @@ struct _BSS_DESC_T {
     ULARGE_INTEGER          u8TimeStamp; /* Place u8TimeStamp before aucIEBuf[1] to force DW align */
 	UINT_8                  aucRawBuf[CFG_RAW_BUFFER_SIZE];
     UINT_8                  aucIEBuf[CFG_IE_BUFFER_SIZE];
+	UINT_8 ucJoinFailureCount;
+	OS_SYSTIME rJoinFailTime;
 
 #ifdef CFG_AIS_SUPPORT_REJ_CNT_AVOID
 #define SCN_BSS_DESC_REJ_ERR_CNT_TIMEOUT_SEC	60
@@ -888,6 +896,12 @@ scnQuerySparseChannel (
     );
 
 
+#if AMZN_5GHZ_PREF
+VOID scanSet5gRoamingPreference(INT_32 rangeHi, INT_32 rangeMed,
+	INT_32 rangeLow, UINT_8 pref5gHi, UINT_8 pref5gMed, UINT_8 pref5gLo);
+VOID scanGet5gRoamingPreference(PINT_32 rangeHi, PINT_32 rangeMed,
+	PINT_32 rangeLow, PUINT_8 pref5gHi, PUINT_8 pref5gMed, PUINT_8 pref5gLo);
+#endif
 #endif /* _SCAN_H */
 
 #if CFG_SUPPORT_AGPS_ASSIST

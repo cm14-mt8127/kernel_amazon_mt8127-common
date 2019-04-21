@@ -1,32 +1,15 @@
-/*******************************************************************************
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
- * Filename:
- * ---------
- *  auddrv_btcvsd_ioctl.h
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * Project:
- * --------
- *   Android Audio BTCVSD Driver
- *
- * Description:
- * ------------
- *   ioctl control message
- *
- * Author:
- * -------
- *
- *
- *
- *------------------------------------------------------------------------------
- * $Revision$
- * $Modtime:$
- * $Log:$
- *
- * .
- *
- *
- *
- *******************************************************************************/
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #ifndef _AUDDRV_BTCVSD_IOCTL_MSG_H
 #define _AUDDRV_BTCVSD_IOCTL_MSG_H
 

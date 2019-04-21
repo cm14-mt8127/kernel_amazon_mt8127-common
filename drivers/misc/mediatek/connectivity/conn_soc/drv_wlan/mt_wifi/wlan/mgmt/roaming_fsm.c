@@ -138,6 +138,7 @@ roamingFsmInit (
 {
     P_ROAMING_INFO_T prRoamingFsmInfo;
     P_CONNECTION_SETTINGS_T prConnSettings;
+	P_CMD_ROAMING_CTRL_T prRoamCtrl = &prAdapter->rWifiVar.rRoamingInfo.rRoamCtrl;
 
     DBGLOG(ROAMING, LOUD, ("->roamingFsmInit(): Current Time = %u\n",
 		kalGetTimeTick()));
@@ -150,6 +151,12 @@ roamingFsmInit (
     prRoamingFsmInfo->eCurrentState = ROAMING_STATE_IDLE;
     prRoamingFsmInfo->rRoamingDiscoveryUpdateTime = 0;
 
+	/* default value of roaming ctrl in firmware. */
+	prRoamCtrl->fgEnable = TRUE;
+	prRoamCtrl->ucRcpiAdjustStep = 8;
+	prRoamCtrl->u2RcpiLowThr = 90;
+	prRoamCtrl->ucRoamingRetryCount = 2;
+	prRoamCtrl->ucRoamingStableTimeout = 10;
     return;
 } /* end of roamingFsmInit() */
 

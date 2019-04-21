@@ -93,7 +93,7 @@ static VAL_UINT32_T gu4VencPWRCounter = 0;  //mutex : VencPWRLock
 
 static VAL_UINT32_T gu4VdecLockThreadId = 0;
 
-//#define MT8127_VCODEC_DEBUG
+// #define MT8127_VCODEC_DEBUG
 #ifdef MT8127_VCODEC_DEBUG
 #undef VCODEC_DEBUG
 #define VCODEC_DEBUG MFV_LOGE
@@ -102,7 +102,6 @@ static VAL_UINT32_T gu4VdecLockThreadId = 0;
 #else
 #define VCODEC_DEBUG(...)
 #undef MFV_LOGD
-//#define MFV_LOGD MFV_LOGE
 #define MFV_LOGD(...)
 #endif
 
@@ -627,7 +626,25 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                             disable_irq(MT_VDEC_IRQ_ID);
                         }
                         vdec_power_on();
+#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT	/* Morris Yang moved to TEE */
+                        if (rHWLock.bSecureInst == VAL_FALSE) {
+                            if (request_irq
+                            (MT_VDEC_IRQ_ID, (irq_handler_t) video_intr_dlr,
+                            //IRQF_TRIGGER_RISING, VCODEC_DEVNAME,   //35
+                            IRQF_TRIGGER_LOW, VCODEC_DEVNAME,   //73
+                            NULL) < 0) {
+                                MFV_LOGE
+                                ("[MFV_DEBUG][ERROR] error to request dec irq\n");
+                            } else {
+                                MFV_LOGD
+                                ("[MFV_DEBUG] success to request dec irq\n");
+                            }
+
+                            /* enable_irq(MT_VDEC_IRQ_ID); */
+                        }
+#else
                         enable_irq(MT_VDEC_IRQ_ID);
+#endif
                     }
                     else // Another one holding dec hw now
                     {
@@ -688,18 +705,12 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                     else {
                         FirstUseEncHW = 0;
                     }
-                    MFV_LOGD("[VCODEC_LOCKHW] ENC Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
                     mutex_unlock(&EncHWLockEventTimeoutLock);
                     if (FirstUseEncHW == 1)
                     {
-                    	eValRet = eVideoWaitEvent(&EncHWLockEvent, sizeof(VAL_EVENT_T));
-                        MFV_LOGD("[VCODEC_LOCKHW] [%d] Use Enc HW, wait event 1, ret[%d]!!\n", rHWLock.eDriverType,eValRet);
+                        eValRet = eVideoWaitEvent(&EncHWLockEvent, sizeof(VAL_EVENT_T));
                     }
-                    //MFV_LOGD("[VCODEC_LOCKHW] ENC Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     mutex_lock(&EncHWLockEventTimeoutLock);
-                    //MFV_LOGD("[VCODEC_LOCKHW] ENC Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     if (EncHWLockEvent.u4TimeoutMs == 1)
                     {
                         EncHWLockEvent.u4TimeoutMs = 1000;
@@ -717,37 +728,29 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                             EncHWLockEvent.u4TimeoutMs = 1000; // Wait indefinitely
                         }
                     }
-                    //MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     mutex_unlock(&EncHWLockEventTimeoutLock);
-                    //MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
 
                     mutex_lock(&VencHWLock);
                     // one process try to lock twice
                     if (grVcodecEncHWLock.pvHandle == (VAL_VOID_T*)pmem_user_v2p_video((unsigned int)rHWLock.pvHandle)) {
-                        MFV_LOGE("[WARNING] [VCODEC_LOCKHW] one encoder instance try to lock twice, may cause lock HW timeout!! instance = 0x%x, CurrentTID = %d, type:%d\n",
+                        MFV_LOGE("[WARNING] one encoder instance try to lock twice, may cause lock HW timeout!! instance = 0x%x, CurrentTID = %d, type:%d\n",
                             grVcodecEncHWLock.pvHandle, current->pid, rHWLock.eDriverType);
                     }
-                    //MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     mutex_unlock(&VencHWLock);
-                    //MFV_LOGD("[VCODEC_LOCKHW] First[%d] Use Enc HW %d,line %d!!\n", FirstUseEncHW,rHWLock.eDriverType,__LINE__);
 
                     if (FirstUseEncHW == 0) {
                         eValRet = eVideoWaitEvent(&EncHWLockEvent, sizeof(VAL_EVENT_T));
-                        MFV_LOGD("[VCODEC_LOCKHW] [%d] Use Enc HW, wait[%d] event 2, ret[%d]!!\n", rHWLock.eDriverType, EncHWLockEvent.u4TimeoutMs, eValRet);
                     }
-                    MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
 
                     if (VAL_RESULT_INVALID_ISR == eValRet) {
-                        MFV_LOGE("[ERROR][VCODEC_LOCKHW] First[%d] TimeOut, CurrentTID = %d,line %d\n", FirstUseEncHW, current->pid, __LINE__);
+                        MFV_LOGE("[ERROR][VCODEC_LOCKHW] EncHWLockEvent TimeOut, CurrentTID = %d\n", current->pid);
                         if (FirstUseEncHW != 1) {
                             mutex_lock(&VencHWLock);
                             if (grVcodecEncHWLock.pvHandle == 0) {
-                                MFV_LOGE("[WARNING] VCODEC_LOCKHW maybe mediaserver restart before, please check!!\n");
+                                MFV_LOGE("[WARNING] maybe mediaserver restart before, please check!!\n");
                             }
                             else {
-                                MFV_LOGE("[WARNING] VCODEC_LOCKHW  someone use HW, and check timeout value!! %d\n", u4VencLockTimeOutCount);
+                                MFV_LOGE("[WARNING] someone use HW, and check timeout value!! %d\n", u4VencLockTimeOutCount);
                                 ++u4VencLockTimeOutCount;
                                 if (u4VencLockTimeOutCount > 30)
                                 {
@@ -768,65 +771,34 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                     }
                     else if (VAL_RESULT_RESTARTSYS == eValRet)
                     {
-                        MFV_LOGD("[ERROR][VCODEC_LOCKHW] VAL_RESULT_RESTARTSYS Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
                         return -ERESTARTSYS;
                     }
-                    //MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
 
                     mutex_lock(&VencHWLock);
-                    MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     if (grVcodecEncHWLock.pvHandle == 0)   //No process use HW, so current process can use HW
                     {
-                        //MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Use Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                         if (rHWLock.eDriverType == VAL_DRIVER_TYPE_H264_ENC ||
                             rHWLock.eDriverType == VAL_DRIVER_TYPE_JPEG_ENC)
                         {
                             grVcodecEncHWLock.pvHandle = (VAL_VOID_T*)pmem_user_v2p_video((unsigned int)rHWLock.pvHandle);
-                            MFV_LOGD("[VCODEC_LOCKHW] No process use HW, so current process can use HW, handle = 0x%x\n", grVcodecEncHWLock.pvHandle);
+                            MFV_LOGD("[LOG][VCODEC_LOCKHW] No process use HW, so current process can use HW, handle = 0x%x\n", grVcodecEncHWLock.pvHandle);
                             grVcodecEncHWLock.eDriverType = rHWLock.eDriverType;
                             eVideoGetTimeOfDay(&grVcodecEncHWLock.rLockedTime, sizeof(VAL_TIME_T));
 
-                            MFV_LOGD("VCODEC_LOCKHW No process use HW, so current process can use HW\n");
-                            MFV_LOGD("VCODEC_LOCKHW LockInstance = 0x%x CurrentTID = %d, rLockedTime(s, us) = %d, %d\n",
+                            MFV_LOGD("No process use HW, so current process can use HW\n");
+                            MFV_LOGD("LockInstance = 0x%x CurrentTID = %d, rLockedTime(s, us) = %d, %d\n",
                                 grVcodecEncHWLock.pvHandle, current->pid, grVcodecEncHWLock.rLockedTime.u4Sec, grVcodecEncHWLock.rLockedTime.u4uSec);
 
                             bLockedHW = VAL_TRUE;
                             if (rHWLock.eDriverType == VAL_DRIVER_TYPE_H264_ENC)
                             {
                                 venc_power_on();
-                             }
-                        #ifdef MTK_SEC_VIDEO_PATH_SUPPORT
-                            MFV_LOGD("[VCODEC_LOCKHW] rHWLock.bSecureInst 0x%x\n", rHWLock.bSecureInst);
-                            if (rHWLock.bSecureInst == VAL_FALSE)
-                            {
-                            	MFV_LOGE("[VCODEC_LOCKHW] Request IR by type 0x%x\n", rHWLock.eDriverType);
-                                if (request_irq(MT_VENC_IRQ_ID , (irq_handler_t)video_intr_dlr2, IRQF_TRIGGER_LOW, VCODEC_DEVNAME, NULL) < 0)
-                                {
-                                    MFV_LOGE("[VCODEC_LOCKHW] ENC [MFV_DEBUG][ERROR] error to request enc irq\n");
-                                }
-                                else
-                                {
-                                    MFV_LOGD("[VCODEC_LOCKHW] ENC [MFV_DEBUG] success to request enc irq\n");
-                                }
-                                //enable_irq(MT_VDEC_IRQ_ID);
-                            }
-                        #else
-                            if (rHWLock.eDriverType == VAL_DRIVER_TYPE_H264_ENC)
-                            {
-                                venc_power_on();
                                 enable_irq(MT_VENC_IRQ_ID);
                             }
-                       #endif
                         }
-                        MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                     }
                     else    //someone use HW, and check timeout value
                     {
-                    	 MFV_LOGD("[VCODEC_LOCKHW] LOCK hW Enc HW %d,line %d!!\n", rHWLock.eDriverType,__LINE__);
-
                         if (rHWLock.u4TimeoutMs == 0)
                         {
                             bLockedHW = VAL_FALSE;
@@ -838,11 +810,11 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                         u4TimeInterval = (((((rCurTime.u4Sec - grVcodecEncHWLock.rLockedTime.u4Sec) * 1000000) + rCurTime.u4uSec)
                             - grVcodecEncHWLock.rLockedTime.u4uSec) / 1000);
 
-                        MFV_LOGD("VCODEC_LOCKHW someone use enc HW, and check timeout value\n");
-                        MFV_LOGD("VCODEC_LOCKHW LockInstance = 0x%x, CurrentInstance = 0x%x, CurrentTID = %d, TimeInterval(ms) = %d, TimeOutValue(ms)) = %d\n",
+                        MFV_LOGD("someone use enc HW, and check timeout value\n");
+                        MFV_LOGD("LockInstance = 0x%x, CurrentInstance = 0x%x, CurrentTID = %d, TimeInterval(ms) = %d, TimeOutValue(ms)) = %d\n",
                             grVcodecEncHWLock.pvHandle, pmem_user_v2p_video((unsigned int)rHWLock.pvHandle), current->pid, u4TimeInterval, rHWLock.u4TimeoutMs);
 
-                        MFV_LOGD("VCODEC_LOCKHW LockInstance = 0x%x, CurrentInstance = 0x%x, CurrentTID = %d, rLockedTime(s, us) = %d, %d, rCurTime(s, us) = %d, %d\n",
+                        MFV_LOGD("LockInstance = 0x%x, CurrentInstance = 0x%x, CurrentTID = %d, rLockedTime(s, us) = %d, %d, rCurTime(s, us) = %d, %d\n",
                             grVcodecEncHWLock.pvHandle, pmem_user_v2p_video((unsigned int)rHWLock.pvHandle), current->pid,
                             grVcodecEncHWLock.rLockedTime.u4Sec, grVcodecEncHWLock.rLockedTime.u4uSec,
                             rCurTime.u4Sec, rCurTime.u4uSec
@@ -859,7 +831,7 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                                 grVcodecEncHWLock.eDriverType = rHWLock.eDriverType;
                                 eVideoGetTimeOfDay(&grVcodecEncHWLock.rLockedTime, sizeof(VAL_TIME_T));
 
-                                MFV_LOGD(" VCODEC_LOCKHW LockInstance = 0x%x, CurrentTID = %d, rLockedTime(s, us) = %d, %d\n",
+                                MFV_LOGD("LockInstance = 0x%x, CurrentTID = %d, rLockedTime(s, us) = %d, %d\n",
                                     grVcodecEncHWLock.pvHandle, current->pid, grVcodecEncHWLock.rLockedTime.u4Sec, grVcodecEncHWLock.rLockedTime.u4uSec);
 
                                 bLockedHW = VAL_TRUE;
@@ -873,7 +845,7 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
 
                     if (VAL_TRUE == bLockedHW)
                     {
-                        MFV_LOGE(" VCODEC_LOCKHW Lock ok grVcodecEncHWLock.pvHandle = 0x%x, va:%x, type:%d", grVcodecEncHWLock.pvHandle, (unsigned int)rHWLock.pvHandle, rHWLock.eDriverType);
+                        MFV_LOGE("Lock ok grVcodecEncHWLock.pvHandle = 0x%x, va:%x, type:%d", grVcodecEncHWLock.pvHandle, (unsigned int)rHWLock.pvHandle, rHWLock.eDriverType);
                     }
                     mutex_unlock(&VencHWLock);
                 }
@@ -888,20 +860,20 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                 gu4LockEncHWCount++;
                 spin_unlock_irqrestore(&LockEncHWCountLock, ulFlagsLockHW);
 
-                MFV_LOGD("VCODEC_LOCKHW get locked - ObjId =%d\n", current->pid);
+                MFV_LOGD("get locked - ObjId =%d\n", current->pid);
 
-                MFV_LOGD("VCODEC_LOCKHW  - tid = %d\n", current->pid);
+                MFV_LOGD("VCODEC_LOCKHWed - tid = %d\n", current->pid);
             }
             else
             {
                 MFV_LOGE("[WARNING] VCODEC_LOCKHW Unknown instance\n");
                 return -EFAULT;
             }
-            MFV_LOGD("VCODEC_LOCKHW - tid = %d\n", current->pid);
+            MFV_LOGD("[MT8127] VCODEC_LOCKHW - tid = %d\n", current->pid);
         break;
 
         case VCODEC_UNLOCKHW:
-            MFV_LOGD("VCODEC_UNLOCKHW + tid = %d\n", current->pid);
+            MFV_LOGD("[MT8127] VCODEC_UNLOCKHW + tid = %d\n", current->pid);
             user_data_addr = (VAL_UINT8_T *)arg;
             ret = copy_from_user(&rHWLock, user_data_addr, sizeof(VAL_HW_LOCK_T));
             if (ret) {
@@ -909,7 +881,7 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                 return -EFAULT;
             }
 
-            MFV_LOGD("VCODEC_UNLOCKHW eDriverType = %d\n", rHWLock.eDriverType);
+            MFV_LOGD("UNLOCKHW eDriverType = %d\n", rHWLock.eDriverType);
             eValRet = VAL_RESULT_INVALID_ISR;
             if (rHWLock.eDriverType == VAL_DRIVER_TYPE_MP4_DEC ||
                 rHWLock.eDriverType == VAL_DRIVER_TYPE_HEVC_DEC ||
@@ -920,13 +892,21 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                 {
                     grVcodecDecHWLock.pvHandle = 0;
                     grVcodecDecHWLock.eDriverType = VAL_DRIVER_TYPE_NONE;
+#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT	/* Morris Yang moved to TEE */
+                    if (rHWLock.bSecureInst == VAL_FALSE) {
+                    /* disable_irq(MT_VDEC_IRQ_ID); */
+
+                        free_irq(MT_VDEC_IRQ_ID, NULL);
+                    }
+#else
                     disable_irq(MT_VDEC_IRQ_ID);
+#endif
                     // TODO: check if turning power off is ok
                     vdec_power_off();
                 }
                 else // Not current owner
                 {
-                    MFV_LOGD(" [ERROR] VCODEC_UNLOCKHW Not owner trying to unlock dec hardware 0x%x\n", pmem_user_v2p_video((unsigned int)rHWLock.pvHandle));
+                    MFV_LOGD("[ERROR] Not owner trying to unlock dec hardware 0x%x\n", pmem_user_v2p_video((unsigned int)rHWLock.pvHandle));
                     mutex_unlock(&VdecHWLock);
                     return -EFAULT;
                 }
@@ -939,45 +919,31 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                 mutex_lock(&VencHWLock);
                 if (grVcodecEncHWLock.pvHandle == (VAL_VOID_T*)pmem_user_v2p_video((unsigned int)rHWLock.pvHandle)) // Current owner give up hw lock
                 {
-                    MFV_LOGD("VCODEC_UNLOCKHW match handle\n");
                     grVcodecEncHWLock.pvHandle = 0;
                     grVcodecEncHWLock.eDriverType = VAL_DRIVER_TYPE_NONE;
-     #ifdef MTK_SEC_VIDEO_PATH_SUPPORT
-                    if (rHWLock.eDriverType == VAL_DRIVER_TYPE_H264_ENC)
-                    {
-                     if (rHWLock.bSecureInst == VAL_FALSE)
-                     {
-                            free_irq(MT_VENC_IRQ_ID , NULL);
-                     }
-                     venc_power_off();
-                    }
-      #else
                     if (rHWLock.eDriverType == VAL_DRIVER_TYPE_H264_ENC)
                     {
                         disable_irq(MT_VENC_IRQ_ID);
                         // turn venc power off
                         venc_power_off();
                     }
-     #endif
                 }
                 else // Not current owner
                 {
                     // [TODO] error handling
-                    MFV_LOGE("[ERROR]  VCODEC_UNLOCKHW Not owner trying to unlock enc hardware 0x%x, pa:%x, va:%x type:%d\n", grVcodecEncHWLock.pvHandle, pmem_user_v2p_video((unsigned int)rHWLock.pvHandle), (unsigned int)rHWLock.pvHandle, rHWLock.eDriverType);
+                    MFV_LOGE("[ERROR] Not owner trying to unlock enc hardware 0x%x, pa:%x, va:%x type:%d\n", grVcodecEncHWLock.pvHandle, pmem_user_v2p_video((unsigned int)rHWLock.pvHandle), (unsigned int)rHWLock.pvHandle, rHWLock.eDriverType);
                     mutex_unlock(&VencHWLock);
                     return -EFAULT;
                 }
                 mutex_unlock(&VencHWLock);
-
                 eValRet = eVideoSetEvent(&EncHWLockEvent, sizeof(VAL_EVENT_T));
-                 MFV_LOGE("VCODEC_UNLOCKHW ENC  Set event ret %d\n", eValRet);
             }
             else
             {
                 MFV_LOGE("[WARNING] VCODEC_UNLOCKHW Unknown instance\n");
                 return -EFAULT;
             }
-            MFV_LOGD("VCODEC_UNLOCKHW - tid = %d\n", current->pid);
+            MFV_LOGD("[MT8127] VCODEC_UNLOCKHW - tid = %d\n", current->pid);
         break;
 
         case VCODEC_INC_PWR_USER:
@@ -1169,8 +1135,9 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
         case VCODEC_GET_CPU_LOADING_INFO:
         {
             VAL_UINT8_T *user_data_addr, cpu_id;
-            VAL_VCODEC_CPU_LOADING_INFO_T _temp = {0};
+            VAL_VCODEC_CPU_LOADING_INFO_T _temp;
 
+            memset(&_temp, 0x0, sizeof(VAL_VCODEC_CPU_LOADING_INFO_T));
             MFV_LOGD("[MT8127] VCODEC_GET_CPU_LOADING_INFO +\n");
             user_data_addr = (VAL_UINT8_T *)arg;
             // TODO:
@@ -1206,7 +1173,7 @@ static long vcodec_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned 
                 MFV_LOGE("[ERROR] VCODEC_GET_CORE_LOADING, copy_from_user failed: %d\n", ret);
                 return -EFAULT;
             }
-            rTempCoreLoading.Loading = get_cpu_load(rTempCoreLoading.CPUid);
+            rTempCoreLoading.Loading = 0; // Never used on this platform, always return 0
             ret = copy_to_user(user_data_addr, &rTempCoreLoading, sizeof(VAL_VCODEC_CORE_LOADING_T));
             if (ret) {
                 MFV_LOGE("[ERROR] VCODEC_GET_CORE_LOADING, copy_to_user failed: %d\n", ret);
@@ -1630,6 +1597,8 @@ static int vcodec_probe(struct platform_device *dev)
 
     vcodec_device = device_create(vcodec_class, NULL, vcodec_devno, NULL, VCODEC_DEVNAME);
 
+    #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+    #else
     if (request_irq(MT_VDEC_IRQ_ID , (irq_handler_t)video_intr_dlr, IRQF_TRIGGER_LOW, VCODEC_DEVNAME, NULL) < 0)
     {
        MFV_LOGD("[VCODEC_DEBUG][ERROR] error to request dec irq\n");
@@ -1638,24 +1607,22 @@ static int vcodec_probe(struct platform_device *dev)
     {
        MFV_LOGD("[VCODEC_DEBUG] success to request dec irq\n");
     }
-#ifdef MTK_SEC_VIDEO_PATH_SUPPORT
-      MFV_LOGD("[VCODEC_DEBUG] CONFIG_SEC_VIDEO_PATH_SUPPORT not  request enc irq\n");
-#else
+    #endif
+
     if (request_irq(MT_VENC_IRQ_ID , (irq_handler_t)video_intr_dlr2, IRQF_TRIGGER_LOW, VCODEC_DEVNAME, NULL) < 0)
     {
-       MFV_LOGE("[VCODEC_DEBUG][ERROR] error to request enc irq\n");
+       MFV_LOGD("[VCODEC_DEBUG][ERROR] error to request enc irq\n");
     }
     else
     {
        MFV_LOGD("[VCODEC_DEBUG] success to request enc irq\n");
     }
-#endif
 
+    #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+    #else
     disable_irq(MT_VDEC_IRQ_ID);
-#ifdef MTK_SEC_VIDEO_PATH_SUPPORT
-#else
+    #endif
     disable_irq(MT_VENC_IRQ_ID);
-#endif
 
     MFV_LOGD("[VCODEC_DEBUG] vcodec_probe Done\n");
 

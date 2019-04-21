@@ -60,7 +60,7 @@ static int32_t cmdq_sec_setup_context_session(cmdqSecContextHandle handle)
 	int32_t status = 0;
 
 	// alloc message bufer
-	handle->iwcMessage = kmalloc(sizeof(uint8_t*) * (sizeof(iwcCmdqMessage_t)), GFP_KERNEL);
+	//handle->iwcMessage = kmalloc(sizeof(uint8_t*) * (sizeof(iwcCmdqMessage_t)), GFP_KERNEL);
 	if(NULL == handle->iwcMessage)
 	{
 		CMDQ_ERR("handle->iwcMessage kmalloc failed!\n");
@@ -82,6 +82,7 @@ static void cmdq_sec_deinit_session_unlocked(cmdqSecContextHandle handle)
 {
 
     CMDQ_MSG("[SEC]-->SESSION_DEINIT\n");
+#if 0	
     do
     {        
 		if(NULL != handle->iwcMessage)
@@ -91,6 +92,7 @@ static void cmdq_sec_deinit_session_unlocked(cmdqSecContextHandle handle)
 		}
 
     }while(0);
+#endif	
 
     CMDQ_MSG("[SEC]<--SESSION_DEINIT\n");
 }
@@ -348,6 +350,7 @@ int32_t cmdq_sec_submit_to_secure_world(
     smp_mb();
 
     CMDQ_MSG("[SEC]-->SEC_SUBMIT: tgid[%d]\n", tgid);
+	CMDQ_MSG("submit to secure world\n");
     do
     {
         // find handle first
@@ -413,7 +416,7 @@ int32_t cmdq_sec_submit_to_secure_world(
     }
     else
     {
-        CMDQ_LOG("[SEC]<--SEC_SUBMIT: err[%d], pTask[0x%p], THR[%d], tgid[%d], duration_ms[%d], cmdId[%d]\n", status, pTask, thread, tgid, duration, iwcCommand);
+        CMDQ_MSG("[SEC]<--SEC_SUBMIT: err[%d], pTask[0x%p], THR[%d], tgid[%d], duration_ms[%d], cmdId[%d]\n", status, pTask, thread, tgid, duration, iwcCommand);
     }    
     return status;
 }
@@ -492,7 +495,12 @@ int32_t cmdq_sec_release_context_handle_unlocked(cmdqSecContextHandle handle)
         // 2. delete secContext from list
         list_del(&(handle->listEntry));
         // 3. release secure path resource in normal world
-        
+   		if (handle->iwcMessage) {
+			kfree(handle->iwcMessage);
+			handle->iwcMessage = NULL;
+		}
+		kfree(handle);
+		handle = NULL;
     }while(0);
     return status;
 }
@@ -525,11 +533,14 @@ int32_t cmdq_sec_release_context_handle(uint32_t tgid)
 cmdqSecContextHandle cmdq_sec_context_handle_create(uint32_t tgid)
 {
     cmdqSecContextHandle handle = NULL;
-    handle = kmalloc(sizeof(uint8_t*) * sizeof(cmdqSecContextStruct), GFP_ATOMIC);
+    handle = kmalloc(sizeof(cmdqSecContextStruct), GFP_ATOMIC);
     if (handle)
     {
-        handle->iwcMessage = NULL;
-
+		handle->iwcMessage = kmalloc(sizeof(iwcCmdqMessage_t), GFP_KERNEL);
+		if(NULL == handle->iwcMessage)
+		{
+			CMDQ_ERR("handle->iwcMessage kmalloc failed!\n");
+		}
         handle->tgid = tgid;
         handle->referCount = 0;
     }

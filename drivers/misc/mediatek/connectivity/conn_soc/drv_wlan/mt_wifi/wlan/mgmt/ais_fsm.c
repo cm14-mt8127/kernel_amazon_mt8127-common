@@ -1070,7 +1070,10 @@ aisInitializeConnectionSettings (
 
     prConnSettings->fgIsScanReqIssued = FALSE;
 
-    /* MIB attributes */
+	prConnSettings->fgSpecificChnl = FALSE;
+	kalMemZero(&prConnSettings->rSpecificRfChnlInfo, sizeof(RF_CHANNEL_INFO_T));
+	
+	/* MIB attributes */
     prConnSettings->u2BeaconPeriod = DOT11_BEACON_PERIOD_DEFAULT;
 
     prConnSettings->u2RTSThreshold = DOT11_RTS_THRESHOLD_DEFAULT;
@@ -1892,7 +1895,7 @@ aisFsmSteps (
     P_CONNECTION_SETTINGS_T prConnSettings;
     P_BSS_DESC_T prBssDesc;
     P_MSG_CH_REQ_T prMsgChReq;
-    P_MSG_SCN_SCAN_REQ prScanReqMsg;
+	P_MSG_SCN_SCAN_REQ_V2 prScanReqMsg;
     P_AIS_REQ_HDR_T prAisReq;
     ENUM_BAND_T eBand;
     UINT_8 ucChannel;
@@ -2271,7 +2274,7 @@ aisFsmSteps (
 #endif
             }
 
-            prScanReqMsg = (P_MSG_SCN_SCAN_REQ)cnmMemAlloc(prAdapter,
+            prScanReqMsg = (P_MSG_SCN_SCAN_REQ_V2)cnmMemAlloc(prAdapter,
                     RAM_TYPE_MSG,
                     OFFSET_OF(MSG_SCN_SCAN_REQ, aucIE) + u2ScanIELen);
             if (!prScanReqMsg) {
@@ -2279,7 +2282,7 @@ aisFsmSteps (
                 return;
             }
 
-            prScanReqMsg->rMsgHdr.eMsgId    = MID_AIS_SCN_SCAN_REQ;
+            prScanReqMsg->rMsgHdr.eMsgId    = MID_AIS_SCN_SCAN_REQ_V2;
             prScanReqMsg->ucSeqNum          = ++prAisFsmInfo->ucSeqNumOfScanReq;
             prScanReqMsg->ucNetTypeIndex    = (UINT_8)NETWORK_TYPE_AIS_INDEX;
 
@@ -2299,28 +2302,45 @@ aisFsmSteps (
 			}
 #endif /* CFG_SUPPORT_ROAMING_ENC */
 
-            if(prAisFsmInfo->eCurrentState == AIS_STATE_SCAN
-                    || prAisFsmInfo->eCurrentState == AIS_STATE_ONLINE_SCAN) {
-                if(prAisFsmInfo->ucScanSSIDLen == 0) {
-                    /* Scan for all available SSID */
-                    prScanReqMsg->ucSSIDType        = SCAN_REQ_SSID_WILDCARD;
-                }
-                else {
-                    prScanReqMsg->ucSSIDType        = SCAN_REQ_SSID_SPECIFIED;
-                    COPY_SSID(prScanReqMsg->aucSSID,
-                            prScanReqMsg->ucSSIDLength,
-                            prAisFsmInfo->aucScanSSID,
-                            prAisFsmInfo->ucScanSSIDLen);
-                }
-            }
-            else {
-                /* Scan for determined SSID */
-                prScanReqMsg->ucSSIDType        = SCAN_REQ_SSID_SPECIFIED;
-                COPY_SSID(prScanReqMsg->aucSSID,
-                        prScanReqMsg->ucSSIDLength,
-                        prConnSettings->aucSSID,
-                        prConnSettings->ucSSIDLen);
-            }
+			if (prAisFsmInfo->eCurrentState == AIS_STATE_SCAN
+				|| prAisFsmInfo->eCurrentState == AIS_STATE_ONLINE_SCAN) {
+				if (prAisFsmInfo->ucScanSSIDNum == 0) {
+					prScanReqMsg->eScanType = SCAN_TYPE_ACTIVE_SCAN;
+
+					prScanReqMsg->ucSSIDType = SCAN_REQ_SSID_WILDCARD;
+					prScanReqMsg->ucSSIDNum = 0;
+				}
+				else if (prAisFsmInfo->ucScanSSIDNum == 1
+					&& prAisFsmInfo->arScanSSID[0].u4SsidLen == 0) {
+					prScanReqMsg->eScanType = SCAN_TYPE_ACTIVE_SCAN;
+
+					prScanReqMsg->ucSSIDType = SCAN_REQ_SSID_WILDCARD;
+					prScanReqMsg->ucSSIDNum = 0;
+				}
+				else {
+					prScanReqMsg->eScanType = SCAN_TYPE_ACTIVE_SCAN;
+
+					prScanReqMsg->ucSSIDType = SCAN_REQ_SSID_SPECIFIED;
+					prScanReqMsg->ucSSIDNum = prAisFsmInfo->ucScanSSIDNum;
+					prScanReqMsg->prSsid = prAisFsmInfo->arScanSSID;
+				}
+			}
+			else {
+				prScanReqMsg->eScanType = SCAN_TYPE_ACTIVE_SCAN;
+
+				COPY_SSID(prAisFsmInfo->rRoamingSSID.aucSsid,
+					prAisFsmInfo->rRoamingSSID.u4SsidLen,
+					prConnSettings->aucSSID, prConnSettings->ucSSIDLen);
+
+				/* Scan for determined SSID */
+				prScanReqMsg->ucSSIDType = SCAN_REQ_SSID_SPECIFIED;
+				prScanReqMsg->ucSSIDNum = 1;
+				prScanReqMsg->prSsid = &(prAisFsmInfo->rRoamingSSID);
+			}
+
+			/* using default channel dwell time/timeout value */
+			prScanReqMsg->u2ProbeDelay = 0;
+			prScanReqMsg->u2ChannelDwellTime = 0;
 
             /* check if tethering is running and need to fix on specific channel */
             if(cnmAisInfraChannelFixed(prAdapter, &eBand, &ucChannel) == TRUE) {
@@ -2330,8 +2350,17 @@ aisFsmSteps (
                     = eBand;;
                 prScanReqMsg->arChnlInfoList[0].ucChannelNum
                     = ucChannel;
-            }
-            else if(prAdapter->aePreferBand[NETWORK_TYPE_AIS_INDEX] == BAND_NULL) {
+			} else if ((prConnSettings->fgSpecificChnl) &&
+				   (!prConnSettings->fgIsScanReqIssued)) {
+				prScanReqMsg->eScanChannel = SCAN_CHANNEL_SPECIFIED;
+				prScanReqMsg->ucChannelListNum = 1;
+				kalMemCopy(&prScanReqMsg->arChnlInfoList[0],
+					&prConnSettings->rSpecificRfChnlInfo,
+					sizeof(RF_CHANNEL_INFO_T));
+				prScanReqMsg->u2ChannelDwellTime = SCAN_ONE_CHNL_DEFAULT_DWELL_TIME;
+				/* Disable specific channel scan when connection retry fail */
+				prConnSettings->fgSpecificChnl = FALSE;
+			} else if(prAdapter->aePreferBand[NETWORK_TYPE_AIS_INDEX] == BAND_NULL) {
                 if(prAdapter->fgEnable5GBand == TRUE) {
                     prScanReqMsg->eScanChannel      = SCAN_CHANNEL_FULL;
                 }
@@ -2367,7 +2396,7 @@ aisFsmSteps (
                     MBOX_ID_0,
                     (P_MSG_HDR_T) prScanReqMsg,
                     MSG_SEND_METHOD_BUF);
-			DBGLOG(AIS, WARN, ("SendSR%d\n", prScanReqMsg->ucSeqNum));
+			DBGLOG(AIS, INFO, ("SendSR%d\n", prScanReqMsg->ucSeqNum));
             prAisFsmInfo->fgTryScan = FALSE; /* Will enable background sleep for infrastructure */
 
 			prAdapter->ucScanTime ++;
@@ -2527,7 +2556,7 @@ aisFsmRunEventScanDone (
     ASSERT(prAdapter);
     ASSERT(prMsgHdr);
 
-	DBGLOG(AIS, WARN, ("ScanDone\n"));
+	DBGLOG(AIS, INFO, ("ScanDone\n"));
     DBGLOG(AIS, LOUD, ("EVENT-SCAN DONE: Current Time = %u\n",
 		kalGetTimeTick()));
 
@@ -2657,6 +2686,21 @@ aisFsmRunEventAbort (
     else {
         prConnSettings->fgIsDisconnectedByNonRequest = FALSE;
     }
+	/* to support user space triggered roaming */
+	if (ucReasonOfDisconnect == DISCONNECT_REASON_CODE_REASSOCIATION &&
+			prAisFsmInfo->eCurrentState != AIS_STATE_DISCONNECTING) {
+
+	    if(prAisFsmInfo->eCurrentState == AIS_STATE_NORMAL_TR &&
+				prAisFsmInfo->fgIsInfraChannelFinished == TRUE) {
+			aisFsmSteps(prAdapter, AIS_STATE_SEARCH);
+	    }
+	    else {
+	        aisFsmIsRequestPending(prAdapter, AIS_REQUEST_ROAMING_SEARCH, TRUE);
+	        aisFsmIsRequestPending(prAdapter, AIS_REQUEST_ROAMING_CONNECT, TRUE);
+			aisFsmInsertRequest(prAdapter, AIS_REQUEST_ROAMING_CONNECT);
+	    }
+		return;
+	}
 
     aisFsmIsRequestPending(prAdapter, AIS_REQUEST_RECONNECT, TRUE);
     aisFsmInsertRequest(prAdapter, AIS_REQUEST_RECONNECT);
@@ -2920,10 +2964,23 @@ aisFsmRunEventJoinComplete (
 								nicEnterCtiaMode(prAdapter, TRUE, FALSE);
 							}
 						}
+#if CFG_SUPPORT_ROAMING
+#ifndef CONFIG_CFG80211_ALLOW_RECONNECT
+						if (prAdapter->rWifiVar.rConnSettings.eConnectionPolicy == CONNECT_BY_BSSID &&
+							prAdapter->rWifiVar.rConnSettings.fgIsConnByBssidIssued) {
+							prAdapter->rWifiVar.rConnSettings.eConnectionPolicy = CONNECT_BY_SSID_BEST_RSSI;
+							prAdapter->rWifiVar.rConnSettings.fgIsConnByBssidIssued = FALSE;
+						}
+#endif
+#endif
 					}
 
 	#if CFG_SUPPORT_ROAMING
-					roamingFsmRunEventStart(prAdapter);
+					/* if bssid is given, it means we no need fw roaming */
+#ifdef CONFIG_CFG80211_ALLOW_RECONNECT
+					if (prAdapter->rWifiVar.rConnSettings.eConnectionPolicy != CONNECT_BY_BSSID)
+#endif
+						roamingFsmRunEventStart(prAdapter);
 	#endif /* CFG_SUPPORT_ROAMING */
 
 					//4 <1.7> Set the Next State of AIS FSM
@@ -2970,6 +3027,15 @@ aisFsmRunEventJoinComplete (
 //	                    ASSERT(prBssDesc);
 //	                    ASSERT(prBssDesc->fgIsConnecting);
 
+						prBssDesc->ucJoinFailureCount++;
+						if (prBssDesc->ucJoinFailureCount >= SCN_BSS_JOIN_FAIL_THRESOLD) {
+							GET_CURRENT_SYSTIME(&prBssDesc->rJoinFailTime);
+							DBGLOG(AIS, INFO,
+								("Bss %pM join fail %d times,temp disable it at time:%u\n",
+								prBssDesc->aucBSSID,
+								SCN_BSS_JOIN_FAIL_THRESOLD, prBssDesc->rJoinFailTime));
+						}
+						
 						if(prBssDesc) {
 							prBssDesc->fgIsConnecting = FALSE;
 						}
@@ -3232,7 +3298,7 @@ aisFsmRunEventFoundIBSSPeer (
             prStaRec->fgIsMerging = FALSE;
 
             //4 <1.6> sync. to firmware
-            nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+            nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, STA_REC_INDEX_NOT_FOUND);
 
             //4 <1.7> Indicate Connected Event to Host immediately.
             aisIndicationOfMediaStateToHost(prAdapter, PARAM_MEDIA_STATE_CONNECTED, FALSE);
@@ -3579,6 +3645,7 @@ aisUpdateBssInfoForJOIN (
     if(prBssDesc) {
         prBssDesc->fgIsConnecting = FALSE;
         prBssDesc->fgIsConnected = TRUE;
+	prBssDesc->ucJoinFailureCount = 0;
 
         //4 <4.1> Setup MIB for current BSS
         prAisBssInfo->u2BeaconInterval = prBssDesc->u2BeaconInterval;
@@ -3601,7 +3668,7 @@ aisUpdateBssInfoForJOIN (
     rlmProcessAssocRsp(prAdapter, prAssocRspSwRfb, pucIE, u2IELength);
 
     //4 <4.3> Sync with firmware for BSS-INFO
-    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     //4 <4.4> *DEFER OPERATION* nicPmIndicateBssConnected() will be invoked
     //inside scanProcessBeaconAndProbeResp() after 1st beacon is received
@@ -3700,7 +3767,7 @@ aisUpdateBssInfoForCreateIBSS (
     rlmBssInitForAPandIbss(prAdapter, prAisBssInfo);
 
     //4 <3.2> use command packets to inform firmware
-    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     //4 <3.3> enable beaconing
     bssUpdateBeaconContent(prAdapter, NETWORK_TYPE_AIS_INDEX);
@@ -3861,7 +3928,7 @@ aisUpdateBssInfoForMergeIBSS (
     rlmBssInitForAPandIbss(prAdapter, prAisBssInfo);
 
     //4 <5.3> use command packets to inform firmware
-    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     //4 <5.4> enable beaconing
     bssUpdateBeaconContent(prAdapter, NETWORK_TYPE_AIS_INDEX);
@@ -4033,7 +4100,7 @@ aisFsmDisconnect (
 	    aisChangeMediaState(prAdapter, PARAM_MEDIA_STATE_DISCONNECTED);
 
 	    //4 <4.1> sync. with firmware
-	    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+	    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, STA_REC_INDEX_NOT_FOUND);
 	}
 
     if (!fgDelayIndication) {
@@ -4407,15 +4474,17 @@ aisFsmScanRequest (
     if (!prConnSettings->fgIsScanReqIssued) {
         prConnSettings->fgIsScanReqIssued = TRUE;
 
-        if(prSsid == NULL) {
-            prAisFsmInfo->ucScanSSIDLen = 0;
-        }
-        else {
-            COPY_SSID(prAisFsmInfo->aucScanSSID,
-                    prAisFsmInfo->ucScanSSIDLen,
-                    prSsid->aucSsid,
-                    (UINT_8)prSsid->u4SsidLen);
-        }
+		if (prSsid == NULL) {
+			prAisFsmInfo->ucScanSSIDNum = 0;
+		}
+		else {
+			prAisFsmInfo->ucScanSSIDNum = 1;
+
+			COPY_SSID(prAisFsmInfo->arScanSSID[0].aucSsid,
+				prAisFsmInfo->arScanSSID[0].u4SsidLen,
+				prSsid->aucSsid,
+				prSsid->u4SsidLen);
+		}
 
         if(u4IeLength > 0 && u4IeLength <= MAX_IE_LENGTH ) {
             prAisFsmInfo->u4ScanIELength = u4IeLength;
@@ -4458,6 +4527,99 @@ aisFsmScanRequest (
     return;
 } /* end of aisFsmScanRequest() */
 
+
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief    This function is used to handle OID_802_11_BSSID_LIST_SCAN
+*
+* \param[in] prAdapter  Pointer of ADAPTER_T
+* \param[in] ucSsidNum  Number of SSID
+* \param[in] prSsid     Pointer to the array of SSID_T if specified
+* \param[in] pucIe      Pointer to buffer of extra information elements to be attached
+* \param[in] u4IeLength Length of information elements
+*
+* \return none
+*/
+/*----------------------------------------------------------------------------*/
+VOID
+aisFsmScanRequestAdv(
+	IN P_ADAPTER_T      prAdapter,
+	IN UINT_8           ucSsidNum,
+	IN P_PARAM_SSID_T   prSsid,
+	IN PUINT_8          pucIe,
+	IN UINT_32          u4IeLength
+)
+{
+	UINT_32 i;
+	P_CONNECTION_SETTINGS_T prConnSettings;
+	P_BSS_INFO_T prAisBssInfo;
+	P_AIS_FSM_INFO_T prAisFsmInfo;
+
+	DEBUGFUNC("aisFsmScanRequestAdv()");
+
+	ASSERT(prAdapter);
+	ASSERT(ucSsidNum <= SCN_SSID_MAX_NUM);
+	ASSERT(u4IeLength <= MAX_IE_LENGTH);
+
+	prAisBssInfo = &(prAdapter->rWifiVar.arBssInfo[NETWORK_TYPE_AIS_INDEX]);
+	prAisFsmInfo = &(prAdapter->rWifiVar.rAisFsmInfo);
+	prConnSettings = &(prAdapter->rWifiVar.rConnSettings);
+
+	if (!prConnSettings->fgIsScanReqIssued) {
+		prConnSettings->fgIsScanReqIssued = TRUE;
+
+		if (ucSsidNum == 0)
+			prAisFsmInfo->ucScanSSIDNum = 0;
+		else {
+
+			prAisFsmInfo->ucScanSSIDNum = ucSsidNum;
+
+			for (i = 0; i < ucSsidNum; i++) {
+				COPY_SSID(prAisFsmInfo->arScanSSID[i].aucSsid,
+					prAisFsmInfo->arScanSSID[i].u4SsidLen,
+					prSsid[i].aucSsid,
+					prSsid[i].u4SsidLen);
+			}
+		}
+
+		if (u4IeLength > 0) {
+			prAisFsmInfo->u4ScanIELength = u4IeLength;
+			kalMemCopy(prAisFsmInfo->aucScanIEBuf, pucIe, u4IeLength);
+		}
+		else
+			prAisFsmInfo->u4ScanIELength = 0;
+
+		if (prAisFsmInfo->eCurrentState == AIS_STATE_NORMAL_TR) {
+			if (prAisBssInfo->eCurrentOPMode == OP_MODE_INFRASTRUCTURE
+				&& prAisFsmInfo->fgIsInfraChannelFinished == FALSE) {
+				/* 802.1x might not finished yet, pend it for later handling ..*/
+				aisFsmInsertRequest(prAdapter, AIS_REQUEST_SCAN);
+			}
+			else {
+				if (prAisFsmInfo->fgIsChannelGranted == TRUE) {
+					DBGLOG(AIS, WARN,
+						("Scan Request with channel granted for join operation: %d, %d",
+						prAisFsmInfo->fgIsChannelGranted,
+						prAisFsmInfo->fgIsChannelRequested));
+				}
+
+				/* start online scan */
+				wlanClearScanningResult(prAdapter);
+				aisFsmSteps(prAdapter, AIS_STATE_ONLINE_SCAN);
+			}
+		}
+		else if (prAisFsmInfo->eCurrentState == AIS_STATE_IDLE) {
+			wlanClearScanningResult(prAdapter);
+			aisFsmSteps(prAdapter, AIS_STATE_SCAN);
+		}
+		else
+			aisFsmInsertRequest(prAdapter, AIS_REQUEST_SCAN);
+	}
+	else
+		DBGLOG(AIS, WARN, ("Scan Request dropped. (state: %d)\n",
+			prAisFsmInfo->eCurrentState));
+
+} /* end of aisFsmScanRequestAdv() */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -4862,7 +5024,7 @@ aisFsmRoamingDisconnectPrevAP (
 
     //4 <4.1> sync. with firmware
     prTargetStaRec->ucNetTypeIndex = 0xff; /* Virtial NetType */
-    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_AIS_INDEX, prTargetStaRec->ucIndex);
     prTargetStaRec->ucNetTypeIndex = NETWORK_TYPE_AIS_INDEX; /* Virtial NetType */
 
 #if (CFG_SUPPORT_TDLS == 1)

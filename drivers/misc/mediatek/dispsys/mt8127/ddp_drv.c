@@ -282,10 +282,12 @@ void disp_check_clock_tree(void) {
 	unsigned int mutex_mod = 0;
 	unsigned int mutex_sof = 0;
 
-	DISP_MSG("0xf0000000=0x%x, 0xf0000050=0x%x, 0xf0000040=0x%x\n",
+	DISP_MSG("0xf0000000=0x%x, 0xf0000050=0x%x, 0xf0000040=0x%x, 0xf4000100=0x%x, 0xf4000110=0x%x\n",
 			*(volatile unsigned int*)(0xf0000000),
 			*(volatile unsigned int*)(0xf0000050),
-			*(volatile unsigned int*)(0xf0000040));
+			*(volatile unsigned int*)(0xf0000040),
+			*(volatile unsigned int*)(0xf4000100),
+			*(volatile unsigned int*)(0xf4000110));
 	// All need
 	if ((DISP_REG_GET(0xf0000040)&0xff) != 0x01) {
 		DISP_ERR("CLK_CFG_0 abnormal: hf_faxi_ck is off! 0xf0000040=0x%x \n", DISP_REG_GET(0xf0000040));
@@ -299,8 +301,8 @@ void disp_check_clock_tree(void) {
 	if ((DISP_REG_GET(0xf4000100)&(1<<1)) != 0) {
 		DISP_ERR("MMSYS_CG_CON0 abnormal: SMI_LARB0 is off!\n");
 	}
-	if ((DISP_REG_GET(0xf4000100)&(1<<3)) != 0) {
-		DISP_ERR("MMSYS_CG_CON0 abnormal: MUTEX is off(bit3 = 1) 0xf4000100 = 0x%x!\n",DISP_REG_GET(0xf4000100));
+	if ((DISP_REG_GET(0xf4000100)&(1<<18)) != 0) {
+		DISP_ERR("MMSYS_CG_CON0 abnormal: MUTEX is off(bit18 = 1) 0xf4000100 = 0x%x!\n",DISP_REG_GET(0xf4000100));
 	}
 	for (mutexID = 0; mutexID < 4; mutexID++) {
 		mutex_mod = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(mutexID));
@@ -326,9 +328,9 @@ void disp_check_clock_tree(void) {
 				DISP_ERR("MMSYS_CG_CON0 abnormal: DISP_BLS is off!\n");
 			}
 			//CLK_CFG_1
-			if ((DISP_REG_GET(0xf0000050)&0x0ff) == 0) {
-				DISP_ERR("CLK_CFG_1 abnormal: fpwm_ck is off!\n");
-			}
+			//if ((DISP_REG_GET(0xf0000050)&0x0ff) == 0) {
+			//	DISP_ERR("CLK_CFG_1 abnormal: fpwm_ck is off!\n");
+			//}
 		}
 		if (mutex_mod&(1<<10)) {
 			if ((DISP_REG_GET(0xf4000100)&(1<<7)) != 0) {
@@ -340,13 +342,10 @@ void disp_check_clock_tree(void) {
 				DISP_ERR("MMSYS_CG_CON0 abnormal: DISP_RDMA1 is off!\n");
 			}
 		}
-		
-		// 
-		
 		// DSI CMD/VDO
 		if (mutex_sof==0x1) {
 			// MMSYS_CG_CON1
-			if ((DISP_REG_GET(0xf4000110)&0x07) != 0) {
+			if ((DISP_REG_GET(0xf4000110)&0x03) != 0) {
 				DISP_ERR("MMSYS_CG_CON1 abnormal: DSI is off!\n");
 			}
 			// CLK_CFG_1
@@ -356,13 +355,15 @@ void disp_check_clock_tree(void) {
 		}
 		// DPI0
 		if (mutex_sof==0x2) {
-			// CLK_CFG_1
-			if ((DISP_REG_GET(0xf0000104)&(1<<28)) == 0) {
-				DISP_ERR("CLK_CFG_1 abnormal: hf_dpi0_ck is off!\n");
+			if ((DISP_REG_GET(0xf4000110)&0x0c) != 0) {
+				DISP_ERR("MMSYS_CG_CON1 abnormal: DPI0 is off!\n");
 			}
 		}
-
+		// DPI1
 		if (mutex_sof==0x3) {
+			if ((DISP_REG_GET(0xf4000110)&0x30) != 0) {
+				DISP_ERR("MMSYS_CG_CON1 abnormal: DPI1 is off!\n");
+			}
 		}
 	}
 }
@@ -1586,75 +1587,30 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
     DISP_DBG("cmd=0x%x, arg=0x%x \n", cmd, (unsigned int)arg);
     switch(cmd)
     {
-        case DISP_IOCTL_WRITE_REG:
-
-            if(copy_from_user(&wParams, (void *)arg, sizeof(DISP_WRITE_REG )))
-            {
-                DISP_ERR("DISP_IOCTL_WRITE_REG, copy_from_user failed\n");
-                return -EFAULT;
-            }
-
-            DISP_DBG("write  0x%x = 0x%x (0x%x)\n", wParams.reg, wParams.val, wParams.mask);
-            if(wParams.reg>DISPSYS_REG_ADDR_MAX || wParams.reg<DISPSYS_REG_ADDR_MIN)
-            {
-                DISP_ERR("reg write, addr invalid, addr min=0x%x, max=0x%x, addr=0x%x \n",
-                    DISPSYS_REG_ADDR_MIN,
-                    DISPSYS_REG_ADDR_MAX,
-                    wParams.reg);
-                return -EFAULT;
-            }
-
-            *(volatile unsigned int*)wParams.reg = (*(volatile unsigned int*)wParams.reg & ~wParams.mask) | (wParams.val & wParams.mask);
-            //mt65xx_reg_sync_writel(wParams.reg, value);
-            break;
-
         case DISP_IOCTL_READ_REG:
             if(copy_from_user(&rParams, (void *)arg, sizeof(DISP_READ_REG)))
             {
                 DISP_ERR("DISP_IOCTL_READ_REG, copy_from_user failed\n");
                 return -EFAULT;
             }
-            if(rParams.reg>DISPSYS_REG_ADDR_MAX || rParams.reg<DISPSYS_REG_ADDR_MIN)
+			DISP_DBG("read 0x%x = 0x%x (0x%x)\n", rParams.reg, value, rParams.mask);
+
+			if((wParams.reg >= DDP_REG_BASE_DISP_BLS && wParams.reg <= (DDP_REG_BASE_DISP_BLS + 0x1000)) ||
+				(wParams.reg >= DDP_REG_BASE_DISP_COLOR && wParams.reg <= (DDP_REG_BASE_DISP_COLOR + 0x1000)) ||
+				(wParams.reg >= DDP_REG_BASE_MM_MUTEX && wParams.reg <= (DDP_REG_BASE_MM_MUTEX + 0x1000)))
             {
-                DISP_ERR("reg read, addr invalid, addr min=0x%x, max=0x%x, addr=0x%x \n",
-                    DISPSYS_REG_ADDR_MIN,
-                    DISPSYS_REG_ADDR_MAX,
-                    rParams.reg);
-                return -EFAULT;
+				rParams.val = (*(volatile unsigned int*)rParams.reg) & rParams.mask;
             }
-
-            rParams.val = (*(volatile unsigned int*)rParams.reg) & rParams.mask;
-
-            DISP_DBG("read 0x%x = 0x%x (0x%x)\n", rParams.reg, value, rParams.mask);
-
+			else
+			{
+                DISP_ERR("reg read, addr invalid, addr=0x%x \n", rParams.reg);
+                return -EFAULT;
+			}
             if(copy_to_user((void*)arg, &rParams, sizeof(DISP_READ_REG)))
             {
                 DISP_ERR("DISP_IOCTL_READ_REG, copy_to_user failed\n");
                 return -EFAULT;
             }
-            break;
-
-        case DISP_IOCTL_READ_REG_TABLE:
-            if(copy_from_user(&rTableParams, (void *)arg, sizeof(DISP_READ_REG_TABLE)))
-            {
-                DISP_ERR("DISP_IOCTL_READ_REG_TABLE, copy_from_user failed\n");
-                return -EFAULT;
-            }
-
-            for (count=0; count<rTableParams.count; count++)
-            {
-                if(rTableParams.reg[count]>DISPSYS_REG_ADDR_MAX || rTableParams.reg[count]<DISPSYS_REG_ADDR_MIN)
-                {
-                    DISP_ERR("reg read, addr invalid, addr min=0x%x, max=0x%x, addr=0x%x \n",
-                        DISPSYS_REG_ADDR_MIN,
-                        DISPSYS_REG_ADDR_MAX,
-                        rTableParams.reg[count]);
-                    continue;
-                }
-
-                rTableParams.val[count] = (*(volatile unsigned int*)rTableParams.reg[count]) & rTableParams.mask[count];
-            }
-
             break;
 
         case DISP_IOCTL_WAIT_IRQ:
@@ -1842,28 +1798,6 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             }
             break;
 
-        case DISP_IOCTL_GET_OVL:
-            DISP_DBG("DISP_IOCTL_GET_OVL! \n");
-            if(copy_from_user(&ovl_info, (void*)arg , sizeof(DISP_OVL_INFO)))
-            {
-                DISP_ERR("DISP_IOCTL_SET_INTR, copy_from_user failed, %d\n", ret);
-                return -EFAULT;
-            }
-
-            layer = ovl_info.layer;
-
-            spin_lock(&gOvlLock);
-            ovl_info = disp_layer_info[layer];
-            spin_unlock(&gOvlLock);
-
-            if(copy_to_user((void *)arg, &ovl_info, sizeof(DISP_OVL_INFO)))
-            {
-                DISP_ERR("disp driver : Copy to user error (result)\n");
-                return -EFAULT;
-            }
-
-            break;
-
         case DISP_IOCTL_AAL_EVENTCTL:
 #if !defined(CONFIG_MTK_AAL_SUPPORT)
             printk("Invalid operation DISP_IOCTL_AAL_EVENTCTL since AAL is not turned on, in %s\n" , __FUNCTION__);
@@ -1931,6 +1865,13 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
             break;
 
+        case DISP_IOCTL_DISABLE_AAL_SERVICE:
+
+			printk("Disable aal service");
+            ret = disp_disable_aal_service();
+
+            break;
+
         case DISP_IOCTL_SET_PQINDEX:
 
             pq_index = get_Color_index();
@@ -1981,12 +1922,12 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
             DISP_MSG("DISP_IOCTL_SET_GAMMALUT\n");
 
-            gamma_index = get_gamma_index();
-            if(copy_from_user(gamma_index, (void *)arg, sizeof(DISPLAY_GAMMA_T)))
-            {
-                printk("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
-                return -EFAULT;
-            }
+			/*gamma_index = get_gamma_index();
+			if(copy_from_user(gamma_index, (void *)arg, sizeof(DISPLAY_GAMMA_T)))
+			{
+			    printk("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
+			    return -EFAULT;
+			}     do not need                 */
 
             // disable BLS and suspend AAL
             GetUpdateMutex();
@@ -2208,7 +2149,8 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             ret = ddp_bitblt_ioctl_inform_done(arg);
             break;
 #endif
-        case DISP_SECURE_MVA_MAP:            
+        case DISP_SECURE_MVA_MAP:
+		    //DISP_ERR("disp driver : DISP_SECURE_MVA_MAP\n");
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
         {
                 struct disp_mva_map mva_map_struct;
@@ -2247,7 +2189,8 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             }
 #endif            
             break;  
-        case DISP_SECURE_MVA_UNMAP:            
+        case DISP_SECURE_MVA_UNMAP:
+		    //DISP_ERR("disp driver : DISP_SECURE_MVA_UNMAP\n");
 #ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
         {
                 struct disp_mva_map mva_map_struct;
@@ -2288,86 +2231,11 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             break; 
 
         case DISP_SECURE_SET_MODE_BITBLT:
-#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
-            {
-                unsigned int secure;
-                if(copy_from_user(&secure, (void *)arg, sizeof(unsigned int)))
-                {
-                    pr_info("disp driver : DISP_SECURE_SET_MODE_BITBLT Copy from user failed\n");
-                    return -EFAULT;            
-                }                
-
-                if(secure!=gBitbltSecure)
-                {
-                    if(disp_secure_irq_task==NULL)
-                    {
-                        disp_secure_irq_task = kthread_create(disp_secure_intr_callback, NULL, "disp_secure_irq_task");
-                        if (IS_ERR(disp_secure_irq_task)) 
-                        {
-                            DISP_ERR("DISP_InitVSYNC(): Cannot create disp_irq_log_task kthread\n");
-                        }
-                        wake_up_process(disp_secure_irq_task);
-                    }
-
-                    disp_register_intr(MT6582_DISP_MDP_WROT_IRQ_ID, secure);
-                    disp_register_intr(MT6582_DISP_MDP_WDMA_IRQ_ID, secure);
-                    gBitbltSecure = secure;
-                #if 0
-                    {
-                        MTEEC_PARAM param[4];
-                        unsigned int paramTypes;
-                        TZ_RESULT ret;
-                        param[0].value.a = M4U_PORT_ROT_EXT;
-                        param[1].value.a = gBitbltSecure;
-                        paramTypes = TZ_ParamTypes2(TZPT_VALUE_INPUT,TZPT_VALUE_INPUT);
-                        ret = KREE_TeeServiceCall(ddp_session_handle(), TZCMD_DDP_SET_SECURE_MODE, paramTypes, param);
-                        if(ret!= TZ_RESULT_SUCCESS)
-                        {
-                            DISP_ERR("KREE_TeeServiceCall(TZCMD_DDP_SET_SECURE_MODE) fail, ret=%d \n", ret);
-                        }
-
-                        param[0].value.a = M4U_PORT_WDMA0;
-                        param[1].value.a = gBitbltSecure;
-                        paramTypes = TZ_ParamTypes2(TZPT_VALUE_INPUT,TZPT_VALUE_INPUT);
-                        ret = KREE_TeeServiceCall(ddp_session_handle(), TZCMD_DDP_SET_SECURE_MODE, paramTypes, param);
-                        if(ret!= TZ_RESULT_SUCCESS)
-                        {
-                            DISP_ERR("KREE_TeeServiceCall(TZCMD_DDP_SET_SECURE_MODE) fail, ret=%d \n", ret);
-                        }                        
-                    }
-                #endif
-                }
-            }
-#endif            
+	    //DISP_ERR("Ddp drv dose not have such command : DISP_SECURE_SET_MODE_BITBLT\n");
             break;
             
         case DISP_SECURE_SET_MODE_OVL_MEM_OUT:
-#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
-            {
-                unsigned int secure;
-                if(copy_from_user(&secure, (void *)arg, sizeof(unsigned int)))
-                {
-                    pr_info("disp driver : DISP_SECURE_SET_MODE_BITBLT Copy from user failed\n");
-                    return -EFAULT;            
-                }
-
-                if(secure!=gMemOutSecure)
-                {                    
-                    if(disp_secure_irq_task==NULL)
-                    {
-                        disp_secure_irq_task = kthread_create(disp_secure_intr_callback, NULL, "disp_secure_irq_task");
-                        if (IS_ERR(disp_secure_irq_task)) 
-                        {
-                            DISP_ERR("DISP_InitVSYNC(): Cannot create disp_irq_log_task kthread\n");
-                        }
-                        wake_up_process(disp_secure_irq_task);
-                    }
-
-                    disp_register_intr(MT6582_DISP_MDP_WDMA_IRQ_ID, secure);
-                    gMemOutSecure = secure;
-                }
-            }       
-#endif
+            //DISP_ERR("Ddp drv dose not have such command : DISP_SECURE_SET_MODE_OVL_MEM_OUT\n");
             break;
      
         default :
@@ -2461,7 +2329,20 @@ static int disp_flush(struct file * file , fl_owner_t a_id)
 // remap register to user space
 static int disp_mmap(struct file * file, struct vm_area_struct * a_pstVMArea)
 {
-
+#if 1 //def monica_porting
+	unsigned long size = a_pstVMArea->vm_end - a_pstVMArea->vm_start;
+	unsigned long paStart = a_pstVMArea->vm_pgoff << PAGE_SHIFT;
+	unsigned long paEnd = paStart + size;
+	unsigned long MAX_SIZE = DISPSYS_REG_ADDR_MAX - DISPSYS_REG_ADDR_MIN;
+		if (size > MAX_SIZE) {
+			DISP_MSG("MMAP Size Range OVERFLOW!!\n");
+			return -1;
+		}
+		if (paStart < (DISPSYS_REG_ADDR_MIN-0xE0000000) || paEnd > (DISPSYS_REG_ADDR_MAX-0xE0000000)) {
+			DISP_MSG("MMAP Address Range OVERFLOW!!\n");
+			return -1;
+		}
+#endif
     a_pstVMArea->vm_page_prot = pgprot_noncached(a_pstVMArea->vm_page_prot);
     if(remap_pfn_range(a_pstVMArea ,
                  a_pstVMArea->vm_start ,
@@ -2526,9 +2407,6 @@ static int disp_probe(struct platform_device *pdev)
         // enable CMDQ interrupt
         DISP_REG_SET(DISP_REG_CMDQ_THRx_IRQ_FLAG_EN(i),0x13); //SL TEST CMDQ time out
     }
-    
-    init_waitqueue_head(&disp_irq_log_wq);
-    mb();
 
     // Register IRQ
     //DISP_REGISTER_IRQ(MT6582_DISP_COLOR_IRQ_ID);
@@ -2542,7 +2420,7 @@ static int disp_probe(struct platform_device *pdev)
     DISP_REGISTER_IRQ(MT6582_DISP_MUTEX_IRQ_ID);
     //DISP_REGISTER_IRQ(MT6582_G2D_IRQ_ID);
 
-
+    init_waitqueue_head(&disp_irq_log_wq);
     disp_irq_log_task = kthread_create(disp_irq_log_kthread_func, NULL, "disp_config_update_kthread");
     if (IS_ERR(disp_irq_log_task))
     {
@@ -2550,7 +2428,7 @@ static int disp_probe(struct platform_device *pdev)
     }
     wake_up_process(disp_irq_log_task);
 
-#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+/*#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
     // TEE IRQ Callback deal
     if(disp_secure_irq_task==NULL)
     {
@@ -2561,7 +2439,7 @@ static int disp_probe(struct platform_device *pdev)
         }
         wake_up_process(disp_secure_irq_task);
     }
-#endif
+#endif*/
 
     // init error log timer
     init_timer(&disp_irq_err_timer);
@@ -2725,6 +2603,19 @@ static int __init disp_init(void)
     ASSERT(pRegBackup!=NULL);
     *pRegBackup = DDP_UNBACKED_REG_MEM;
 
+#ifdef CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT
+	if(disp_secure_irq_task==NULL)
+	{
+		DISP_MSG("disp_init creates kthread of disp_secure_intr_callback\n");
+		disp_secure_irq_task = kthread_create(disp_secure_intr_callback, NULL, "disp_secure_irq_task");
+		if (IS_ERR(disp_secure_irq_task)) 
+		{
+			DISP_ERR("DISP_InitVSYNC(): Cannot create disp_irq_log_task kthread\n");
+		}
+		wake_up_process(disp_secure_irq_task);
+	}
+#endif
+
     cmdqInitialize();
 
 #if defined(CONFIG_TRUSTONIC_TEE_SUPPORT) && (CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)
@@ -2734,7 +2625,6 @@ static int __init disp_init(void)
         ;
     }
 #endif
-
     return 0;
 }
 
@@ -3446,14 +3336,66 @@ void disp_print_reg(DISP_MODULE_ENUM module)
 		break;
 	}
 }
-
+/* porting from abc123 : power_saving*/
 int disp_module_clock_on(DISP_MODULE_ENUM module, char* caller_name)
 {
+	switch (module) {
+	case DISP_MODULE_OVL:
+		enable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		enable_clock(MT_CG_DISP0_DISP_OVL, caller_name);
+		break;
+	case DISP_MODULE_WDMA:
+		enable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		enable_clock(MT_CG_DISP0_DISP_WDMA, caller_name);
+		break;
+	case DISP_MODULE_RDMA0:
+		enable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		enable_clock(MT_CG_DISP0_DISP_RDMA, caller_name);
+		//enable_clock(MT_CG_DISP0_RDMA0_OUTPUT, caller_name);
+		break;
+	case DISP_MODULE_RDMA1:
+		enable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		enable_clock(MT_CG_DISP0_DISP_RMDA1, caller_name);
+		//enable_clock(MT_CG_DISP0_RDMA1_OUTPUT, caller_name);
+		break;
+	case DISP_MODULE_SMI:
+		enable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		break;
+	default:
+		DISP_ERR("disp_module_clock_on, unknow module=%d\n", module);
+	}
+
     return 0;
 }
-
+/* porting from abc123 : power_saving*/
 int disp_module_clock_off(DISP_MODULE_ENUM module, char* caller_name)
 {
+	switch (module) {
+	case DISP_MODULE_OVL:
+		disable_clock(MT_CG_DISP0_DISP_OVL, caller_name);
+		disable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		break;
+	case DISP_MODULE_WDMA:
+		disable_clock(MT_CG_DISP0_DISP_WDMA, caller_name);
+		disable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		break;
+	case DISP_MODULE_RDMA0:
+		disable_clock(MT_CG_DISP0_DISP_RDMA, caller_name);
+		disable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		//disable_clock(MT_CG_DISP0_RDMA0_OUTPUT, caller_name);
+		break;
+	case DISP_MODULE_RDMA1:
+		disable_clock(MT_CG_DISP0_DISP_RMDA1, caller_name);
+		disable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		//disable_clock(MT_CG_DISP0_RDMA1_OUTPUT, caller_name);
+		break;
+	case DISP_MODULE_SMI:
+		disable_clock(MT_CG_DISP0_SMI_LARB0, caller_name);
+		break;
+	default:
+		DISP_ERR("disp_module_clock_off, unknow module=%d\n", module);
+	}
+
     return 0;
 }
 

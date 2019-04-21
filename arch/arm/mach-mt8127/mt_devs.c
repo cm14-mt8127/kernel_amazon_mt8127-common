@@ -29,11 +29,14 @@
 #include <mach/dfo_boot_default.h>
 #include <linux/aee.h>
 #include <linux/mrdump.h>
-#if 0//#ifdef CONFIG_MTK_MTD_NAND
+#ifdef CONFIG_MTK_MTD_NAND
 #include <mach/nand_device_define.h>
 #include <mach/mt_partitioninfo.h>
 #endif
 #define SERIALNO_LEN 32
+
+#include <linux/platform_data/mtk_thermal.h>
+
 static char serial_number[SERIALNO_LEN];
 
 extern BOOTMODE get_boot_mode(void);
@@ -44,7 +47,7 @@ extern void adjust_kernel_cmd_line_setting_for_console(char*, char*);
 unsigned int mtk_get_max_DRAM_size(void);
 resource_size_t get_actual_DRAM_size(void);
 
-#if 0//#ifdef CONFIG_MTK_MTD_NAND
+#ifdef CONFIG_MTK_MTD_NAND
 struct tag_pt_info otp_info;
 struct tag_pt_info bmt_info;
 unsigned int flash_number;
@@ -289,14 +292,6 @@ static struct kobject sn_kobj;
 static ssize_t sn_show(char *buf){
     return snprintf(buf, 4096, "%s\n", serial_number);
 }
-//[FEATURE]-Add-BEGIN by SCDTABLET.(meiqin),04/14/2015,modify SN 
-static ssize_t sn_store(char *buf, size_t count){
-    memset(serial_number, 0,sizeof(serial_number));
-    memcpy(serial_number,buf,count);
-    return count;
-}
-//[FEATURE]-Add-END  by SCDTABLET.(meiqin)
-
 
 struct sysinfo_attribute sn_attr = {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36))
@@ -305,9 +300,7 @@ struct sysinfo_attribute sn_attr = {
     .attr = {"serial_number", 0644},
 #endif
     .show = sn_show,
-//[FEATURE]-Mod-BEGIN by SCDTABLET.(meiqin),04/14/2015,modify SN 
-    .store = sn_store,
-//[FEATURE]-Mod-END  by SCDTABLET.(meiqin)
+    .store = NULL
 };
 
 static ssize_t sysinfo_show(struct kobject *kobj, struct attribute *attr, char *buf)
@@ -748,9 +741,100 @@ static struct platform_device cpufreq_pdev = {
 /*=======================================================================*/
 /* MT6575 Thermal Controller module                                      */
 /*=======================================================================*/
+static struct mtk_thermal_platform_data mtktscpu_thermal_data = {
+	.num_trips = 5,
+	.mode = THERMAL_DEVICE_DISABLED,
+	.polling_delay = 100,
+	.trips[0] = {.temp = 95000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-0", .upper = 1, .lower = 0},
+	},
+	.trips[1] = {.temp = 100000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-0", .upper = 2, .lower = 1},
+	},
+	.trips[2] = {.temp = 105000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-0", .upper = 3, .lower = 2},
+	},
+	.trips[3] = {.temp = 110000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-0", .upper = 4, .lower = 3},
+	},
+	.trips[4] = {.temp = 117000, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+};
+
+static struct mtk_thermal_platform_data virtual_sensor_thermal_data = {
+	.num_trips = 5,
+	.mode = THERMAL_DEVICE_DISABLED,
+	.polling_delay = 1000,
+	.trips[0] = {.temp = 50250, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-1", .upper = 1, .lower = 0},
+		     .cdev[1] = {
+			.type = "backlight", .upper = 1, .lower = 0},
+		     .cdev[2] = {
+			.type = "charger", .upper = 1, .lower = 0},
+		     .cdev[3] = {
+			.type = "cpuhotplug", .upper = 1, .lower = 0},
+	},
+	.trips[1] = {.temp = 50500, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-1", .upper = 2, .lower = 1},
+		     .cdev[1] = {
+			.type = "backlight", .upper = 2, .lower = 1},
+		     .cdev[2] = {
+			.type = "charger", .upper = 2, .lower = 1},
+		     .cdev[3] = {
+			.type = "cpuhotplug", .upper = 2, .lower = 1},
+	},
+	.trips[2] = {.temp = 50750, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-1", .upper = 3, .lower = 2},
+		     .cdev[1] = {
+			.type = "backlight", .upper = 3, .lower = 2},
+		     .cdev[2] = {
+			.type = "charger", .upper = 3, .lower = 2},
+		     .cdev[3] = {
+			.type = "cpuhotplug", .upper = 3, .lower = 2},
+	},
+	.trips[3] = {.temp = 51000, .type = THERMAL_TRIP_ACTIVE, .hyst = 0,
+		     .cdev[0] = {
+			.type = "thermal-cpufreq-1", .upper = 4, .lower = 3},
+		     .cdev[1] = {
+			.type = "backlight", .upper = 4, .lower = 3},
+		     .cdev[2] = {
+			.type = "charger", .upper = 4, .lower = 3},
+		     .cdev[3] = {
+			.type = "cpuhotplug", .upper = 4, .lower = 3},
+	},
+	.trips[4] = {.temp = 60000, .type = THERMAL_TRIP_CRITICAL, .hyst = 0},
+};
+
 struct platform_device thermal_pdev = {
-    .name = "mtk-thermal",
-    .id   = -1,
+	.name = "mtk-thermal",
+	.id   = -1,
+	.dev = {
+		.platform_data = &mtktscpu_thermal_data,
+	},
+};
+
+struct platform_device virtual_sensor_thermal_pdev = {
+	.name = "virtual_sensor-thermal",
+	.id = -1,
+	.dev = {
+		.platform_data = &virtual_sensor_thermal_data,
+	},
+};
+
+struct platform_device mtk_cpufreq_cooling_driver = {
+	.name = "mtk-cpufreq-cooling",
+	.id = -1,
+};
+
+struct platform_device virtual_sensor_cpufreq_cooling_driver = {
+	.name = "virtual_sensor-cpufreq-cooling",
+	.id = -1,
 };
 
 #if 1
@@ -1170,7 +1254,7 @@ static int __init parse_tag_devinfo_data_fixup(const struct tag *tags)
 	return 0;
 }
 
-#if 0//#ifdef CONFIG_MTK_MTD_NAND
+#ifdef CONFIG_MTK_MTD_NAND
 int __init parse_tag_partition_fixup(const struct tag *tags)
 {
 	
@@ -1278,7 +1362,7 @@ void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi)
           g_meta_com_type = tags->u.meta_com.meta_com_type;
           g_meta_com_id = tags->u.meta_com.meta_com_id;
         } //FIXME_8127
-#if 0//#ifdef CONFIG_MTK_MTD_NAND
+#ifdef CONFIG_MTK_MTD_NAND
         else if(tags->hdr.tag == ATAG_OTP_INFO)
         {
             parse_tag_partition_fixup(tags);
@@ -1694,6 +1778,14 @@ struct platform_device battery_device = {
     .id        = -1,
 };
 
+struct platform_device battery_meter_device = {
+	.name = "battery_meter",
+	.id = -1,
+};
+
+extern unsigned int system_serial_high;
+extern unsigned int system_serial_low;
+
 /*=======================================================================*/
 /* MT6589 Board Device Initialization                                    */
 /*=======================================================================*/
@@ -1735,6 +1827,9 @@ __init int mt_board_init(void)
 		if (retval < 0)
 			printk("[%s] fail to add kobject\n", "sys_info");
 	}
+
+	system_serial_high = get_devinfo_with_index(13);
+	system_serial_low = get_devinfo_with_index(12);
 
 #if defined(CONFIG_MTK_MTD_NAND)
     retval = platform_device_register(&mtk_nand_dev);
@@ -2019,6 +2114,13 @@ if (retval != 0) {
     }
 #endif
 
+#if defined(CONFIG_MTK_TOUCHPANEL)
+    retval = platform_device_register(&mtk_tpd_dev);
+    if (retval != 0) {
+        return retval;
+    }
+#endif
+
 #if defined(CONFIG_MTK_SENSOR_SUPPORT)
 
 	retval = platform_device_register(&hwmon_sensor);
@@ -2130,6 +2232,13 @@ if (retval != 0) {
 #endif
 
 #if 1 // init after USB driver
+
+	retval = platform_device_register(&battery_meter_device);
+	if (retval) {
+		printk("[battery_meter] Unable to device register\n");
+		return retval;
+	}
+
    retval = platform_device_register(&battery_device);
    if (retval) {
 	   printk("[battery_driver] Unable to device register\n");
@@ -2137,12 +2246,6 @@ if (retval != 0) {
 	}
 #endif
 
-#if defined(CONFIG_MTK_TOUCHPANEL)
-    retval = platform_device_register(&mtk_tpd_dev);
-    if (retval != 0) {
-        return retval;
-    }
-#endif
 #if defined(CUSTOM_KERNEL_OFN)
     retval = platform_device_register(&ofn_driver);
     if (retval != 0){
@@ -2189,10 +2292,21 @@ retval = platform_device_register(&dummychar_device);
 #endif
 
 #if 1
-    retval = platform_device_register(&thermal_pdev);
-    if (retval != 0) {
-        return retval;
-    }
+	retval = platform_device_register(&thermal_pdev);
+	if (retval != 0)
+		return retval;
+
+	retval = platform_device_register(&virtual_sensor_thermal_pdev);
+	if (retval != 0)
+		return retval;
+
+	retval = platform_device_register(&mtk_cpufreq_cooling_driver);
+	if (retval != 0)
+		return retval;
+
+	retval = platform_device_register(&virtual_sensor_cpufreq_cooling_driver);
+	if (retval != 0)
+		return retval;
 #endif
 
 #if 1
@@ -2287,7 +2401,7 @@ retval = platform_device_register(&dummychar_device);
 	}
 
 
-#if defined(CONFIG_MTK_NFC) //NFC
+#if 1//defined(CONFIG_MTK_NFC) //NFC
 	retval = platform_device_register(&mtk_nfc_6605_dev);
 	printk("mtk_nfc_6605_dev register ret %d", retval);
 	if (retval != 0){

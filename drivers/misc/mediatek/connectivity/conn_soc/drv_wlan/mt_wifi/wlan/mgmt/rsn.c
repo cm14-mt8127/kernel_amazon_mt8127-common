@@ -1751,7 +1751,7 @@ rsnTkipHandleMICFailure (
         prAdapter,
         NETWORK_TYPE_AIS_INDEX,
         Param_PowerModeCAM,
-        TRUE);
+        FALSE);
 
     /* Generate authentication request event. */
     DBGLOG(RSN, INFO, ("Generate TKIP MIC error event (type: 0%d)\n",

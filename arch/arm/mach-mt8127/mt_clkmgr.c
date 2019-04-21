@@ -41,15 +41,15 @@
 /* #define CLK_LOG */
 /* #define SYS_LOG */
 /* #define MUX_LOG_TOP */
-#define MUX_LOG
+/* #define MUX_LOG */
 /* #define PLL_LOG_TOP */
-#define PLL_LOG
+/* #define PLL_LOG */
 
 /************************************************
  **********         log debug          **********
  ************************************************/
 
-#define USING_XLOG
+//#define USING_XLOG
 
 #ifdef USING_XLOG
 #include <linux/xlog.h>
@@ -78,7 +78,7 @@
 #define clk_info(fmt, args...)      \
 	pr_notice(TAG fmt, ##args)
 #define clk_dbg(fmt, args...)       \
-	pr_info(TAG fmt, ##args)
+	pr_debug(TAG fmt, ##args)
 #define clk_ver(fmt, args...)       \
 	pr_debug(TAG fmt, ##args)
 

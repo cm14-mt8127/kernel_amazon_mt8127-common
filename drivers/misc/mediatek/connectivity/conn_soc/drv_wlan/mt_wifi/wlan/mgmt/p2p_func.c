@@ -304,7 +304,7 @@ p2pFuncSwitchOPMode (
 
             /* Update BSS INFO to FW. */
             if ((fgSyncToFW) && (eOpMode != OP_MODE_ACCESS_POINT)) {
-                nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+                nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
             }
         }
 
@@ -426,7 +426,7 @@ p2pFuncStartGO (
         rlmBssInitForAPandIbss(prAdapter, prBssInfo);
 
         //4 <3.2> Reset HW TSF Update Mode and Beacon Mode
-        nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+        nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
 
         //4 <3.3> Update Beacon again for network phy type confirmed.
         bssUpdateBeaconContent(prAdapter, NETWORK_TYPE_P2P_INDEX);
@@ -1089,7 +1089,7 @@ p2pFuncDisconnect (
 
             if (eOriMediaStatus != prP2pBssInfo->eConnectionState) {
                 /* Update Disconnected state to FW. */
-                nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+                nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
             }
 
         }
@@ -1097,8 +1097,6 @@ p2pFuncDisconnect (
         if (prP2pBssInfo->eCurrentOPMode != OP_MODE_ACCESS_POINT) {
             /* GO: It would stop Beacon TX. GC: Stop all BSS related PS function. */
             nicPmIndicateBssAbort(prAdapter, NETWORK_TYPE_P2P_INDEX);
-
-            prP2pBssInfo->fgIsIndicatedPMBssConn = FALSE;
 
             /* Reset RLM related field of BSSINFO. */
             rlmBssAborted(prAdapter, prP2pBssInfo);
@@ -1427,7 +1425,7 @@ p2pFuncUpdateBssInfoForJOIN (
     rlmProcessAssocRsp(prAdapter, prAssocRspSwRfb, pucIE, u2IELength);
 
     //4 <4.3> Sync with firmware for BSS-INFO
-    nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX);
+    nicUpdateBss(prAdapter, NETWORK_TYPE_P2P_INDEX, STA_REC_INDEX_NOT_FOUND);
 
     //4 <4.4> *DEFER OPERATION* nicPmIndicateBssConnected() will be invoked
     //inside scanProcessBeaconAndProbeResp() after 1st beacon is received
@@ -1465,7 +1463,7 @@ p2pFuncValidateAuth (
     P_STA_RECORD_T prStaRec = (P_STA_RECORD_T)NULL;
     P_WLAN_AUTH_FRAME_T prAuthFrame = (P_WLAN_AUTH_FRAME_T)NULL;
 
-   DBGLOG(P2P, TRACE, ("p2pValidate Authentication Frame\n"))
+   DBGLOG(P2P, TRACE, ("p2pValidate Authentication Frame\n"));
 
     do {
         ASSERT_BREAK((prAdapter != NULL) &&

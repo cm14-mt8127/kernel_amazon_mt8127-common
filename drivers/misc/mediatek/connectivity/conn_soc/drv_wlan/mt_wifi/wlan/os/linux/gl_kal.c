@@ -879,7 +879,7 @@ kalFirmwareOpen (
         DBGLOG(INIT, INFO, ("Open FW image: %s failed\n", CFG_FW_FILENAME));
         goto error_open;
     }
-    DBGLOG(INIT, INFO, ("Open FW image: %s done\n", CFG_FW_FILENAME));
+    DBGLOG(INIT, TRACE, ("Open FW image: %s done\n", CFG_FW_FILENAME));
     return WLAN_STATUS_SUCCESS;
 
 error_open:
@@ -1816,12 +1816,15 @@ kalRxIndicatePkts (
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0)
         if(!in_interrupt()){
+			glIndicateWoWPacket(prSkb);
             netif_rx_ni(prSkb); /* only in non-interrupt context */
         }
         else {
+			glIndicateWoWPacket(prSkb);
             netif_rx(prSkb);
         }
 #else
+		glIndicateWoWPacket(prSkb);
         netif_rx(prSkb);
 #endif
 
@@ -1900,9 +1903,8 @@ kalIndicateStatusAndComplete (
 
             ssid.aucSsid[(ssid.u4SsidLen >= PARAM_MAX_LEN_SSID) ?
                 (PARAM_MAX_LEN_SSID - 1) : ssid.u4SsidLen ] = '\0';
-            DBGLOG(INIT, INFO, ("[wifi] %s netif_carrier_on [ssid:%s " MACSTR "]\n",
+            DBGLOG(INIT, INFO, ("[wifi] %s netif_carrier_on [" MACSTR "]\n",
                 prGlueInfo->prDevHandler->name,
-                ssid.aucSsid,
                 MAC2STR(arBssid)));
         } while(0);
 
@@ -1940,8 +1942,18 @@ kalIndicateStatusAndComplete (
             }
 
             /* CFG80211 Indication */
-            if(eStatus == WLAN_STATUS_MEDIA_CONNECT 
-                    && prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTING) {
+            if(eStatus == WLAN_STATUS_ROAM_OUT_FIND_BEST
+                    && prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTED) {
+                cfg80211_roamed_bss(prGlueInfo->prDevHandler, 
+                        bss,
+                        prGlueInfo->aucReqIe,
+                        prGlueInfo->u4ReqIeLength,
+                        prGlueInfo->aucRspIe,
+                        prGlueInfo->u4RspIeLength,
+                        GFP_KERNEL);
+		bss = NULL;
+            } else if(prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTING) {
+            	/* to support user space roaming, cfg80211 will change the sme_state to connecting before reassociate */
                 cfg80211_connect_result(prGlueInfo->prDevHandler,
                         arBssid,
                         prGlueInfo->aucReqIe,
@@ -1951,21 +1963,14 @@ kalIndicateStatusAndComplete (
                         WLAN_STATUS_SUCCESS,
                         GFP_KERNEL);
             }
-            else if(eStatus == WLAN_STATUS_ROAM_OUT_FIND_BEST
-                    && prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTED) {
-                cfg80211_roamed_bss(prGlueInfo->prDevHandler, 
-                        bss,
-                        prGlueInfo->aucReqIe,
-                        prGlueInfo->u4ReqIeLength,
-                        prGlueInfo->aucRspIe,
-                        prGlueInfo->u4RspIeLength,
-                        GFP_KERNEL);
-            }
+		if (bss)
+			cfg80211_put_bss(priv_to_wiphy(prGlueInfo), bss);
         }
 
         break;
 
     case WLAN_STATUS_MEDIA_DISCONNECT:
+	case WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY:
         /* indicate disassoc event */
         wext_indicate_wext_event(prGlueInfo, SIOCGIWAP, NULL, 0);
         /* For CR 90 and CR99, While supplicant do reassociate, driver will do netif_carrier_off first,
@@ -1983,14 +1988,16 @@ kalIndicateStatusAndComplete (
 
         netif_carrier_off(prGlueInfo->prDevHandler);
 
-        if(prGlueInfo->fgIsRegistered == TRUE
-                && prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTED) {
-            P_WIFI_VAR_T prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
-			UINT_16 u2DeauthReason = prWifiVar->arBssInfo[NETWORK_TYPE_AIS_INDEX].u2DeauthReason;
-            /* CFG80211 Indication */
-			DBGLOG(INIT, INFO, ("[wifi] %s cfg80211_disconnected\n", prGlueInfo->prDevHandler->name));
-            cfg80211_disconnected(prGlueInfo->prDevHandler, u2DeauthReason, NULL, 0, GFP_KERNEL);
-        }
+	if(prGlueInfo->fgIsRegistered == TRUE
+		&& (prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTED
+		|| prGlueInfo->prDevHandler->ieee80211_ptr->sme_state == CFG80211_SME_CONNECTING) &&
+		eStatus == WLAN_STATUS_MEDIA_DISCONNECT) {
+		P_WIFI_VAR_T prWifiVar = &prGlueInfo->prAdapter->rWifiVar;
+		UINT_16 u2DeauthReason = prWifiVar->arBssInfo[NETWORK_TYPE_AIS_INDEX].u2DeauthReason;
+		/* CFG80211 Indication */
+		DBGLOG(INIT, INFO, ("[wifi] %s cfg80211_disconnected\n", prGlueInfo->prDevHandler->name));
+		cfg80211_disconnected(prGlueInfo->prDevHandler, u2DeauthReason, NULL, 0, GFP_KERNEL);
+	}
 
         prGlueInfo->eParamMediaStateIndicated = PARAM_MEDIA_STATE_DISCONNECTED;
 
@@ -3255,6 +3262,7 @@ kalIsCardRemoved(
     // Linux MMC doesn't have removal notification yet
 }
 
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief This routine is used to send command to firmware for overriding netweork address
@@ -3274,6 +3282,11 @@ kalRetrieveNetworkAddress(
     ASSERT(prGlueInfo);
 
     if(prGlueInfo->fgIsMacAddrOverride == FALSE) {
+#ifdef CONFIG_IDME
+				COPY_MAC_ADDR(prMacAddr, &prGlueInfo->rRegInfo.aucMacAddr);
+				return TRUE;
+#else
+
     #if !defined(CONFIG_X86)
 	#if !defined(CONFIG_MTK_TC1_FEATURE)
 			UINT_32 i;
@@ -3303,6 +3316,7 @@ kalRetrieveNetworkAddress(
         /* x86 Linux doesn't need to override network address so far */
         return FALSE;
     #endif
+#endif
     }
     else {
         COPY_MAC_ADDR(prMacAddr, prGlueInfo->rMacAddrOverride);
@@ -4692,9 +4706,10 @@ nla_put_failure:
 #if (CFG_SUPPORT_MET_PROFILING == 1)
 #define PROC_MET_PROF_CTRL                 "met_ctrl"
 #define PROC_MET_PROF_PORT                 "met_port"
+#define PROC_TSF_PROF                      "tsf"
 
-struct proc_dir_entry *pMetProcDir; 
-void *pMetGlobalData = NULL;
+struct proc_dir_entry *pProcDir; 
+void *pProcFsGlobalData = NULL;
 static unsigned long __read_mostly tracing_mark_write_addr = 0;
 
 static void inline __mt_update_tracing_mark_write_addr(void)
@@ -4828,8 +4843,8 @@ kalMetCtrlWriteProcfs (
     if (sscanf(acBuf, " %d", &u8MetProfEnable) == 1) {
         printk("MET_PROF: Write MET PROC Enable=%d \n", u8MetProfEnable);
     }
-    if (pMetGlobalData != NULL) {
-        prGlueInfo = (P_GLUE_INFO_T) pMetGlobalData;
+    if (pProcFsGlobalData != NULL) {
+        prGlueInfo = (P_GLUE_INFO_T) pProcFsGlobalData;
         prGlueInfo->u8MetProfEnable = (UINT_8)u8MetProfEnable;
 		}	
     return count;
@@ -4867,12 +4882,91 @@ kalMetPortWriteProcfs (
     if (sscanf(acBuf, " %d", &u16MetUdpPort) == 1) {
         printk("MET_PROF: Write MET PROC UDP_PORT=%d\n", u16MetUdpPort);
     }
-    if (pMetGlobalData != NULL) {
-        prGlueInfo = (P_GLUE_INFO_T) pMetGlobalData;
+    if (pProcFsGlobalData != NULL) {
+        prGlueInfo = (P_GLUE_INFO_T) pProcFsGlobalData;
 		    prGlueInfo->u16MetUdpPort = (UINT_16)u16MetUdpPort;
 		}	
     return count;
 }
+
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief The PROC function for reading TSF information.
+*
+* \param[in] file   pointer to file.
+* \param[in] buffer Buffer from user space.
+* \param[in] count  Number of characters to write
+* \param[in] data   Pointer to the private data structure.
+*
+* \return number of characters write from User Space.
+*/
+/*----------------------------------------------------------------------------*/
+static int
+kalTsfReadProcfs (
+    struct file *file,
+    const char __user *buffer,
+    size_t count,
+    loff_t *off
+    )  
+{
+	P_GLUE_INFO_T prGlueInfo; 
+	CMD_TSF_GET_T rTsfInfo;
+	UINT_32 u4BufLen;
+	UINT_32 u4Count;
+	WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+	char uaBuf[100];
+	char *p = uaBuf;
+	UINT32 i = 0;
+	INT32 retval = 0;
+	UINT_64 TSF = 0;
+	ASSERT(pProcFsGlobalData);
+	
+	rTsfInfo.ucBssBmp = 0x01; /*only query AIS's TSF*/
+	prGlueInfo = (P_GLUE_INFO_T) pProcFsGlobalData;
+
+	rStatus = kalIoctl(prGlueInfo,
+                        wlanoidQueryTsf,
+                        (PVOID)&rTsfInfo,
+                        sizeof(rTsfInfo),
+                        TRUE,
+                        TRUE,
+                        TRUE,
+                        FALSE,
+                        &u4BufLen);
+
+	if (rStatus != WLAN_STATUS_SUCCESS) {
+		SPRINTF(p, ("read TSF failed\n"));
+		goto out;
+	}
+
+	DBGLOG(INIT, INFO, ("TsfInfo BssBmp %d\n", rTsfInfo.ucBssBmp));
+	for (i =0; i < sizeof (rTsfInfo.ucBssBmp) * 8; i++)
+	{
+		if (0!= (rTsfInfo.ucBssBmp & (1 << i))) {
+			DBGLOG(INIT, INFO, ("TsfInfo bit (%d) valid, TSF[0]:0x%08x, TSF[1]:0x%08x\n", i, rTsfInfo.au4LocalTsf[i][0], rTsfInfo.au4LocalTsf[i][1]));
+		}
+	}
+	if (rTsfInfo.ucBssBmp & 0x1) {
+		TSF = rTsfInfo.au4LocalTsf[0][1];
+		TSF <<= 32;
+		TSF += rTsfInfo.au4LocalTsf[0][0];
+		SPRINTF(p, ("TSF:%llu\n", TSF));
+	} else {
+		SPRINTF(p, ("read TSF failed\n"));
+	}
+out:
+	u4Count = (UINT_32)((ULONG)p - (ULONG)uaBuf);
+	count = (u4Count > count) ? count : u4Count;
+	retval = copy_to_user(buffer, uaBuf, count);
+	if (retval) {
+		DBGLOG(INIT, INFO, ("%s copy to user buffer failed\n", __func__));
+		retval = 0;
+	} else
+	    retval = count;
+	
+	return retval;
+}
+
 
 struct file_operations rMetProcCtrlFops = {
     write:   kalMetCtrlWriteProcfs
@@ -4882,12 +4976,16 @@ struct file_operations rMetProcPortFops = {
     write:   kalMetPortWriteProcfs
     	
 };
- 
-int kalMetInitProcfs(
+struct file_operations rProcTsfFops = {
+    read:   kalTsfReadProcfs
+    	
+};
+
+int kalInitProcfs(
     IN P_GLUE_INFO_T prGlueInfo
     )
 {
-    //struct proc_dir_entry *pMetProcDir;  	
+    //struct proc_dir_entry *pProcDir;  	
     if (init_net.proc_net == (struct proc_dir_entry *)NULL) {
         DBGLOG(INIT, INFO, ("init proc fs fail: proc_net == NULL\n"));
         return -ENOENT;
@@ -4895,8 +4993,8 @@ int kalMetInitProcfs(
     /*
     * Directory: Root (/proc/net/wlan0)
     */    
-    pMetProcDir = proc_mkdir("wlan0", init_net.proc_net);
-    if (pMetProcDir == NULL) {
+    pProcDir = proc_mkdir("wlan0", init_net.proc_net);
+    if (pProcDir == NULL) {
         return -ENOENT;
     }      
     /*
@@ -4904,27 +5002,29 @@ int kalMetInitProcfs(
                |-- met_ctrl         (PROC_MET_PROF_CTRL)
                |-- met_port         (PROC_MET_PROF_PORT)
      */         
-    //proc_create(PROC_MET_PROF_CTRL, 0x0644, pMetProcDir, &rMetProcFops);
-    proc_create(PROC_MET_PROF_CTRL, 0, pMetProcDir, &rMetProcCtrlFops);
-    proc_create(PROC_MET_PROF_PORT, 0, pMetProcDir, &rMetProcPortFops);
+    //proc_create(PROC_MET_PROF_CTRL, 0x0644, pProcDir, &rMetProcFops);
+    proc_create(PROC_MET_PROF_CTRL, 0, pProcDir, &rMetProcCtrlFops);
+    proc_create(PROC_MET_PROF_PORT, 0, pProcDir, &rMetProcPortFops);
+	proc_create(PROC_TSF_PROF, 0, pProcDir, &rProcTsfFops);
     
-    pMetGlobalData = (void *) prGlueInfo;
+    pProcFsGlobalData = (void *) prGlueInfo;
     
     return 0;  
 }
-int kalMetRemoveProcfs(void)
+int kalRemoveProcfs(void)
 { 
 
     if (init_net.proc_net == (struct proc_dir_entry *)NULL) {
         DBGLOG(INIT, WARN, ("remove proc fs fail: proc_net == NULL\n"));
         return -ENOENT;
     }	   	
-    remove_proc_entry(PROC_MET_PROF_CTRL,      pMetProcDir);
-    remove_proc_entry(PROC_MET_PROF_PORT,      pMetProcDir);
+    remove_proc_entry(PROC_MET_PROF_CTRL,      pProcDir);
+    remove_proc_entry(PROC_MET_PROF_PORT,      pProcDir);
+	remove_proc_entry(PROC_TSF_PROF,      pProcDir);
     /* remove root directory (proc/net/wlan0) */
     remove_proc_entry("wlan0", init_net.proc_net);
     /* clear MetGlobalData */
-    pMetGlobalData = NULL;
+    pProcFsGlobalData = NULL;
     
     return 0;
 }

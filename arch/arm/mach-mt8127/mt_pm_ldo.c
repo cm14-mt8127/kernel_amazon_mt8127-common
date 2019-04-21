@@ -66,22 +66,22 @@ bool hwPowerOn(MT65XX_POWER powerId, MT65XX_POWER_VOLTAGE powerVolt, char *mode_
             g_MT_PMIC_BusHW.Power[j].dwPowerCount=0;
         }
         first_power_on_flag = 0;
-        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] init done.\r\n");
+        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] init done.\n");
     }
 	
 #if 1	
     if(powerId >= MT65XX_POWER_COUNT_END)
     {
-        MSG(PMIC,"[MT65XX PMU] Error!! powerId is wrong\r\n");
+        MSG(PMIC,"[MT65XX PMU] Error!! powerId is wrong\n");
         return FALSE;
     }
     for (i = 0; i< MAX_DEVICE; i++)
     {
-        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] %d,%s,%d\r\n", i, g_MT_PMIC_BusHW.Power[powerId].mod_name[i], g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
+        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] %d,%s,%d\n", i, g_MT_PMIC_BusHW.Power[powerId].mod_name[i], g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
 	
         if (!strcmp(g_MT_PMIC_BusHW.Power[powerId].mod_name[i], NON_OP))
         {
-            MSG(PMIC,"[%s] acquire powerId:%d index:%d mod_name: %s powerVolt:%d\r\n", 
+            MSG(PMIC,"[%s] acquire powerId:%d index:%d mod_name: %s powerVolt:%d\n", 
                 __FUNCTION__,powerId, i, mode_name,powerVolt);            
             sprintf(g_MT_PMIC_BusHW.Power[powerId].mod_name[i] , "%s", mode_name);
             break ;
@@ -90,7 +90,7 @@ bool hwPowerOn(MT65XX_POWER powerId, MT65XX_POWER_VOLTAGE powerVolt, char *mode_
         #if 0
         else if (!strcmp(g_MT_PMIC_BusHW.Power[powerId].mod_name[i], mode_name))
         {
-            MSG(CG,"[%d] Power already register\r\n",powerId );        
+            MSG(CG,"[%d] Power already register\n",powerId );        
         }
         #endif
     }    
@@ -98,13 +98,13 @@ bool hwPowerOn(MT65XX_POWER powerId, MT65XX_POWER_VOLTAGE powerVolt, char *mode_
     /* We've already enable this LDO before */
     if(g_MT_PMIC_BusHW.Power[powerId].dwPowerCount > 1)
     {
-        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] g_MT_PMIC_BusHW.Power[powerId].dwPowerCount (%d) > 1\r\n", g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
+        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] g_MT_PMIC_BusHW.Power[powerId].dwPowerCount (%d) > 1\n", g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
         return TRUE;
     }
 #endif	
     /* Turn on PMU LDO*/
-    MSG(CG,"[%d] PMU LDO Enable\r\n",powerId );            
-    xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] enable %d by %s \r\n", powerId, mode_name);
+    MSG(CG,"[%d] PMU LDO Enable\n",powerId );            
+    xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerOn] enable %d by %s \n", powerId, mode_name);
     if ((powerId == MT65XX_POWER_LDO_VMC)
     	||(powerId == MT65XX_POWER_LDO_VMCH) 
     	||(powerId == MT65XX_POWER_LDO_VEMC_3V3)
@@ -151,23 +151,23 @@ bool hwPowerDown(MT65XX_POWER powerId, char *mode_name)
     BOOL bFind = FALSE;    
     if(powerId >= MT65XX_POWER_COUNT_END)
     {
-        MSG(PMIC,"%s:%s:%d powerId:%d is wrong\r\n",__FILE__,__FUNCTION__, 
+        MSG(PMIC,"%s:%s:%d powerId:%d is wrong\n",__FILE__,__FUNCTION__, 
             __LINE__ , powerId);
         return FALSE;
     }    
     if(g_MT_PMIC_BusHW.Power[powerId].dwPowerCount == 0)
     {
-        MSG(PMIC,"%s:%s:%d powerId:%d (g_MT_PMIC_BusHW.dwPowerCount[powerId] = 0)\r\n", 
+        MSG(PMIC,"%s:%s:%d powerId:%d (g_MT_PMIC_BusHW.dwPowerCount[powerId] = 0)\n", 
             __FILE__,__FUNCTION__,__LINE__ ,powerId);
         return FALSE;
     }
     for (i = 0; i< MAX_DEVICE; i++)
     {
-        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] %d,%s,%d\r\n", i, g_MT_PMIC_BusHW.Power[powerId].mod_name[i], g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
+        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] %d,%s,%d\n", i, g_MT_PMIC_BusHW.Power[powerId].mod_name[i], g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
 	
         if (!strcmp(g_MT_PMIC_BusHW.Power[powerId].mod_name[i], mode_name))
         {
-            MSG(PMIC,"[%s] powerId:%d index:%d mod_name: %s\r\n", 
+            MSG(PMIC,"[%s] powerId:%d index:%d mod_name: %s\n", 
                 __FUNCTION__,powerId, i, mode_name);            
             sprintf(g_MT_PMIC_BusHW.Power[powerId].mod_name[i] , "%s", NON_OP);
             bFind = TRUE;
@@ -176,19 +176,19 @@ bool hwPowerDown(MT65XX_POWER powerId, char *mode_name)
     }   
     if(!bFind)
     {
-        MSG(PMIC,"[%s] Cannot find [%d] master is [%s]\r\n",__FUNCTION__,powerId, mode_name);        
+        MSG(PMIC,"[%s] Cannot find [%d] master is [%s]\n",__FUNCTION__,powerId, mode_name);        
         return TRUE;
     }        
     g_MT_PMIC_BusHW.Power[powerId].dwPowerCount--;
     if(g_MT_PMIC_BusHW.Power[powerId].dwPowerCount > 0)
     {
-        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] g_MT_PMIC_BusHW.Power[powerId].dwPowerCount (%d) > 0\r\n", g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
+        xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] g_MT_PMIC_BusHW.Power[powerId].dwPowerCount (%d) > 0\n", g_MT_PMIC_BusHW.Power[powerId].dwPowerCount);
         return TRUE;
     }
 #endif	
     /* Turn off PMU LDO*/
-    MSG(CG,"[%d] PMU LDO Disable\r\n",powerId );
-    xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] disable %d by %s \r\n", powerId, mode_name);
+    MSG(CG,"[%d] PMU LDO Disable\n",powerId );
+    xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[hwPowerDown] disable %d by %s \n", powerId, mode_name);
 
     pmic_ldo_enable(powerId, KAL_FALSE);
 

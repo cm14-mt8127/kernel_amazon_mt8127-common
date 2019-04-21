@@ -1,4 +1,3 @@
-
 #ifndef _MT6589_THERMAL_H
 #define _MT6589_THERMAL_H
 
@@ -188,6 +187,27 @@ struct TS_PTPOD
 extern void get_thermal_slope_intercept(struct TS_PTPOD *ts_info);
 extern void set_taklking_flag(bool flag);
 extern int mtktscpu_get_cpu_temp(void);
+extern int IMM_GetOneChannelValue(int dwChannel, int data[4], int *rawdata);
+extern int IMM_IsAdcInitReady(void);
+extern int get_immediate_temp2_wrap(void);
+extern void mt_cpufreq_thermal_protect(unsigned int limited_power);
+extern u32 get_devinfo_with_index(u32 index);
+extern int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd);
+extern int read_tbat_value(void);
+/* This API function is implemented in mediatek/kernel/drivers/leds/leds.c */
+extern int setMaxbrightness(int max_level, int enable);
+/**
+ *  return value means charging current in mA
+ *  -1 means error
+ *  Implementation in mt_battery.c and mt_battery_fan5405.c
+ */
+extern int get_bat_charging_current_level(void);
+/**
+ *  current_limit means limit of charging current in mA
+ *  -1 means no limit
+ *  Implementation in mt_battery.c and mt_battery_fan5405.c
+ */
+extern int set_bat_charging_current_limit(int current_limit);
 
 //#define THERMAL_WRAP_RD32(addr)            __raw_readl((void *)addr)
 #define THERMAL_WRAP_WR32(val,addr)        mt65xx_reg_sync_writel((val), ((void *)addr))
@@ -197,4 +217,3 @@ extern int mtktscpu_get_cpu_temp(void);
 
 
 #endif
-

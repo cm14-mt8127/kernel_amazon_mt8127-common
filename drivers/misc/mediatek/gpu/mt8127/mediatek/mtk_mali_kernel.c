@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2015 MediaTek Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
+
 #include "mtk_mali_kernel.h"
 #include "mali_kernel_common.h" /*for mali printf*/
 #include <mach/mt_clkmgr.h>     /*For MFG sub-system clock control API*/
@@ -6,8 +19,10 @@
 
 void MTKMALI_DumpRegister( void )
 {
+#if 0
 #define DUMP_REG_INFO( addr )   MALIK_MSG("REG: %s = 0x%08x\n", #addr, M_READ32( addr, 0 ))
     unsigned long dummy;
+	unsigned long addr;
 
     MALIK_MSG("MTKMALI_DumpRegister-------:\n"); 
     MALIK_MSG("MT_CG_MFG_G3D is %d\n", clock_is_on(MT_CG_MFG_G3D));
@@ -26,10 +41,14 @@ void MTKMALI_DumpRegister( void )
     DUMP_REG_INFO( REG_MFG_DEBUG_SEL );
 
     MALIK_MSG("---------------------------:\n"); 
+	for(addr = G3D_CONFIG_BASE; addr < G3D_CONFIG_BASE + 0x19c; addr += 4) {
+		MALIK_MSG("%p, 0x%08x\n", (void *)addr, M_READ32(addr, 0));
+	}
+    MALIK_MSG("---------------------------:\n"); 
 
 
    /*Dump Call stack*/
     dump_stack();
-   
+#endif
 }
 
