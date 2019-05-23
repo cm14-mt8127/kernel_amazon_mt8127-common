@@ -1,0 +1,21 @@
+menu "AMAZON"
+
+config AMAZON
+        bool "Amazon Drivers"
+        default N
+        ---help---
+          Enable support for various drivers needed on the Amazon hardware platform
+
+if AMAZON
+
+config IDME
+        bool "IDME support"
+        depends on PROC_FS
+	default N
+        help
+          Select Y here to enable IDME support to read the data
+          via userspace (i.e. /proc/idme/* entries)
+
+endif # if AMAZON
+
+endmenu

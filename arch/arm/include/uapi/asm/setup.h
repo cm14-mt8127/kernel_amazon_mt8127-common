@@ -200,6 +200,14 @@ typedef struct {
 	mem_desc_t rank_info[4];
 } dram_info_t;
 
+#ifdef CONFIG_IDME
+#define ATAG_IDME      0x54410010
+#define ATAG_IDME_SIZE 8736
+struct tag_idme {
+	u8 idme[ATAG_IDME_SIZE+1];
+};
+#endif
+
 struct tag {
 	struct tag_header hdr;
 	union {
@@ -213,6 +221,9 @@ struct tag {
 		struct tag_revision	revision;
 		struct tag_videolfb	videolfb;
 		struct tag_cmdline	cmdline;
+#ifdef CONFIG_IDME
+		 struct tag_idme        idme;
+#endif
 
 		/*
 		 * Acorn specific
